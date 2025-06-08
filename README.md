@@ -5,7 +5,7 @@
 2、将文本写入到图像里，需要特定节点来提取，在外面完全看不出来区别，让图片在文件夹里更干净简洁。
 3、支持从随机文件夹中抽取图像和对应tag（抽卡抽到爽！）。
 4、我还开发了一个将图片/GIF转为HTML文件的节点，在外面完全看不出来这个文件里是什么，必须下载后在本地打开才会显示图像/GIF里的内容，至于这个功能主要在什么时候使用...你知道的_
-\n看图片可以更直观的感受到节点的功能：
+看图片可以更直观的感受到节点的功能：
 ![1](https://github.com/user-attachments/assets/4c816ed2-917d-4504-8bb4-8ff2237bee73)
 ![2](https://github.com/user-attachments/assets/7e7af3e0-3360-4dd4-ba98-fee6249faac2)
 ![3](https://github.com/user-attachments/assets/a8e68685-9b28-4491-94d9-5baad1330005)
