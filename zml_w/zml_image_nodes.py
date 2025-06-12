@@ -473,30 +473,68 @@ class ZML_LoadImage:
             return "无效图像文件: {}".format(图像)
         return True
 
-# ============================== 从路径加载图像节点 (读取PNG文本块) ==============================
+# ============================== 从路径加载图像节点 (Corrected) ==============================
 class ZML_LoadImageFromPath:
     """
     ZML 从路径加载图像节点
-    支持随机索引和读取PNG文本块
+    支持随机、顺序、全部索引和读取PNG文本块
     """
     
     def __init__(self):
         self.cached_files = []
         self.cached_path = ""
         self.cache_time = 0
-        self.last_index = 0
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        # **FIX 1**: Changed the counter filename as requested
+        self.counter_file = os.path.join(self.node_dir, "路径图像计数.json")
+        self.reset_counters_on_startup()
     
+    def reset_counters_on_startup(self):
+        """在ComfyUI启动时, 创建一个空的JSON计数器文件."""
+        try:
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                json.dump({}, f)
+        except Exception as e:
+            print(f"重置路径加载图像计数JSON文件失败: {str(e)}")
+
+    def get_all_counts(self):
+        """读取整个JSON文件并返回所有节点的计数."""
+        try:
+            with open(self.counter_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def get_sequential_count(self, node_id):
+        """获取指定node_id的当前计数值."""
+        return self.get_all_counts().get(node_id, 0)
+
+    def increment_sequential_count(self, node_id):
+        """为指定的node_id增加计数并保存回文件."""
+        all_counts = self.get_all_counts()
+        current_count = all_counts.get(node_id, 0)
+        all_counts[node_id] = current_count + 1
+        try:
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                json.dump(all_counts, f, indent=4)
+        except Exception as e:
+            print(f"更新路径加载图像计数JSON文件失败: {str(e)}")
+
+    # ... (The rest of the ZML_LoadImageFromPath class is unchanged and omitted for brevity) ...
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "文件夹路径": ("STRING", {"default": "", "placeholder": "输入图像文件夹路径"}),
-                "索引模式": (["固定索引", "随机索引"], {"default": "固定索引"}),
+                "索引模式": (["固定索引", "随机索引", "顺序", "全部"], {"default": "固定索引"}),
                 "图像索引": ("INT", {"default": 0, "min": 0, "step": 1}),
-                # 增加"反向"选项
                 "正规化": (["禁用", "仅名称", "正规", "反向"], {"default": "正规"}),
                 "读取文本块": (["启用", "禁用"], {"default": "禁用"}),
-            }
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "unique_id": "UNIQUE_ID"
+            },
         }
     
     RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT")
@@ -504,135 +542,112 @@ class ZML_LoadImageFromPath:
     FUNCTION = "load_image"
     CATEGORY = "image/ZML_图像"
     
+    def _load_single_image_from_path(self, image_path, read_text_block):
+        """Helper function to load one image and its metadata."""
+        with Image.open(image_path) as img:
+            text_content = "未读取"
+            if read_text_block == "启用":
+                text_content = img.text.get("comfy_text_block", "未找到文本块内容")
+            
+            img = ImageOps.exif_transpose(img)
+            width, height = img.size
+            
+            image = img.convert("RGB")
+            image_np = np.array(image).astype(np.float32) / 255.0
+            image_tensor = torch.from_numpy(image_np)[None,]
+            
+            return (image_tensor, text_content, int(width), int(height))
+
     def normalize_name(self, filename, level):
         """根据正规等级处理图像名称"""
         if not filename:
             return ""
         
-        # 处理不同的正规等级
+        base_name = os.path.splitext(filename)[0]
         if level == "禁用":
-            return filename  # 保持原始名称（包括后缀）
+            return filename
         elif level == "仅名称":
-            return os.path.splitext(filename)[0]  # 去除后缀
+            return base_name
         elif level == "正规":
-            # 去除后缀
-            base_name = os.path.splitext(filename)[0]
-            # 提取第一个"#-#"之前的部分
-            parts = base_name.split("#-#", 1)
-            return parts[0].strip() if len(parts) > 0 else base_name
-        elif level == "反向":  # 新增反向选项
-            # 去除后缀
-            base_name = os.path.splitext(filename)[0]
-            # 提取最后一个"#-#"之后的部分
+            return base_name.split("#-#", 1)[0].strip()
+        elif level == "反向":
             parts = base_name.split("#-#")
             return parts[-1].strip() if len(parts) > 0 else base_name
-    
+
     def scan_directory(self, folder_path):
         """扫描文件夹获取图像文件列表（按名称递增排序）"""
-        if not folder_path or not os.path.exists(folder_path):
-            return []
-        
-        # 确保是目录
         if not os.path.isdir(folder_path):
             return []
         
-        # 获取所有图像文件
-        files = []
-        for filename in os.listdir(folder_path):
-            full_path = os.path.join(folder_path, filename)
-            if os.path.isfile(full_path):
-                ext = os.path.splitext(filename)[1].lower()
-                if ext in supported_image_extensions:
-                    files.append({
-                        "filename": filename,
-                        "full_path": full_path
-                    })
-        
-        # 按文件名递增排序
-        files.sort(key=lambda x: x["filename"])
+        files = [f for f in os.listdir(folder_path) if os.path.splitext(f)[1].lower() in supported_image_extensions]
+        files.sort()
         return files
-    
-    def load_image(self, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块):
-        """加载图像的主要函数"""
-        # 检查是否需要刷新文件列表
+
+    def load_image(self, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
         current_time = time.time()
         if (not self.cached_files or 
             文件夹路径 != self.cached_path or 
-            current_time - self.cache_time > 60):  # 60秒缓存
-            
-            # 扫描文件夹获取图像文件
+            current_time - self.cache_time > 60):
             self.cached_files = self.scan_directory(文件夹路径)
             self.cached_path = 文件夹路径
             self.cache_time = current_time
         
-        # 如果没有找到图像
         if not self.cached_files:
-            # 创建空的图像和占位符
-            empty_image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-            return (empty_image, "未找到图像", "没有找到图像", 64, 64)
-        
-        # 获取当前文件列表副本
-        current_files = self.cached_files.copy()
-        
-        # 确定索引
-        if 索引模式 == "随机索引":
-            index = random.randint(0, len(current_files) - 1)
-        else:
-            # 确保索引在有效范围内（循环索引）
-            index = 图像索引 % len(current_files)
-        
-        # 获取当前图像信息
-        image_info = current_files[index]
-        
+            return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "未找到图像", "没有找到图像", 64, 64)
+
+        if 索引模式 == "全部":
+            image_tensors = []
+            first_image_meta = None
+
+            for filename in self.cached_files:
+                image_path = os.path.join(文件夹路径, filename)
+                try:
+                    (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
+                    image_tensors.append(tensor)
+                    if first_image_meta is None:
+                        # Store metadata from the first image
+                        first_image_meta = {
+                            "text": text,
+                            "name": self.normalize_name(filename, 正规化),
+                            "width": width,
+                            "height": height
+                        }
+                except Exception as e:
+                    print(f"加载图像失败: {filename}, 错误: {e}")
+                    continue
+            
+            if not image_tensors:
+                return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "加载失败", "文件夹中所有图像均加载失败", 64, 64)
+
+            # Combine all tensors into a single batch
+            batch_tensor = torch.cat(image_tensors, dim=0)
+            return (batch_tensor, first_image_meta["text"], first_image_meta["name"], first_image_meta["width"], first_image_meta["height"])
+
+        # For all other modes (that select a single image)
+        num_files = len(self.cached_files)
+        index = 0
+        if 索引模式 == "固定索引":
+            index = 图像索引 % num_files
+        elif 索引模式 == "随机索引":
+            index = random.randint(0, num_files - 1)
+        elif 索引模式 == "顺序":
+            count = self.get_sequential_count(unique_id)
+            index = count % num_files
+            self.increment_sequential_count(unique_id)
+
+        selected_filename = self.cached_files[index]
+        image_path = os.path.join(文件夹路径, selected_filename)
+
         try:
-            # 打开图像并处理EXIF
-            with Image.open(image_info["full_path"]) as img:
-                # 在转换前读取文本块
-                text_content = "未读取"
-                if 读取文本块 == "启用":
-                    if hasattr(img, 'text') and "comfy_text_block" in img.text:
-                        text_content = img.text["comfy_text_block"]
-                    else:
-                        text_content = "未找到文本块内容"
-                
-                # 进行EXIF校正
-                img = ImageOps.exif_transpose(img)
-                width, height = img.size
-                
-                # 转换为RGB格式
-                if img.mode == 'I':
-                    img = img.point(lambda i: i * (1 / 255))
-                    image = img.convert("RGB")
-                elif img.mode == 'I;16':
-                    img = img.point(lambda i: i * (1 / 255))
-                    image = img.convert("RGB")
-                elif img.mode == 'RGBA':
-                    image = img.convert("RGB")
-                elif img.mode == 'LA':
-                    image = img.convert("L")
-                    image = image.convert("RGB")
-                else:
-                    image = img.convert("RGB")
-                
-                # 转换为张量
-                image_np = np.array(image).astype(np.float32) / 255.0
-                image_tensor = torch.from_numpy(image_np)[None,]
-                
-                # 正规化名称
-                normalized_name = self.normalize_name(image_info["filename"], 正规化)
-                
-                # 返回图像、文本块内容、名称、宽度和高度
-                return (image_tensor, text_content, normalized_name, int(width), int(height))
-        
-        except Exception:
-            # 创建错误占位符
-            error_image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-            return (error_image, "加载失败", f"加载失败: {image_info['filename']}", 64, 64)
+            (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
+            normalized_name = self.normalize_name(selected_filename, 正规化)
+            return (tensor, text, normalized_name, width, height)
+        except Exception as e:
+            return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "加载失败", f"加载失败: {selected_filename}, {e}", 64, 64)
     
     @classmethod
-    def IS_CHANGED(cls, 文件夹路径, 索引模式, 图像索引, 正规化="正规", 读取文本块="禁用"):
-        """用于检测图像是否更改"""
-        return float("nan")  # 始终返回nan，表示每次执行都需重新计算
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
 
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
