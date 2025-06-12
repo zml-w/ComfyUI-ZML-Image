@@ -3,6 +3,8 @@
 import re
 import os
 import time
+import random
+import json
 
 # ============================== 文本转格式节点 ==============================
 class ZML_TextFormatter:
@@ -278,13 +280,114 @@ class ZML_TextFilter:
         
         return (result, self.help_text, removed_result)
 
+# ============================== 文本行节点 (Final Multi-Node-Safe Version) ==============================
+class ZML_TextLine:
+    """ZML 文本行节点 (支持多节点独立计数)"""
+
+    def __init__(self):
+        self.help_text = "你好~欢迎使用ZML节点~索引模式是按照索引值加载文本行，随机模式就是随机文本行，顺序模式是一行行加载文本，每次运行都会递增一次行数，顺序模式的索引值是独立计算的，在重启comfyui是清零，当然你也可以修改‘ComfyUI-ZML-Image\zml_w\行计数.json’里的值来自由的决定计数，多个节点的索引是分开计算的，所以就算你使用一百个此节点同时运行，也不会出错。好啦~祝你天天开心~"
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        # Change counter file to JSON for structured data storage
+        self.counter_file = os.path.join(self.node_dir, "行计数.json")
+        self.reset_counters_on_startup()
+
+    def reset_counters_on_startup(self):
+        """在ComfyUI启动时, 创建一个空的JSON计数器文件."""
+        try:
+            # Write an empty JSON object "{}", which clears all counters for all nodes
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                json.dump({}, f)
+        except Exception as e:
+            print(f"重置行计数JSON文件失败: {str(e)}")
+
+    def get_all_counts(self):
+        """读取整个JSON文件并返回所有节点的计数."""
+        try:
+            with open(self.counter_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # If file doesn't exist or is empty/corrupt, return an empty dict
+            return {}
+
+    def get_sequential_count(self, node_id):
+        """获取指定node_id的当前计数值."""
+        all_counts = self.get_all_counts()
+        # Return the count for the specific node_id, or 0 if it's not present
+        return all_counts.get(node_id, 0)
+
+    def increment_sequential_count(self, node_id):
+        """为指定的node_id增加计数并保存回文件."""
+        all_counts = self.get_all_counts()
+        current_count = all_counts.get(node_id, 0)
+        all_counts[node_id] = current_count + 1
+        
+        try:
+            # Write the entire updated dictionary back to the JSON file
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                json.dump(all_counts, f, indent=4) # indent for readability
+        except Exception as e:
+            print(f"更新行计数JSON文件失败: {str(e)}")
+
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "文本": ("STRING", {"multiline": True, "default": ""}),
+                "模式": (["索引", "顺序", "随机"],),
+                "索引": ("INT", {"default": 0, "min": 0, "step": 1}),
+            },
+            # Add hidden inputs to get the node's unique ID
+            "hidden": {
+                "prompt": "PROMPT",
+                "unique_id": "UNIQUE_ID"
+            },
+        }
+
+    CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("文本", "help")
+    FUNCTION = "get_line"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+
+    # Update function signature to accept the new hidden inputs
+    def get_line(self, 文本, 模式, 索引, unique_id, prompt):
+        lines = [line.strip() for line in 文本.splitlines() if line.strip()]
+
+        if not lines:
+            return ("", self.help_text)
+
+        num_lines = len(lines)
+        output_line = ""
+
+        if 模式 == "索引":
+            safe_index = 索引 % num_lines
+            output_line = lines[safe_index]
+
+        elif 模式 == "顺序":
+            # Pass the node's unique_id to the counter functions
+            current_count = self.get_sequential_count(unique_id)
+            safe_index = current_count % num_lines
+            output_line = lines[safe_index]
+            self.increment_sequential_count(unique_id)
+
+        elif 模式 == "随机":
+            output_line = random.choice(lines)
+
+        return (output_line, self.help_text)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
     "ZML_TextFilter": ZML_TextFilter,
+    "ZML_TextLine": ZML_TextLine,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFormatter": "ZML_文本转格式",
     "ZML_TextFilter": "ZML_筛选文本",
+    "ZML_TextLine": "ZML_文本行",
 }
