@@ -13,7 +13,7 @@
 
 5、支持将NAI权重格式转化为SD权重格式，还可以帮助过滤不想要的tag。
 
-这里有我收集的图像，因为数量太多且占用太大，GitHub不让我上传，所以只能用网盘了：
+这里有我收集的图像，因为数量太多且占用太大，GitHub不让我上传，所以只能用网盘了：https://pan.baidu.com/s/10zwlixAx-chvd5Et9PaV4Q?pwd=4xrd
 
 看图片可以更直观的感受到节点的功能：
 ![1](https://github.com/user-attachments/assets/4c816ed2-917d-4504-8bb4-8ff2237bee73)
