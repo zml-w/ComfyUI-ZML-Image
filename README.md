@@ -6,6 +6,9 @@
 3、支持从文件夹中抽取图像和对应tag（抽卡抽到爽！）。
 4、我还开发了一个将图片/GIF转为HTML文件的节点，在外面完全看不出来这个文件里是什么，必须下载后在本地打开才会显示图像/GIF里的内容，至于这个功能主要在什么时候使用...你知道的_
 5. 支持将NAI权重格式转化为SD权重格式，还可以帮助过滤不想要的tag。
+
+这里有附属仓库，储存着我收集的图像：https://github.com/zml-w/ZML-Image-Save
+
 看图片可以更直观的感受到节点的功能：
 ![1](https://github.com/user-attachments/assets/4c816ed2-917d-4504-8bb4-8ff2237bee73)
 ![2](https://github.com/user-attachments/assets/7e7af3e0-3360-4dd4-ba98-fee6249faac2)
