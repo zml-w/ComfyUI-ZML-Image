@@ -167,7 +167,7 @@ class ZML_TextFormatter:
         """
         格式化标点符号：
         1. 替换中文逗号为英文逗号
-        2. 处理带空格的连续逗号
+        2. 合并连续逗号
         3. 移除开头的无效逗号
         4. 保护权重表达式中的逗号
         """
@@ -186,19 +186,16 @@ class ZML_TextFormatter:
         # 临时替换权重表达式
         text = re.sub(r'\([^)]*\)', replace_fn, text)
         
-        # 将中文逗号替换为英文逗号
+        # 1. 将中文逗号替换为英文逗号
         text = text.replace('，', ',')
         
-        # 处理带空格的连续逗号：合并连续的逗号（包括空格）
-        text = re.sub(r'[\s,]+', ',', text)
+        # 2. 处理连续逗号：只合并逗号，不处理空格
+        text = re.sub(r'[,，]+', ',', text)
         
-        # 移除开头的逗号（如果前面没有文本）
-        text = re.sub(r'^,+,?', '', text)
+        # 3. 移除开头的逗号（如果前面没有文本）
+        text = re.sub(r'^,+', '', text)
         
-        # 移除多余的连续逗号（保留一个）
-        text = re.sub(r',{2,}', ',', text)
-        
-        # 恢复权重表达式
+        # 4. 恢复权重表达式
         for placeholder, expr in placeholders:
             text = text.replace(placeholder, expr)
         
