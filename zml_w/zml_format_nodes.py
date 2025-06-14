@@ -5,6 +5,7 @@ import os
 import time
 import random
 import json
+import math
 
 # ============================== 文本转格式节点 ==============================
 class ZML_TextFormatter:
@@ -22,7 +23,7 @@ class ZML_TextFormatter:
         self.total_count = self.get_current_count()
         
         # 更新帮助文本
-        self.help_text = f"你好，欢迎使用ZML节点！\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’\n好啦~祝你天天开心！"
+        self.help_text = f"你好，欢迎使用ZML节点！\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
     
     def ensure_counter_file(self):
         """确保计数文件存在"""
@@ -55,7 +56,7 @@ class ZML_TextFormatter:
                 f.write(str(self.total_count))
             
             # 更新帮助文本
-            self.help_text = f"你好，欢迎使用ZML节点！\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’\n好啦~祝你天天开心！"
+            self.help_text = f"你好，欢迎使用ZML节点！\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
             
             return self.total_count
         except Exception as e:
@@ -71,7 +72,7 @@ class ZML_TextFormatter:
                     "default": "",
                     "placeholder": "输入要转换的文本"
                 }),
-                "NAI转SD权重": ([True, False], {"default": True}),  # 重命名
+                "NAI转SD权重": (["禁用", "精确", "保留一位小数"], {"default": "精确"}),
                 "下划线转空格": ([True, False], {"default": True}),
                 "格式化标点符号": ([True, False], {"default": True}),
             }
@@ -82,13 +83,16 @@ class ZML_TextFormatter:
     RETURN_NAMES = ("文本", "Help")
     FUNCTION = "format_text"
     
-    def convert_braces(self, text):
-        """将花括号{}和双冒号格式::转换为权重格式"""
-        # 首先处理双冒号格式（如"2::tag::"）
+    def convert_braces(self, text, mode="精确"):
+        """
+        将花括号{}和方括号[]转换为权重格式
+        {}表示增加权重，[]表示减少权重
+        """
+        # 首先处理双冒号格式
         text = self.convert_double_colon(text)
         
-        # 寻找所有花括号对（支持嵌套）
-        matches = list(re.finditer(r'\{+[^{}]*?\}+', text))
+        # 同时匹配花括号{}和方括号[]
+        matches = list(re.finditer(r'(\{+[^{}]*?\}+|\[+[^\[\]]*?\]+)', text))
         
         # 如果没有匹配项，直接返回原文本
         if not matches:
@@ -99,35 +103,50 @@ class ZML_TextFormatter:
             full_match = match.group(0)
             start_idx, end_idx = match.span()
             
-            # 计算花括号层数（取左右括号的最小值）
-            left_braces = 0
-            right_braces = 0
+            # 判断是花括号还是方括号
+            is_brace = full_match.startswith('{')
+            brace_char = '{' if is_brace else '['
+            close_char = '}' if is_brace else ']'
             
-            # 计算左侧连续花括号数量
+            # 计算括号层数
+            left_count = 0
+            right_count = 0
+            
+            # 计算左侧连续括号数量
             for char in full_match:
-                if char == '{':
-                    left_braces += 1
+                if char == brace_char:
+                    left_count += 1
                 else:
                     break
                     
-            # 计算右侧连续花括号数量
+            # 计算右侧连续括号数量
             for char in reversed(full_match):
-                if char == '}':
-                    right_braces += 1
+                if char == close_char:
+                    right_count += 1
                 else:
                     break
             
             # 取有效层数（左右括号的最小值）
-            brace_level = min(left_braces, right_braces)
+            brace_level = min(left_count, right_count)
             
-            # 提取实际内容（去除花括号）
-            content = full_match[left_braces:-right_braces]
+            # 提取实际内容（去除括号）
+            content = full_match[left_count:-right_count]
             
-            # 计算权重值 (1.1的n次方)
-            weight = round(1.1 ** brace_level, 3)
+            # 根据模式计算权重值
+            if mode == "精确":
+                # 精确模式：指数计算
+                base = 1.1 if is_brace else 0.9
+                weight = round(base ** brace_level, 3)
+            elif mode == "保留一位小数":
+                # 保留一位小数模式：线性计算
+                weight = 1 + (0.1 * brace_level) if is_brace else 1 - (0.1 * brace_level)
+                weight = round(weight, 1)
+            else:
+                # 禁用模式：不处理
+                continue
             
             # 构建替换文本
-            replacement = f"({content}:{weight})"
+            replacement = f"({content}:{weight})" if mode != "禁用" else content
             
             # 替换原文本中的匹配部分
             text = text[:start_idx] + replacement + text[end_idx:]
@@ -137,8 +156,6 @@ class ZML_TextFormatter:
     def convert_double_colon(self, text):
         """将双冒号格式::转换为权重格式"""
         # 匹配格式：数字::内容:: 
-        # 示例：2::1gril:: → (1gril:2)
-        #       1.2::solo:: → (solo:1.2)
         pattern = r'(\d+(?:\.\d+)?)::(.*?)::'
         
         # 查找所有匹配项
@@ -169,7 +186,9 @@ class ZML_TextFormatter:
         1. 替换中文逗号为英文逗号
         2. 合并连续逗号
         3. 移除开头的无效逗号
-        4. 保护权重表达式中的逗号
+        4. 处理连续BREAK
+        5. 移除开头的BREAK
+        6. 保护权重表达式中的逗号
         """
         # 存储权重表达式占位符
         placeholders = []
@@ -189,26 +208,35 @@ class ZML_TextFormatter:
         # 1. 将中文逗号替换为英文逗号
         text = text.replace('，', ',')
         
-        # 2. 处理连续逗号：只合并逗号，不处理空格
+        # 2. 处理连续BREAK
+        # 合并连续的BREAK（如 "BREAK,BREAK" -> "BREAK"）
+        # 修复：只合并连续的BREAK，保留单独的BREAK
+        text = re.sub(r'(\bBREAK\b\s*,\s*)+(\bBREAK\b)', r'\2', text, flags=re.IGNORECASE)
+        
+        # 3. 移除开头的BREAK（如 "BREAK, tag" -> "tag"）
+        # 修复：只移除开头的BREAK，保留中间的BREAK
+        text = re.sub(r'^(\s*,\s*)*\bBREAK\b(\s*,\s*)*', '', text, count=1, flags=re.IGNORECASE)
+        
+        # 4. 处理连续逗号：只合并逗号，不处理空格
         text = re.sub(r'[,，]+', ',', text)
         
-        # 3. 移除开头的逗号（如果前面没有文本）
+        # 5. 移除开头的逗号（如果前面没有文本）
         text = re.sub(r'^,+', '', text)
         
-        # 4. 恢复权重表达式
+        # 6. 恢复权重表达式
         for placeholder, expr in placeholders:
             text = text.replace(placeholder, expr)
         
         return text
     
-    def format_text(self, 文本, NAI转SD权重, 下划线转空格, 格式化标点符号):  # 参数名更新
+    def format_text(self, 文本, NAI转SD权重, 下划线转空格, 格式化标点符号):
         """处理文本转换"""
         # 无论是否有文本输入，都更新计数
         self.increment_counter()
         
-        # 如果启用花括号转换
-        if NAI转SD权重:
-            文本 = self.convert_braces(文本)
+        # 如果启用花括号/方括号转换
+        if NAI转SD权重 != "禁用":
+            文本 = self.convert_braces(文本, mode=NAI转SD权重)
         
         # 如果启用下划线转换
         if 下划线转空格:
