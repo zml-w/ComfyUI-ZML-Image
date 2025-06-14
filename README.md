@@ -1,4 +1,3 @@
-![image](https://github.com/user-attachments/assets/4520eb51-48db-4eb1-a37f-74ce0216e98d)# ComfyUI-ZML-Image
 最新更新日期：2025.06.14
 
 文本转格式节点支持转换[]的权重了，且支持格式化断开语法‘BREAK’。
