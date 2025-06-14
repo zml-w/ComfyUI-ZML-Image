@@ -7,6 +7,54 @@ import random
 import json
 import math
 
+# ============================== 全局格式化函数 ==============================
+def format_punctuation_global(text):
+    """
+    全局的标点符号格式化函数（独立于类）
+    1. 替换中文逗号为英文逗号
+    2. 合并连续逗号
+    3. 移除开头的无效逗号
+    4. 处理连续BREAK
+    5. 移除开头的BREAK
+    6. 保护权重表达式中的逗号
+    """
+    # 存储权重表达式占位符
+    placeholders = []
+    count = 0
+    
+    # 保护权重表达式（圆括号内的内容）
+    def replace_fn(match):
+        nonlocal count
+        placeholder = f"__WEIGHT_EXPR_{count}__"
+        placeholders.append((placeholder, match.group(0)))
+        count += 1
+        return placeholder
+    
+    # 临时替换权重表达式
+    text = re.sub(r'\([^)]*\)', replace_fn, text)
+    
+    # 1. 将中文逗号替换为英文逗号
+    text = text.replace('，', ',')
+    
+    # 2. 处理连续BREAK
+    # 合并连续的BREAK（如 "BREAK,BREAK" -> "BREAK"）
+    text = re.sub(r'(\bBREAK\b\s*,\s*)+(\bBREAK\b)', r'\2', text, flags=re.IGNORECASE)
+    
+    # 3. 移除开头的BREAK（如 "BREAK, tag" -> "tag"）
+    text = re.sub(r'^(\s*,\s*)*\bBREAK\b(\s*,\s*)*', '', text, count=1, flags=re.IGNORECASE)
+    
+    # 4. 处理连续逗号：只合并逗号，不处理空格
+    text = re.sub(r'[,，]+', ',', text)
+    
+    # 5. 移除开头的逗号（如果前面没有文本）
+    text = re.sub(r'^,+', '', text)
+    
+    # 6. 恢复权重表达式
+    for placeholder, expr in placeholders:
+        text = text.replace(placeholder, expr)
+    
+    return text
+
 # ============================== 文本转格式节点 ==============================
 class ZML_TextFormatter:
     """ZML 文本转格式节点"""
@@ -23,7 +71,7 @@ class ZML_TextFormatter:
         self.total_count = self.get_current_count()
         
         # 更新帮助文本
-        self.help_text = f"你好，欢迎使用ZML节点！\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
+        self.help_text = f"你好，欢迎使用ZML节点~\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
     
     def ensure_counter_file(self):
         """确保计数文件存在"""
@@ -56,7 +104,7 @@ class ZML_TextFormatter:
                 f.write(str(self.total_count))
             
             # 更新帮助文本
-            self.help_text = f"你好，欢迎使用ZML节点！\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
+            self.help_text = f"你好，欢迎使用ZML节点~\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
             
             return self.total_count
         except Exception as e:
@@ -181,53 +229,8 @@ class ZML_TextFormatter:
         return text
     
     def format_punctuation(self, text):
-        """
-        格式化标点符号：
-        1. 替换中文逗号为英文逗号
-        2. 合并连续逗号
-        3. 移除开头的无效逗号
-        4. 处理连续BREAK
-        5. 移除开头的BREAK
-        6. 保护权重表达式中的逗号
-        """
-        # 存储权重表达式占位符
-        placeholders = []
-        count = 0
-        
-        # 保护权重表达式（圆括号内的内容）
-        def replace_fn(match):
-            nonlocal count
-            placeholder = f"__WEIGHT_EXPR_{count}__"
-            placeholders.append((placeholder, match.group(0)))
-            count += 1
-            return placeholder
-        
-        # 临时替换权重表达式
-        text = re.sub(r'\([^)]*\)', replace_fn, text)
-        
-        # 1. 将中文逗号替换为英文逗号
-        text = text.replace('，', ',')
-        
-        # 2. 处理连续BREAK
-        # 合并连续的BREAK（如 "BREAK,BREAK" -> "BREAK"）
-        # 修复：只合并连续的BREAK，保留单独的BREAK
-        text = re.sub(r'(\bBREAK\b\s*,\s*)+(\bBREAK\b)', r'\2', text, flags=re.IGNORECASE)
-        
-        # 3. 移除开头的BREAK（如 "BREAK, tag" -> "tag"）
-        # 修复：只移除开头的BREAK，保留中间的BREAK
-        text = re.sub(r'^(\s*,\s*)*\bBREAK\b(\s*,\s*)*', '', text, count=1, flags=re.IGNORECASE)
-        
-        # 4. 处理连续逗号：只合并逗号，不处理空格
-        text = re.sub(r'[,，]+', ',', text)
-        
-        # 5. 移除开头的逗号（如果前面没有文本）
-        text = re.sub(r'^,+', '', text)
-        
-        # 6. 恢复权重表达式
-        for placeholder, expr in placeholders:
-            text = text.replace(placeholder, expr)
-        
-        return text
+        """调用全局格式化函数"""
+        return format_punctuation_global(text)
     
     def format_text(self, 文本, NAI转SD权重, 下划线转空格, 格式化标点符号):
         """处理文本转换"""
@@ -310,7 +313,7 @@ class ZML_TextLine:
     """ZML 文本行节点 (支持多节点独立计数)"""
 
     def __init__(self):
-        self.help_text = "你好~欢迎使用ZML节点~索引模式是按照索引值加载文本行，随机模式就是随机文本行，顺序模式是一行行加载文本，每次运行都会递增一次行数，顺序模式的索引值是独立计算的，在重启comfyui是清零，当然你也可以修改‘ComfyUI-ZML-Image\zml_w\行计数.json’里的值来自由的决定计数，多个节点的索引是分开计算的，所以就算你使用一百个此节点同时运行，也不会出错。好啦~祝你天天开心~"
+        self.help_text = "你好~欢迎使用ZML节点~索引模式是按照索引值加载文本行，随机模式就是随机文本行，顺序模式是一行流加载文本，每次运行都会递增一次行数，顺序模式的索引值是独立计算的，在重启comfyui是清零，当然你也可以修改‘ComfyUI-ZML-Image\zml_w\行计数.json’里的值来自由的决定计数，多个节点的索引是分开计算的，所以就算你使用一百个此节点同时运行，也不会出错。好啦~祝你天天开心~"
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
         # Change counter file to JSON for structured data storage
         self.counter_file = os.path.join(self.node_dir, "行计数.json")
@@ -404,15 +407,137 @@ class ZML_TextLine:
 
         return (output_line, self.help_text)
 
+# ============================== 多文本输入节点（五个输入框） ==============================
+class ZML_MultiTextInput5:
+    """ZML 多文本输入节点（五个输入框）"""
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "格式化标点符号": ([True, False], {"default": True}),
+                "分隔符": ("STRING", {
+                    "multiline": False,
+                    "default": ",",
+                    "placeholder": "输入分隔符"
+                }),
+                "文本1": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本1"
+                }),
+                "文本2": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本2"
+                }),
+                "文本3": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本3"
+                }),
+                "文本4": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本4"
+                }),
+                "文本5": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本5"
+                }),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
+    FUNCTION = "combine_texts"
+    
+    def combine_texts(self, 格式化标点符号, 分隔符, 文本1, 文本2, 文本3, 文本4, 文本5):
+        """组合多个文本并应用格式化"""
+        # 将所有文本放入列表
+        texts = [文本1, 文本2, 文本3, 文本4, 文本5]
+        
+        # 过滤掉空文本
+        non_empty_texts = [text.strip() for text in texts if text.strip()]
+        
+        # 使用分隔符连接文本
+        combined = 分隔符.join(non_empty_texts)
+        
+        # 应用标点符号格式化
+        if 格式化标点符号:
+            combined = format_punctuation_global(combined)
+        
+        return (combined,)
+
+# ============================== 多文本输入节点（三个输入框） ==============================
+class ZML_MultiTextInput3:
+    """ZML 多文本输入节点（三个输入框）"""
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "格式化标点符号": ([True, False], {"default": True}),
+                "分隔符": ("STRING", {
+                    "multiline": False,
+                    "default": ",",
+                    "placeholder": "输入分隔符"
+                }),
+                "文本1": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本1"
+                }),
+                "文本2": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本2"
+                }),
+                "文本3": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入文本3"
+                }),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
+    FUNCTION = "combine_texts"
+    
+    def combine_texts(self, 格式化标点符号, 分隔符, 文本1, 文本2, 文本3):
+        """组合多个文本并应用格式化"""
+        # 将所有文本放入列表
+        texts = [文本1, 文本2, 文本3]
+        
+        # 过滤掉空文本
+        non_empty_texts = [text.strip() for text in texts if text.strip()]
+        
+        # 使用分隔符连接文本
+        combined = 分隔符.join(non_empty_texts)
+        
+        # 应用标点符号格式化
+        if 格式化标点符号:
+            combined = format_punctuation_global(combined)
+        
+        return (combined,)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
     "ZML_TextFilter": ZML_TextFilter,
     "ZML_TextLine": ZML_TextLine,
+    "ZML_MultiTextInput5": ZML_MultiTextInput5,
+    "ZML_MultiTextInput3": ZML_MultiTextInput3,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFormatter": "ZML_文本转格式",
     "ZML_TextFilter": "ZML_筛选文本",
     "ZML_TextLine": "ZML_文本行",
+    "ZML_MultiTextInput5": "ZML_多文本输入_五",
+    "ZML_MultiTextInput3": "ZML_多文本输入_三",
 }
