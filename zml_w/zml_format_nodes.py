@@ -36,15 +36,15 @@ def format_punctuation_global(text):
     # 1. 将中文逗号替换为英文逗号
     text = text.replace('，', ',')
     
-    # 2. 处理连续BREAK
-    # 合并连续的BREAK（如 "BREAK,BREAK" -> "BREAK"）
+    # 2. 【顺序调整】先合并连续的逗号，以确保后续BREAK处理的准确性
+    text = re.sub(r'[,，]+', ',', text)
+    
+    # 3. 【顺序调整】处理连续BREAK
+    # 在逗号被合并后，此正则表达式现在可以正确处理 "BREAK,BREAK"
     text = re.sub(r'(\bBREAK\b\s*,\s*)+(\bBREAK\b)', r'\2', text, flags=re.IGNORECASE)
     
-    # 3. 移除开头的BREAK（如 "BREAK, tag" -> "tag"）
+    # 4. 移除开头的BREAK（如 "BREAK, tag" -> "tag"）
     text = re.sub(r'^(\s*,\s*)*\bBREAK\b(\s*,\s*)*', '', text, count=1, flags=re.IGNORECASE)
-    
-    # 4. 处理连续逗号：只合并逗号，不处理空格
-    text = re.sub(r'[,，]+', ',', text)
     
     # 5. 移除开头的逗号（如果前面没有文本）
     text = re.sub(r'^,+', '', text)
