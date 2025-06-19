@@ -251,9 +251,9 @@ class ZML_TextFormatter:
         
         return (文本, self.help_text)
 
-# ============================== 筛选文本节点 ==============================
+# ============================== 筛选提示词节点 ==============================
 class ZML_TextFilter:
-    """ZML 筛选文本节点"""
+    """ZML 筛选提示词节点"""
     
     def __init__(self):
         self.help_text = "你好，欢迎使用ZML节点~\n此节点会筛选掉你不想要的一些tag，你可以将R18的tag输入到下面的文本框里，它会从上方文本框里删掉下方文本框里的tag，比如上方输入的为‘1girl,solo,nsfw,’下方文本框输入的为‘nsfw,’，那输出的文本就是‘1girl,solo’了！被过滤掉的文本也可以在'*过滤*'接口处输出，如果你不需要输出被过滤的tag的话，不连线也能正常运行。\n好啦~祝你生活愉快，天天开心~"
@@ -307,6 +307,56 @@ class ZML_TextFilter:
         removed_result = ', '.join(removed_tags)
         
         return (result, self.help_text, removed_result)
+
+# ============================== 删除文本节点 ==============================
+class ZML_DeleteText:
+    """ZML 删除文本节点"""
+    
+    def __init__(self):
+        self.help_text = "你好，欢迎使用ZML节点~\n此节点会从第一个文本中删除第二个文本中指定的标签或子字符串。例如：第一个文本为'#1girl,2girls,solo,'，第二个文本为'2girls,#,1,o,'，输出结果为'girl,sl,'。删除后会自动清理多余的逗号。\n祝你使用愉快！"
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "文本": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入原始文本"
+                }),
+                "删除标签或字符": ("STRING", { # Renamed input for clarity
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入要删除的标签或子字符串（用英文逗号分隔）"
+                }),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("文本", "Help")
+    FUNCTION = "delete_text"
+    
+    def delete_text(self, 文本, 删除标签或字符): # Simplified function signature
+        """删除文本中的指定标签或子字符串"""
+        # 如果输入文本为空，则返回空字符串
+        if not 文本.strip():
+            return ("", self.help_text)
+        
+        result = 文本
+        
+        delete_list = [item.strip() for item in 删除标签或字符.split(',') if item.strip()]
+        
+        for item_to_delete in delete_list:
+            result = result.replace(item_to_delete, '')
+        
+        result = re.sub(r',+', ',', result) # Merge multiple commas
+        result = re.sub(r'^,', '', result)  # Remove leading comma
+        result = re.sub(r',$', '', result)  # Remove trailing comma
+        
+        result = result.replace(',,', ',') # This line is redundant if r',+' is used effectively but doesn't hurt.
+        
+        return (result, self.help_text)
 
 # ============================== 文本行节点 (Final Multi-Node-Safe Version) ==============================
 class ZML_TextLine:
@@ -529,6 +579,7 @@ class ZML_MultiTextInput3:
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
     "ZML_TextFilter": ZML_TextFilter,
+    "ZML_DeleteText": ZML_DeleteText,
     "ZML_TextLine": ZML_TextLine,
     "ZML_MultiTextInput5": ZML_MultiTextInput5,
     "ZML_MultiTextInput3": ZML_MultiTextInput3,
@@ -536,7 +587,8 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFormatter": "ZML_文本转格式",
-    "ZML_TextFilter": "ZML_筛选文本",
+    "ZML_TextFilter": "ZML_筛选提示词",  # 更名为筛选提示词
+    "ZML_DeleteText": "ZML_删除文本",  # 新增删除文本节点
     "ZML_TextLine": "ZML_文本行",
     "ZML_MultiTextInput5": "ZML_多文本输入_五",
     "ZML_MultiTextInput3": "ZML_多文本输入_三",
