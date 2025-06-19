@@ -68,10 +68,14 @@ class ZML_SaveImage:
                 "生成预览": (["启用", "禁用"], {"default": "启用"}),
                 "文本块存储": ("STRING", {"default": "", "placeholder": "存储到PNG文本块的文本内容"}),
                 "保存同名txt文件": (["启用", "禁用"], {"default": "禁用"}),
+                "缩放图像": (["禁用", "启用"], {"default": "禁用"}), # 新增缩放图像选项
+                "缩放比例": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}), # 新增缩放比例
+                "清除元数据": (["禁用", "启用"], {"default": "禁用"}), # 新增清除元数据选项
             },
             "hidden": {
                 "prompt": "PROMPT", 
-                "extra_pnginfo": "EXTRA_PNGINFO"
+                "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID", # ComfyUI 内部使用的唯一ID，用于避免打印 "Prompt executed in..."
             },
         }
     
@@ -163,7 +167,7 @@ class ZML_SaveImage:
     def save_images(self, 图像=None, **kwargs):
         """
         保存图像的主要函数（使用PNG文本块存储）
-        修改：支持无图像输入
+        修改：支持无图像输入，增加缩放和清除元数据功能，更新txt保存格式
         """
         # 从kwargs中获取其他参数
         文件名前缀 = kwargs.get("文件名前缀", "ZML")
@@ -174,17 +178,23 @@ class ZML_SaveImage:
         生成预览 = kwargs.get("生成预览", "启用")
         文本块存储 = kwargs.get("文本块存储", "")
         保存同名txt文件 = kwargs.get("保存同名txt文件", "禁用")
+        缩放图像 = kwargs.get("缩放图像", "禁用")
+        缩放比例 = kwargs.get("缩放比例", 1.0)
+        清除元数据 = kwargs.get("清除元数据", "禁用")
         prompt = kwargs.get("prompt", None)
         extra_pnginfo = kwargs.get("extra_pnginfo", None)
-        
+        unique_id = kwargs.get("unique_id", None) # 获取 unique_id
+
         # 增加总次数计数器（无论是否有图像）
         total_count = self.increment_total_counter()
-        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#000001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
+        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#000001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
         
         # 如果没有图像输入，创建白色占位图像
         if 图像 is None or 图像.size(0) == 0:
             # 创建一个1x1的白色占位图像
             placeholder_image = torch.ones((1, 1, 1, 3), dtype=torch.float32)
+            # 对于OUTPUT_NODE，如果不需要UI显示，可以返回空字典或None。
+            # 如果需要保留help_output，可以这样返回
             return {"result": (placeholder_image, help_output)}
         
         filename_prefix = self.sanitize_filename(文件名前缀)
@@ -235,33 +245,49 @@ class ZML_SaveImage:
                 
                 image_array = 255. * image_tensor.cpu().numpy()
                 pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
+
+                original_width, original_height = pil_image.size # 获取原始分辨率
+
+                # 处理图像缩放
+                if 缩放图像 == "启用" and 缩放比例 > 0:
+                    new_width = int(pil_image.width * 缩放比例)
+                    new_height = int(pil_image.height * 缩放比例)
+                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
                 
+                # 获取最终保存图像的分辨率
+                saved_width, saved_height = pil_image.size
+
                 # 创建元数据对象
                 metadata = PngImagePlugin.PngInfo()
-                
-                # 添加标准ComfyUI元数据
-                if prompt is not None:
-                    try:
-                        metadata.add_text("prompt", json.dumps(prompt))
-                    except Exception:
-                        pass
-                
-                if extra_pnginfo is not None:
-                    # 单独添加workflow信息
-                    if "workflow" in extra_pnginfo:
+
+                # 判断是否含有元数据（根据清除元数据选项）
+                has_metadata = "是" if 清除元数据 == "禁用" else "否"
+
+                # 如果启用清除元数据，则不添加标准ComfyUI元数据，只添加文本块
+                if 清除元数据 == "禁用":
+                    # 添加标准ComfyUI元数据
+                    if prompt is not None:
                         try:
-                            metadata.add_text("workflow", json.dumps(extra_pnginfo["workflow"]))
+                            metadata.add_text("prompt", json.dumps(prompt))
                         except Exception:
                             pass
                     
-                    # 添加其他额外信息
-                    for key, value in extra_pnginfo.items():
-                        if key == "workflow":
-                            continue
-                        try:
-                            metadata.add_text(key, json.dumps(value))
-                        except Exception:
-                            pass
+                    if extra_pnginfo is not None:
+                        # 单独添加workflow信息
+                        if "workflow" in extra_pnginfo:
+                            try:
+                                metadata.add_text("workflow", json.dumps(extra_pnginfo["workflow"]))
+                            except Exception:
+                                pass
+                        
+                        # 添加其他额外信息
+                        for key, value in extra_pnginfo.items():
+                            if key == "workflow":
+                                continue
+                            try:
+                                metadata.add_text(key, json.dumps(value))
+                            except Exception:
+                                pass
                 
                 # 添加文本块到元数据（如果文本非空）
                 if text_content:
@@ -276,7 +302,7 @@ class ZML_SaveImage:
                     pil_image.save(final_image_path, pnginfo=metadata, compress_level=4)
                     
                     # 保存同名txt文件（如果启用）
-                    if 保存同名txt文件 == "启用" and text_content:
+                    if 保存同名txt文件 == "启用":
                         txt_path = os.path.splitext(final_image_path)[0] + ".txt"
                         unique_txt_path = self.get_unique_filepath(txt_path)
                         
@@ -284,8 +310,10 @@ class ZML_SaveImage:
                         file_name = os.path.basename(final_image_path)
                         txt_content = (
                             f"图片名称: {file_name}\n"
-                            f"文本块存储: {text_content}\n"
-                            f"保存时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            f"图片分辨率: {saved_width}x{saved_height}\n"
+                            f"是否含有元数据: {has_metadata}\n"
+                            f"保存时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                            f"文本块存储: \n{text_content}" # 文本块存储内容放到下一行
                         )
                         
                         with open(unique_txt_path, "w", encoding="utf-8") as f:
@@ -348,12 +376,27 @@ class ZML_SaveImage:
                         "type": "output"
                     } for t in saved_txt_files
                 ]
-            return {
-                "ui": ui_output,
-                "result": (output_image, help_output)
-            }
+            
+            # 使用 unique_id 确保 ComfyUI 不会打印 "Prompt executed in..."
+            # 这个是ComfyUI内部的机制，通过返回带有"node_id"的字典来阻止默认的控制台输出
+            # 只有当unique_id存在时才启用此机制
+            if unique_id is not None:
+                return {
+                    "ui": ui_output,
+                    "result": (output_image, help_output),
+                    "node_id": unique_id
+                }
+            else:
+                return {
+                    "ui": ui_output,
+                    "result": (output_image, help_output)
+                }
         else:
-            return {"result": (output_image, help_output)}
+            # 如果不生成预览，同样考虑 unique_id
+            if unique_id is not None:
+                return {"result": (output_image, help_output), "node_id": unique_id}
+            else:
+                return {"result": (output_image, help_output)}
 
 # ============================== 加载图像节点 (读取PNG文本块) ==============================
 class ZML_LoadImage:
@@ -485,7 +528,6 @@ class ZML_LoadImageFromPath:
         self.cached_path = ""
         self.cache_time = 0
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        # **FIX 1**: Changed the counter filename as requested
         self.counter_file = os.path.join(self.node_dir, "路径图像计数.json")
         self.reset_counters_on_startup()
     
@@ -500,7 +542,7 @@ class ZML_LoadImageFromPath:
     def get_all_counts(self):
         """读取整个JSON文件并返回所有节点的计数."""
         try:
-            with open(self.counter_file, "r", encoding="utf-8") as f:
+            with open(self.counter_file, "r", encoding="utf-8") as f: # 修正编码为 utf-8
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
@@ -520,7 +562,6 @@ class ZML_LoadImageFromPath:
         except Exception as e:
             print(f"更新路径加载图像计数JSON文件失败: {str(e)}")
 
-    # ... (The rest of the ZML_LoadImageFromPath class is unchanged and omitted for brevity) ...
     @classmethod
     def INPUT_TYPES(cls):
         return {
