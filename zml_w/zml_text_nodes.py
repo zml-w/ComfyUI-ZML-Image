@@ -10,6 +10,7 @@ import datetime
 import torch
 import base64
 import html
+import random
 
 # ============================== 文本输入节点 ==============================
 class ZML_TextInput:
@@ -161,7 +162,6 @@ class ZML_WriteText:
             error_msg = f"写入失败: {str(e)}"
             return {"result": (help_output,), "ui": {"text": [error_msg]}}
 
-# ============================== 图片转HTML节点 ==============================
 # ============================== 图片转HTML节点 ==============================
 class ZML_ImageToHTML:
     """ZML 图片转HTML节点"""
@@ -526,7 +526,6 @@ class ZML_ImageToHTML:
             <div class="header-content">
                 <h2>你好，很高兴你使用ZML节点</h2>
                 <p>到目前为止，你通过此节点总共转化了{total_count}次图像！祝你天天开心。</p>
-                <!-- 添加自定义标题 -->
                 {f'<p class="custom-title">{sanitized_title}</p>' if sanitized_title else ''}
             </div>
         </div>
@@ -635,17 +634,118 @@ class ZML_GIFLoader:
             print(f"加载GIF失败: {str(e)}")
             return (torch.zeros(0), 0, help_output)
 
+# ============================== 双整数节点 (New) ==============================
+class ZML_DualInteger:
+    """
+    ZML 双整数节点
+    提供两个可自由调节的整数值作为宽和高。
+    """
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "A": ("INT", {"default": 1024, "min": 0, "max": 16384, "step": 1}),
+                "B": ("INT", {"default": 1024, "min": 0, "max": 16384, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("A", "B")
+    FUNCTION = "get_simple_dimensions"
+    CATEGORY = "image/ZML_图像"
+
+    def get_simple_dimensions(self, A, B):
+        return (A, B)
+
+# ============================== 双整数V2节点 (Renamed) ==============================
+class ZML_DualIntegerV2:
+    """
+    ZML 双整数V2节点
+    提供固定的宽和高，以及从文本列表中随机选择的宽和高。
+    新增“随机宽高对应”功能，并修复了随机问题。
+    """
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "宽": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
+                "高": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
+                "随机宽文本": ("STRING", {
+                    "multiline": False,
+                    "default": "832,1024,1216",
+                    "placeholder": "用英文逗号,分隔多个宽度值"
+                }),
+                "随机高文本": ("STRING", {
+                    "multiline": False,
+                    "default": "832,1024,1216",
+                    "placeholder": "用英文逗号,分隔多个高度值"
+                }),
+                "随机宽高对应": ("BOOLEAN", {"default": True, "label_on": "开启对应", "label_off": "独立随机"}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT", "INT", "INT")
+    RETURN_NAMES = ("宽", "高", "随机宽", "随机高")
+    FUNCTION = "get_dimensions"
+    CATEGORY = "image/ZML_图像"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # 强制节点在每次执行时都重新运行，以确保随机性
+        return float("nan")
+
+    def get_dimensions(self, 宽, 高, 随机宽文本, 随机高文本, 随机宽高对应):
+        # --- 解析文本输入 ---
+        valid_widths = []
+        for item in 随机宽文本.split(','):
+            try:
+                valid_widths.append(int(item.strip()))
+            except ValueError:
+                pass
+        
+        valid_heights = []
+        for item in 随机高文本.split(','):
+            try:
+                valid_heights.append(int(item.strip()))
+            except ValueError:
+                pass
+
+        random_width = 宽
+        random_height = 高
+
+        # --- 根据模式决定随机方式 ---
+        if 随机宽高对应 and valid_widths and valid_heights:
+            # 开启对应模式，且两个列表都有效
+            # 使用较短的列表长度作为随机范围，以避免索引越界
+            min_len = min(len(valid_widths), len(valid_heights))
+            rand_index = random.randint(0, min_len - 1)
+            random_width = valid_widths[rand_index]
+            random_height = valid_heights[rand_index]
+        else:
+            # 独立随机模式（或当任一列表无效时的后备模式）
+            if valid_widths:
+                random_width = random.choice(valid_widths)
+            if valid_heights:
+                random_height = random.choice(valid_heights)
+            
+        return (宽, 高, random_width, random_height)
+
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextInput": ZML_TextInput,
     "ZML_WriteText": ZML_WriteText,
     "ZML_ImageToHTML": ZML_ImageToHTML,
-    "ZML_GIFLoader": ZML_GIFLoader,  # 新增节点
+    "ZML_GIFLoader": ZML_GIFLoader,
+    "ZML_DualInteger": ZML_DualInteger,          # 新增节点
+    "ZML_DualIntegerV2": ZML_DualIntegerV2,      # 重命名后的节点
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextInput": "ZML_文本输入",
     "ZML_WriteText": "ZML_写入文本",
     "ZML_ImageToHTML": "ZML_图片转HTML",
-    "ZML_GIFLoader": "ZML_GIF文件路径",  # 新增节点显示名称
+    "ZML_GIFLoader": "ZML_GIF文件路径",
+    "ZML_DualInteger": "ZML_双整数",             # 新增节点显示名称
+    "ZML_DualIntegerV2": "ZML_双整数V2",         # 重命名后的节点显示名称
 }
