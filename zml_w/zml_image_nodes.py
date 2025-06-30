@@ -1,697 +1,705 @@
-# custom_nodes/zml_format_nodes.py
+# custom_nodes/zml_image_nodes.py
 
-import re
 import os
 import time
-import random
+import torch
+import folder_paths
+from PIL import Image, ImageOps, ImageSequence, PngImagePlugin
+import numpy as np
+import datetime
+import re
 import json
-import math
+import random
 
-# ============================== 全局格式化函数 ==============================
-def format_punctuation_global(text):
-    """
-    全局的标点符号格式化函数（独立于类）
-    1. 替换中文逗号为英文逗号
-    2. 合并连续逗号
-    3. 移除开头的无效逗号
-    4. 处理连续BREAK
-    5. 移除开头的BREAK
-    6. 保护权重表达式中的逗号
-    """
-    # 存储权重表达式占位符
-    placeholders = []
-    count = 0
-    
-    # 保护权重表达式（圆括号内的内容）
-    def replace_fn(match):
-        nonlocal count
-        placeholder = f"__WEIGHT_EXPR_{count}__"
-        placeholders.append((placeholder, match.group(0)))
-        count += 1
-        return placeholder
-    
-    # 临时替换权重表达式
-    text = re.sub(r'\([^)]*\)', replace_fn, text)
-    
-    # 1. 将中文逗号替换为英文逗号
-    text = text.replace('，', ',')
-    
-    # 2. 【顺序调整】先合并连续的逗号，以确保后续BREAK处理的准确性
-    text = re.sub(r'[,，]+', ',', text)
-    
-    # 3. 【顺序调整】处理连续BREAK
-    # 在逗号被合并后，此正则表达式现在可以正确处理 "BREAK,BREAK"
-    text = re.sub(r'(\bBREAK\b\s*,\s*)+(\bBREAK\b)', r'\2', text, flags=re.IGNORECASE)
-    
-    # 4. 移除开头的BREAK（如 "BREAK, tag" -> "tag"）
-    text = re.sub(r'^(\s*,\s*)*\bBREAK\b(\s*,\s*)*', '', text, count=1, flags=re.IGNORECASE)
-    
-    # 5. 移除开头的逗号（如果前面没有文本）
-    text = re.sub(r'^,+', '', text)
-    
-    # 6. 恢复权重表达式
-    for placeholder, expr in placeholders:
-        text = text.replace(placeholder, expr)
-    
-    return text
+# 获取所有支持的图像扩展名
+if hasattr(folder_paths, 'supported_image_extensions'):
+    supported_image_extensions = folder_paths.supported_image_extensions
+else:
+    # 兼容旧版本ComfyUI
+    supported_image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp']
 
-# ============================== 文本转格式节点 ==============================
-class ZML_TextFormatter:
-    """ZML 文本转格式节点"""
+# ============================== 保存图像节点 (使用PNG文本块存储) ==============================
+class ZML_SaveImage:
+    """ZML 图像保存节点（使用PNG文本块存储）"""
     
     def __init__(self):
-        # 初始化计数文件路径
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        self.counter_file = os.path.join(self.node_dir, "转格式计数.txt")
         
-        # 确保计数器文件存在
-        self.ensure_counter_file()
+        # 计数器文件路径
+        self.counter_file = os.path.join(self.node_dir, "counter.txt")
+        self.total_counter_file = os.path.join(self.node_dir, "总次数.txt")
         
-        # 获取当前计数
-        self.total_count = self.get_current_count()
-        
-        # 更新帮助文本
-        self.help_text = f"你好，欢迎使用ZML节点~\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
+        # 确保计数器文件存在并重置重启计数器
+        self.ensure_counter_files()
     
-    def ensure_counter_file(self):
-        """确保计数文件存在"""
+    def ensure_counter_files(self):
+        """确保计数器文件存在，并重置重启计数器"""
         try:
+            # 重置重启计数器（每次启动归零）
             if not os.path.exists(self.counter_file):
                 with open(self.counter_file, "w", encoding="utf-8") as f:
                     f.write("0")
-        except Exception as e:
-            print(f"创建计数文件失败: {str(e)}")
+            else:
+                # 重置为0
+                with open(self.counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+            
+            # 确保总次数文件存在
+            if not os.path.exists(self.total_counter_file):
+                with open(self.total_counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+        except Exception:
+            pass
     
-    def get_current_count(self):
-        """获取当前计数"""
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "图像": ("IMAGE", {}),  # 将图像改为可选输入
+            },
+            "required": {
+                "文件名前缀": ("STRING", {"default": "ZML", "placeholder": "文件名前缀"}),
+                "保存路径": ("STRING", {"default": "", "placeholder": "相对/绝对路径 (留空使用output)"}),
+                "使用时间戳": (["启用", "禁用"], {"default": "禁用"}),
+                "使用计数器": (["启用", "禁用"], {"default": "启用"}),
+                "文件名后缀": ("STRING", {"default": "", "placeholder": "可选后缀"}),
+                "生成预览": (["启用", "禁用"], {"default": "启用"}),
+                "文本块存储": ("STRING", {"default": "", "placeholder": "存储到PNG文本块的文本内容"}),
+                "保存同名txt文件": (["启用", "禁用"], {"default": "禁用"}),
+                "缩放图像": (["禁用", "启用"], {"default": "禁用"}), # 新增缩放图像选项
+                "缩放比例": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}), # 新增缩放比例
+                "清除元数据": (["禁用", "启用"], {"default": "禁用"}), # 新增清除元数据选项
+            },
+            "hidden": {
+                "prompt": "PROMPT", 
+                "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID", # ComfyUI 内部使用的唯一ID，用于避免打印 "Prompt executed in..."
+            },
+        }
+    
+    # 添加输出接口
+    RETURN_TYPES = ("IMAGE", "STRING",)
+    RETURN_NAMES = ("图像", "Help",)
+    FUNCTION = "save_images"
+    OUTPUT_NODE = True
+    CATEGORY = "image/ZML_图像"
+    
+    def sanitize_filename(self, name):
+        """清理文件名，移除非法字符"""
+        if not name:
+            return ""
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '', name).strip()
+        name = name.strip('"').strip("'")
+        name = name.replace(' ', '-')
+        return name
+    
+    def format_path(self, path):
+        """格式化用户输入的路径"""
+        if not path:
+            return self.output_dir
+        
+        path = path.strip().strip('"').strip("'")
+        
+        if path.startswith("./"):
+            path = path[2:]
+        
+        if not path:
+            return self.output_dir
+        
+        if os.path.isabs(path):
+            return path
+        
+        comfyui_root = os.path.dirname(self.output_dir)
+        full_path = os.path.join(comfyui_root, path)
+        return full_path
+    
+    def ensure_directory(self, path):
+        """确保目录存在"""
+        try:
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+            return path
+        except Exception:
+            return self.output_dir
+    
+    def get_next_counter(self):
+        """获取下一个重启计数器值（每次启动归零）"""
         try:
             if os.path.exists(self.counter_file):
                 with open(self.counter_file, "r", encoding="utf-8") as f:
-                    count = f.read().strip()
-                    return int(count) if count.isdigit() else 0
-            return 0
+                    counter = int(f.read().strip()) + 1
+            else:
+                counter = 1
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                f.write(str(counter))
+            return counter
+        except Exception:
+            return int(time.time())
+    
+    def increment_total_counter(self):
+        """增加总次数计数器（永久保存）"""
+        try:
+            if os.path.exists(self.total_counter_file):
+                with open(self.total_counter_file, "r", encoding="utf-8") as f:
+                    total_count = int(f.read().strip()) + 1
+            else:
+                total_count = 1
+            with open(self.total_counter_file, "w", encoding="utf-8") as f:
+                f.write(str(total_count))
+            return total_count
         except Exception:
             return 0
     
-    def increment_counter(self):
-        """增加计数器并更新帮助文本"""
-        try:
-            # 增加计数
-            self.total_count += 1
-            
-            # 更新计数文件
-            with open(self.counter_file, "w", encoding="utf-8") as f:
-                f.write(str(self.total_count))
-            
-            # 更新帮助文本
-            self.help_text = f"你好，欢迎使用ZML节点~\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
-            
-            return self.total_count
-        except Exception as e:
-            print(f"更新计数器失败: {str(e)}")
-            return self.total_count
-    
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "文本": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入要转换的文本"
-                }),
-                "NAI转SD权重": (["禁用", "精确", "保留一位小数"], {"default": "精确"}),
-                "下划线转空格": ([True, False], {"default": True}),
-                "格式化标点符号": ([True, False], {"default": True}),
-            }
-        }
-    
-    CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("文本", "Help")
-    FUNCTION = "format_text"
-    
-    def convert_braces(self, text, mode="精确"):
-        """
-        将花括号{}和方括号[]转换为权重格式
-        {}表示增加权重，[]表示减少权重
-        """
-        # 首先处理双冒号格式
-        text = self.convert_double_colon(text)
+    def get_unique_filepath(self, filepath):
+        """获取唯一文件名，避免覆盖已有文件"""
+        base, ext = os.path.splitext(filepath)
+        counter = 1
+        new_path = filepath
         
-        # 同时匹配花括号{}和方括号[]
-        matches = list(re.finditer(r'(\{+[^{}]*?\}+|\[+[^\[\]]*?\]+)', text))
+        while os.path.exists(new_path):
+            new_path = f"{base} ({counter}){ext}"
+            counter += 1
+            
+        return new_path
+
+    def save_images(self, 图像=None, **kwargs):
+        """
+        保存图像的主要函数（使用PNG文本块存储）
+        修改：支持无图像输入，增加缩放和清除元数据功能，更新txt保存格式
+        """
+        # 从kwargs中获取其他参数
+        文件名前缀 = kwargs.get("文件名前缀", "ZML")
+        保存路径 = kwargs.get("保存路径", "")
+        使用时间戳 = kwargs.get("使用时间戳", "禁用")
+        使用计数器 = kwargs.get("使用计数器", "启用")
+        文件名后缀 = kwargs.get("文件名后缀", "")
+        生成预览 = kwargs.get("生成预览", "启用")
+        文本块存储 = kwargs.get("文本块存储", "")
+        保存同名txt文件 = kwargs.get("保存同名txt文件", "禁用")
+        缩放图像 = kwargs.get("缩放图像", "禁用")
+        缩放比例 = kwargs.get("缩放比例", 1.0)
+        清除元数据 = kwargs.get("清除元数据", "禁用")
+        prompt = kwargs.get("prompt", None)
+        extra_pnginfo = kwargs.get("extra_pnginfo", None)
+        unique_id = kwargs.get("unique_id", None) # 获取 unique_id
+
+        # 增加总次数计数器（无论是否有图像）
+        total_count = self.increment_total_counter()
+        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#000001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
         
-        # 如果没有匹配项，直接返回原文本
-        if not matches:
-            return text
+        # 如果没有图像输入，创建白色占位图像
+        if 图像 is None or 图像.size(0) == 0:
+            # 创建一个1x1的白色占位图像
+            placeholder_image = torch.ones((1, 1, 1, 3), dtype=torch.float32)
+            # 对于OUTPUT_NODE，如果不需要UI显示，可以返回空字典或None。
+            # 如果需要保留help_output，可以这样返回
+            return {"result": (placeholder_image, help_output)}
+        
+        filename_prefix = self.sanitize_filename(文件名前缀)
+        save_path = self.ensure_directory(self.format_path(保存路径))
+        filename_suffix = self.sanitize_filename(文件名后缀)
+        text_content = 文本块存储.strip()  # 清理文本内容
+        
+        result_paths = []
+        saved_txt_files = []  # 保存的txt文件列表
+        
+        # 如果有图像输入，则处理图像
+        if 图像 is not None and 图像.size(0) > 0:
+            components = []
             
-        # 从最内层开始处理（反向迭代）
-        for match in reversed(matches):
-            full_match = match.group(0)
-            start_idx, end_idx = match.span()
+            if filename_prefix:
+                components.append(filename_prefix)
             
-            # 判断是花括号还是方括号
-            is_brace = full_match.startswith('{')
-            brace_char = '{' if is_brace else '['
-            close_char = '}' if is_brace else ']'
+            if 使用时间戳 == "启用":
+                timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                components.append(timestamp)
             
-            # 计算括号层数
-            left_count = 0
-            right_count = 0
+            if 使用计数器 == "启用":
+                counter_value = self.get_next_counter()
+                components.append(f"{counter_value:05d}")
             
-            # 计算左侧连续括号数量
-            for char in full_match:
-                if char == brace_char:
-                    left_count += 1
-                else:
-                    break
-                    
-            # 计算右侧连续括号数量
-            for char in reversed(full_match):
-                if char == close_char:
-                    right_count += 1
-                else:
-                    break
+            if filename_suffix:
+                components.append(filename_suffix)
             
-            # 取有效层数（左右括号的最小值）
-            brace_level = min(left_count, right_count)
-            
-            # 提取实际内容（去除括号）
-            content = full_match[left_count:-right_count]
-            
-            # 根据模式计算权重值
-            if mode == "精确":
-                # 精确模式：指数计算
-                base = 1.1 if is_brace else 0.9
-                weight = round(base ** brace_level, 3)
-            elif mode == "保留一位小数":
-                # 保留一位小数模式：线性计算
-                weight = 1 + (0.1 * brace_level) if is_brace else 1 - (0.1 * brace_level)
-                weight = round(weight, 1)
+            # 使用"#-#"作为分隔符
+            if components:
+                filename = "#-#".join(components) + ".png"
             else:
-                # 禁用模式：不处理
-                continue
+                filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + ".png"
             
-            # 构建替换文本
-            replacement = f"({content}:{weight})" if mode != "禁用" else content
-            
-            # 替换原文本中的匹配部分
-            text = text[:start_idx] + replacement + text[end_idx:]
-            
-        return text
-    
-    def convert_double_colon(self, text):
-        """将双冒号格式::转换为权重格式"""
-        # 匹配格式：数字::内容:: 
-        pattern = r'(\d+(?:\.\d+)?)::(.*?)::'
-        
-        # 查找所有匹配项
-        matches = list(re.finditer(pattern, text))
-        
-        # 如果没有匹配项，直接返回原文本
-        if not matches:
-            return text
-        
-        # 从后往前处理（避免替换后位置变化）
-        for match in reversed(matches):
-            full_match = match.group(0)
-            weight_value = match.group(1)
-            content = match.group(2)
-            
-            # 构建权重表达式
-            replacement = f"({content}:{weight_value})"
-            
-            # 替换文本
-            start, end = match.span()
-            text = text[:start] + replacement + text[end:]
-        
-        return text
-    
-    def format_punctuation(self, text):
-        """调用全局格式化函数"""
-        return format_punctuation_global(text)
-    
-    def format_text(self, 文本, NAI转SD权重, 下划线转空格, 格式化标点符号):
-        """处理文本转换"""
-        # 无论是否有文本输入，都更新计数
-        self.increment_counter()
-        
-        # 如果启用花括号/方括号转换
-        if NAI转SD权重 != "禁用":
-            文本 = self.convert_braces(文本, mode=NAI转SD权重)
-        
-        # 如果启用下划线转换
-        if 下划线转空格:
-            文本 = 文本.replace('_', ' ')
-        
-        # 如果启用格式化标点符号
-        if 格式化标点符号:
-            文本 = self.format_punctuation(文本)
-        
-        return (文本, self.help_text)
+            for index, image_tensor in enumerate(图像):
+                if len(图像) > 1:
+                    file_parts = filename.split('.')
+                    base_name = ".".join(file_parts[:-1])
+                    ext = file_parts[-1]
+                    batch_filename = f"{base_name}#{index+1:03d}.{ext}"
+                else:
+                    batch_filename = filename
+                
+                full_path = os.path.join(save_path, batch_filename)
+                
+                # 确保文件名唯一
+                final_image_path = self.get_unique_filepath(full_path)
+                
+                image_array = 255. * image_tensor.cpu().numpy()
+                pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
 
-# ============================== 筛选提示词节点 ==============================
-class ZML_TextFilter:
-    """ZML 筛选提示词节点"""
+                original_width, original_height = pil_image.size # 获取原始分辨率
+
+                # 处理图像缩放
+                if 缩放图像 == "启用" and 缩放比例 > 0:
+                    new_width = int(pil_image.width * 缩放比例)
+                    new_height = int(pil_image.height * 缩放比例)
+                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+                
+                # 获取最终保存图像的分辨率
+                saved_width, saved_height = pil_image.size
+
+                # 创建元数据对象
+                metadata = PngImagePlugin.PngInfo()
+
+                # 判断是否含有元数据（根据清除元数据选项）
+                has_metadata = "是" if 清除元数据 == "禁用" else "否"
+
+                # 如果启用清除元数据，则不添加标准ComfyUI元数据，只添加文本块
+                if 清除元数据 == "禁用":
+                    # 添加标准ComfyUI元数据
+                    if prompt is not None:
+                        try:
+                            metadata.add_text("prompt", json.dumps(prompt))
+                        except Exception:
+                            pass
+                    
+                    if extra_pnginfo is not None:
+                        # 单独添加workflow信息
+                        if "workflow" in extra_pnginfo:
+                            try:
+                                metadata.add_text("workflow", json.dumps(extra_pnginfo["workflow"]))
+                            except Exception:
+                                pass
+                        
+                        # 添加其他额外信息
+                        for key, value in extra_pnginfo.items():
+                            if key == "workflow":
+                                continue
+                            try:
+                                metadata.add_text(key, json.dumps(value))
+                            except Exception:
+                                pass
+                
+                # 添加文本块到元数据（如果文本非空）
+                if text_content:
+                    try:
+                        # 使用zTXt块存储（压缩存储）
+                        metadata.add_text("comfy_text_block", text_content, zip=True)
+                    except Exception:
+                        pass
+                
+                try:
+                    # 保存图像
+                    pil_image.save(final_image_path, pnginfo=metadata, compress_level=4)
+                    
+                    # 保存同名txt文件（如果启用）
+                    if 保存同名txt文件 == "启用":
+                        txt_path = os.path.splitext(final_image_path)[0] + ".txt"
+                        unique_txt_path = self.get_unique_filepath(txt_path)
+                        
+                        # 创建txt内容
+                        file_name = os.path.basename(final_image_path)
+                        txt_content = (
+                            f"图片名称: {file_name}\n"
+                            f"图片分辨率: {saved_width}x{saved_height}\n"
+                            f"是否含有元数据: {has_metadata}\n"
+                            f"保存时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                            f"文本块存储: \n{text_content}" # 文本块存储内容放到下一行
+                        )
+                        
+                        with open(unique_txt_path, "w", encoding="utf-8") as f:
+                            f.write(txt_content)
+                        
+                        saved_txt_files.append({
+                            "filename": os.path.basename(unique_txt_path),
+                            "subfolder": os.path.relpath(os.path.dirname(unique_txt_path), self.output_dir).replace("\\", "/"),
+                            "type": "output"
+                        })
+                    
+                    # 计算预览路径
+                    try:
+                        # 获取文件的基本信息
+                        file_basename = os.path.basename(final_image_path)
+                        file_dir = os.path.dirname(final_image_path)
+                        
+                        # 计算相对路径
+                        if file_dir.startswith(self.output_dir):
+                            rel_dir = os.path.relpath(file_dir, self.output_dir)
+                        else:
+                            rel_dir = ""
+                        
+                        # 标准化路径分隔符
+                        rel_dir = rel_dir.replace("\\", "/")
+                        if rel_dir == ".":
+                            rel_dir = ""
+                        
+                        # 添加到结果列表
+                        result_paths.append({
+                            "filename": file_basename,
+                            "subfolder": rel_dir,
+                            "type": "output"
+                        })
+                    except Exception:
+                        pass
+                    
+                except Exception:
+                    pass
+        
+        # 返回输出接口值
+        output_image = 图像  # 直接返回输入图像
+        
+        # 根据预览选项返回结果
+        if 生成预览 == "启用" and result_paths:
+            ui_output = {
+                "images": [
+                    {
+                        "filename": p["filename"],
+                        "subfolder": p["subfolder"],
+                        "type": "output"
+                    } for p in result_paths
+                ]
+            }
+            if saved_txt_files:
+                ui_output["texts"] = [
+                    {
+                        "filename": t["filename"],
+                        "subfolder": t["subfolder"],
+                        "type": "output"
+                    } for t in saved_txt_files
+                ]
+            
+            # 使用 unique_id 确保 ComfyUI 不会打印 "Prompt executed in..."
+            # 这个是ComfyUI内部的机制，通过返回带有"node_id"的字典来阻止默认的控制台输出
+            # 只有当unique_id存在时才启用此机制
+            if unique_id is not None:
+                return {
+                    "ui": ui_output,
+                    "result": (output_image, help_output),
+                    "node_id": unique_id
+                }
+            else:
+                return {
+                    "ui": ui_output,
+                    "result": (output_image, help_output)
+                }
+        else:
+            # 如果不生成预览，同样考虑 unique_id
+            if unique_id is not None:
+                return {"result": (output_image, help_output), "node_id": unique_id}
+            else:
+                return {"result": (output_image, help_output)}
+
+# ============================== 加载图像节点 (读取PNG文本块) ==============================
+class ZML_LoadImage:
+    """
+    ZML 加载图像节点
+    读取PNG文本块内容
+    """
     
     def __init__(self):
-        self.help_text = "你好，欢迎使用ZML节点~\n此节点会筛选掉你不想要的一些tag，你可以将R18的tag输入到下面的文本框里，它会从上方文本框里删掉下方文本框里的tag，比如上方输入的为‘1girl,solo,nsfw,’下方文本框输入的为‘nsfw,’，那输出的文本就是‘1girl,solo’了！被过滤掉的文本也可以在'*过滤*'接口处输出，如果你不需要输出被过滤的tag的话，不连线也能正常运行。\n好啦~祝你生活愉快，天天开心~"
+        self.input_dir = folder_paths.get_input_directory()
+        self.type = "input"
     
     @classmethod
     def INPUT_TYPES(cls):
+        input_dir = folder_paths.get_input_directory()
+        files = [f for f in os.listdir(input_dir) if os.path.splitext(f)[1].lower() in supported_image_extensions]
+        
         return {
             "required": {
-                "文本": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入要过滤的文本"
-                }),
-                "过滤标签": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入要过滤的标签（用英文逗号分隔）"
-                }),
+                "图像": (sorted(files), {"image_upload": True}),
+                # 增加"反向"选项
+                "正规化": (["禁用", "仅名称", "正规", "反向"], {"default": "正规"}),
+                "读取文本块": (["启用", "禁用"], {"default": "禁用"}),
             }
         }
     
     CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("文本", "Help", "*过滤*")
-    FUNCTION = "filter_text"
     
-    def filter_text(self, 文本, 过滤标签):
-        """过滤掉指定的标签"""
-        # 如果输入文本为空，则返回空字符串
-        if not 文本.strip():
-            return ("", self.help_text, "")
-        
-        # 将过滤标签字符串按逗号分割，并去除每个标签两边的空格
-        filter_list = [tag.strip() for tag in 过滤标签.split(',') if tag.strip()]
-        
-        # 将输入文本按逗号分割（支持中英文逗号）
-        tags = []
-        for part in re.split(r'[,，]', 文本):
-            tag = part.strip()
-            if tag:  # 跳过空标签
-                tags.append(tag)
-        
-        # 过滤掉在filter_list中的标签（注意：大小写敏感）
-        filtered_tags = [tag for tag in tags if tag not in filter_list]
-        
-        # 找出被过滤掉的标签
-        removed_tags = [tag for tag in tags if tag in filter_list]
-        
-        # 重新组合成字符串
-        result = ', '.join(filtered_tags)
-        removed_result = ', '.join(removed_tags)
-        
-        return (result, self.help_text, removed_result)
-
-# ============================== 删除文本节点 ==============================
-class ZML_DeleteText:
-    """ZML 删除文本节点"""
+    # 添加Name、宽、高输出接口
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = ("图像", "文本块", "Name", "宽", "高")
+    FUNCTION = "load_image"
     
-    def __init__(self):
-        self.help_text = "你好，欢迎使用ZML节点~\n此节点会从第一个文本中删除第二个文本中指定的标签或子字符串。例如：第一个文本为'#1girl,2girls,solo,'，第二个文本为'2girls,#,1,o,'，输出结果为'girl,sl,'。删除后会自动清理多余的逗号。\n祝你使用愉快！"
+    def normalize_name(self, filename, level):
+        """根据正规等级处理图像名称"""
+        if not filename:
+            return ""
+        
+        # 处理不同的正规等级
+        if level == "禁用":
+            return filename  # 保持原始名称（包括后缀）
+        elif level == "仅名称":
+            return os.path.splitext(filename)[0]  # 去除后缀
+        elif level == "正规":
+            # 去除后缀
+            base_name = os.path.splitext(filename)[0]
+            # 提取第一个"#-#"之前的部分
+            parts = base_name.split("#-#", 1)
+            return parts[0].strip() if len(parts) > 0 else base_name
+        elif level == "反向":  # 新增反向选项
+            # 去除后缀
+            base_name = os.path.splitext(filename)[0]
+            # 提取最后一个"#-#"之后的部分
+            parts = base_name.split("#-#")
+            return parts[-1].strip() if len(parts) > 0 else base_name
+    
+    def load_image(self, 图像, 正规化, 读取文本块):
+        """
+        加载图像的主要函数
+        读取PNG文本块内容
+        """
+        image_path = folder_paths.get_annotated_filepath(图像)
+        
+        try:
+            # 打开图像并处理EXIF
+            with Image.open(image_path) as img:
+                # 在转换前读取文本块
+                text_content = "未读取"
+                if 读取文本块 == "启用":
+                    if hasattr(img, 'text') and "comfy_text_block" in img.text:
+                        text_content = img.text["comfy_text_block"]
+                    else:
+                        text_content = "未找到文本块内容"
+                
+                # 进行EXIF校正
+                img = ImageOps.exif_transpose(img)
+                width, height = img.size
+                
+                # 转换为RGB格式
+                if img.mode == 'I':
+                    img = img.point(lambda i: i * (1 / 255))
+                    image = img.convert("RGB")
+                elif img.mode == 'I;16':
+                    img = img.point(lambda i: i * (1 / 255))
+                    image = img.convert("RGB")
+                elif img.mode == 'RGBA':
+                    image = img.convert("RGB")
+                elif img.mode == 'LA':
+                    image = img.convert("L")
+                    image = image.convert("RGB")
+                else:
+                    image = img.convert("RGB")
+                
+                # 转换为张量
+                image_np = np.array(image).astype(np.float32) / 255.0
+                image_tensor = torch.from_numpy(image_np)[None,]
+                
+                # 正规化名称
+                normalized_name = self.normalize_name(os.path.basename(image_path), 正规化)
+                
+                # 返回图像、文本块内容、名称、宽度和高度
+                return (image_tensor, text_content, normalized_name, int(width), int(height))
+        
+        except Exception:
+            # 创建错误占位符
+            error_image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+            return (error_image, "加载失败", "加载失败", 64, 64)
     
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "文本": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入原始文本"
-                }),
-                "删除标签或字符": ("STRING", { # Renamed input for clarity
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入要删除的标签或子字符串（用英文逗号分隔）"
-                }),
-            }
-        }
+    def IS_CHANGED(cls, 图像, 正规化="正规", 读取文本块="禁用"):
+        image_path = folder_paths.get_annotated_filepath(图像)
+        return float("nan")
     
-    CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("文本", "Help")
-    FUNCTION = "delete_text"
+    @classmethod
+    def VALIDATE_INPUTS(cls, 图像, 正规化="正规", 读取文本块="禁用"):
+        if not folder_paths.exists_annotated_filepath(图像):
+            return "无效图像文件: {}".format(图像)
+        return True
+
+# ============================== 从路径加载图像节点 (Corrected) ==============================
+class ZML_LoadImageFromPath:
+    """
+    ZML 从路径加载图像节点
+    支持随机、顺序、全部索引和读取PNG文本块
+    """
     
-    def delete_text(self, 文本, 删除标签或字符): # Simplified function signature
-        """删除文本中的指定标签或子字符串"""
-        # 如果输入文本为空，则返回空字符串
-        if not 文本.strip():
-            return ("", self.help_text)
-        
-        result = 文本
-        
-        delete_list = [item.strip() for item in 删除标签或字符.split(',') if item.strip()]
-        
-        for item_to_delete in delete_list:
-            result = result.replace(item_to_delete, '')
-        
-        result = re.sub(r',+', ',', result) # Merge multiple commas
-        result = re.sub(r'^,', '', result)  # Remove leading comma
-        result = re.sub(r',$', '', result)  # Remove trailing comma
-        
-        result = result.replace(',,', ',') # This line is redundant if r',+' is used effectively but doesn't hurt.
-        
-        return (result, self.help_text)
-
-# ============================== 文本行节点 (Final Multi-Node-Safe Version) ==============================
-class ZML_TextLine:
-    """ZML 文本行节点 (支持多节点独立计数)"""
-
     def __init__(self):
-        self.help_text = "你好~欢迎使用ZML节点~索引模式是按照索引值加载文本行，随机模式就是随机文本行，顺序模式是一行流加载文本，每次运行都会递增一次行数，顺序模式的索引值是独立计算的，在重启comfyui是清零，当然你也可以修改‘ComfyUI-ZML-Image\zml_w\行计数.json’里的值来自由的决定计数，多个节点的索引是分开计算的，所以就算你使用一百个此节点同时运行，也不会出错。好啦~祝你天天开心~"
+        self.cached_files = []
+        self.cached_path = ""
+        self.cache_time = 0
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        # Change counter file to JSON for structured data storage
-        self.counter_file = os.path.join(self.node_dir, "行计数.json")
+        # **FIX 1**: Changed the counter filename as requested
+        self.counter_file = os.path.join(self.node_dir, "路径图像计数.json")
         self.reset_counters_on_startup()
-
+    
     def reset_counters_on_startup(self):
         """在ComfyUI启动时, 创建一个空的JSON计数器文件."""
         try:
-            # Write an empty JSON object "{}", which clears all counters for all nodes
             with open(self.counter_file, "w", encoding="utf-8") as f:
                 json.dump({}, f)
         except Exception as e:
-            print(f"重置行计数JSON文件失败: {str(e)}")
+            print(f"重置路径加载图像计数JSON文件失败: {str(e)}")
 
     def get_all_counts(self):
         """读取整个JSON文件并返回所有节点的计数."""
         try:
-            with open(self.counter_file, "r", encoding="utf-8") as f:
+            with open(self.counter_file, "r", encoding="utf-8") as f: # 修正编码为 utf-8
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
-            # If file doesn't exist or is empty/corrupt, return an empty dict
             return {}
 
     def get_sequential_count(self, node_id):
         """获取指定node_id的当前计数值."""
-        all_counts = self.get_all_counts()
-        # Return the count for the specific node_id, or 0 if it's not present
-        return all_counts.get(node_id, 0)
+        return self.get_all_counts().get(node_id, 0)
 
     def increment_sequential_count(self, node_id):
         """为指定的node_id增加计数并保存回文件."""
         all_counts = self.get_all_counts()
         current_count = all_counts.get(node_id, 0)
         all_counts[node_id] = current_count + 1
-        
         try:
-            # Write the entire updated dictionary back to the JSON file
             with open(self.counter_file, "w", encoding="utf-8") as f:
-                json.dump(all_counts, f, indent=4) # indent for readability
+                json.dump(all_counts, f, indent=4)
         except Exception as e:
-            print(f"更新行计数JSON文件失败: {str(e)}")
-
+            print(f"更新路径加载图像计数JSON文件失败: {str(e)}")
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "文本": ("STRING", {"multiline": True, "default": ""}),
-                "模式": (["索引", "顺序", "随机"],),
-                "索引": ("INT", {"default": 0, "min": 0, "step": 1}),
+                "文件夹路径": ("STRING", {"default": "", "placeholder": "输入图像文件夹路径"}),
+                "索引模式": (["固定索引", "随机索引", "顺序", "全部"], {"default": "固定索引"}),
+                "图像索引": ("INT", {"default": 0, "min": 0, "step": 1}),
+                "正规化": (["禁用", "仅名称", "正规", "反向"], {"default": "正规"}),
+                "读取文本块": (["启用", "禁用"], {"default": "禁用"}),
             },
-            # Add hidden inputs to get the node's unique ID
             "hidden": {
                 "prompt": "PROMPT",
                 "unique_id": "UNIQUE_ID"
             },
         }
-
+    
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = ("图像", "文本块", "Name", "宽", "高")
+    FUNCTION = "load_image"
     CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("文本", "help")
-    FUNCTION = "get_line"
+    
+    def _load_single_image_from_path(self, image_path, read_text_block):
+        """Helper function to load one image and its metadata."""
+        with Image.open(image_path) as img:
+            text_content = "未读取"
+            if read_text_block == "启用":
+                text_content = img.text.get("comfy_text_block", "未找到文本块内容")
+            
+            img = ImageOps.exif_transpose(img)
+            width, height = img.size
+            
+            image = img.convert("RGB")
+            image_np = np.array(image).astype(np.float32) / 255.0
+            image_tensor = torch.from_numpy(image_np)[None,]
+            
+            return (image_tensor, text_content, int(width), int(height))
 
+    def normalize_name(self, filename, level):
+        """根据正规等级处理图像名称"""
+        if not filename:
+            return ""
+        
+        base_name = os.path.splitext(filename)[0]
+        if level == "禁用":
+            return filename
+        elif level == "仅名称":
+            return base_name
+        elif level == "正规":
+            return base_name.split("#-#", 1)[0].strip()
+        elif level == "反向":
+            parts = base_name.split("#-#")
+            return parts[-1].strip() if len(parts) > 0 else base_name
+
+    def scan_directory(self, folder_path):
+        """扫描文件夹获取图像文件列表（按名称递增排序）"""
+        if not os.path.isdir(folder_path):
+            return []
+        
+        files = [f for f in os.listdir(folder_path) if os.path.splitext(f)[1].lower() in supported_image_extensions]
+        files.sort()
+        return files
+
+    def load_image(self, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
+        current_time = time.time()
+        if (not self.cached_files or 
+            文件夹路径 != self.cached_path or 
+            current_time - self.cache_time > 60):
+            self.cached_files = self.scan_directory(文件夹路径)
+            self.cached_path = 文件夹路径
+            self.cache_time = current_time
+        
+        if not self.cached_files:
+            return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "未找到图像", "没有找到图像", 64, 64)
+
+        if 索引模式 == "全部":
+            image_tensors = []
+            first_image_meta = None
+
+            for filename in self.cached_files:
+                image_path = os.path.join(文件夹路径, filename)
+                try:
+                    (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
+                    image_tensors.append(tensor)
+                    if first_image_meta is None:
+                        # Store metadata from the first image
+                        first_image_meta = {
+                            "text": text,
+                            "name": self.normalize_name(filename, 正规化),
+                            "width": width,
+                            "height": height
+                        }
+                except Exception as e:
+                    print(f"加载图像失败: {filename}, 错误: {e}")
+                    continue
+            
+            if not image_tensors:
+                return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "加载失败", "文件夹中所有图像均加载失败", 64, 64)
+
+            # Combine all tensors into a single batch
+            batch_tensor = torch.cat(image_tensors, dim=0)
+            return (batch_tensor, first_image_meta["text"], first_image_meta["name"], first_image_meta["width"], first_image_meta["height"])
+
+        # For all other modes (that select a single image)
+        num_files = len(self.cached_files)
+        index = 0
+        if 索引模式 == "固定索引":
+            index = 图像索引 % num_files
+        elif 索引模式 == "随机索引":
+            index = random.randint(0, num_files - 1)
+        elif 索引模式 == "顺序":
+            count = self.get_sequential_count(unique_id)
+            index = count % num_files
+            self.increment_sequential_count(unique_id)
+
+        selected_filename = self.cached_files[index]
+        image_path = os.path.join(文件夹路径, selected_filename)
+
+        try:
+            (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
+            normalized_name = self.normalize_name(selected_filename, 正规化)
+            return (tensor, text, normalized_name, width, height)
+        except Exception as e:
+            return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "加载失败", f"加载失败: {selected_filename}, {e}", 64, 64)
+    
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
 
-    # Update function signature to accept the new hidden inputs
-    def get_line(self, 文本, 模式, 索引, unique_id, prompt):
-        lines = [line.strip() for line in 文本.splitlines() if line.strip()]
-
-        if not lines:
-            return ("", self.help_text)
-
-        num_lines = len(lines)
-        output_line = ""
-
-        if 模式 == "索引":
-            safe_index = 索引 % num_lines
-            output_line = lines[safe_index]
-
-        elif 模式 == "顺序":
-            # Pass the node's unique_id to the counter functions
-            current_count = self.get_sequential_count(unique_id)
-            safe_index = current_count % num_lines
-            output_line = lines[safe_index]
-            self.increment_sequential_count(unique_id)
-
-        elif 模式 == "随机":
-            output_line = random.choice(lines)
-
-        return (output_line, self.help_text)
-
-# ============================== 多文本输入节点（五个输入框） ==============================
-class ZML_MultiTextInput5:
-    """ZML 多文本输入节点（五个输入框）"""
-    
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "格式化标点符号": ([True, False], {"default": True}),
-                "分隔符": ("STRING", {
-                    "multiline": False,
-                    "default": ",",
-                    "placeholder": "输入分隔符"
-                }),
-                "文本1": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本1"
-                }),
-                "文本2": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本2"
-                }),
-                "文本3": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本3"
-                }),
-                "文本4": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本4"
-                }),
-                "文本5": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本5"
-                }),
-            }
-        }
-    
-    CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("文本",)
-    FUNCTION = "combine_texts"
-    
-    def combine_texts(self, 格式化标点符号, 分隔符, 文本1, 文本2, 文本3, 文本4, 文本5):
-        """组合多个文本并应用格式化"""
-        # 将所有文本放入列表
-        texts = [文本1, 文本2, 文本3, 文本4, 文本5]
-        
-        # 过滤掉空文本
-        non_empty_texts = [text.strip() for text in texts if text.strip()]
-        
-        # 使用分隔符连接文本
-        combined = 分隔符.join(non_empty_texts)
-        
-        # 应用标点符号格式化
-        if 格式化标点符号:
-            combined = format_punctuation_global(combined)
-        
-        return (combined,)
-
-# ============================== 多文本输入节点（三个输入框） ==============================
-class ZML_MultiTextInput3:
-    """ZML 多文本输入节点（三个输入框）"""
-    
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "格式化标点符号": ([True, False], {"default": True}),
-                "分隔符": ("STRING", {
-                    "multiline": False,
-                    "default": ",",
-                    "placeholder": "输入分隔符"
-                }),
-                "文本1": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本1"
-                }),
-                "文本2": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本2"
-                }),
-                "文本3": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本3"
-                }),
-            }
-        }
-    
-    CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("文本",)
-    FUNCTION = "combine_texts"
-    
-    def combine_texts(self, 格式化标点符号, 分隔符, 文本1, 文本2, 文本3):
-        """组合多个文本并应用格式化"""
-        # 将所有文本放入列表
-        texts = [文本1, 文本2, 文本3]
-        
-        # 过滤掉空文本
-        non_empty_texts = [text.strip() for text in texts if text.strip()]
-        
-        # 使用分隔符连接文本
-        combined = 分隔符.join(non_empty_texts)
-        
-        # 应用标点符号格式化
-        if 格式化标点符号:
-            combined = format_punctuation_global(combined)
-        
-        return (combined,)
-
-# ============================== 选择文本节点 (接口版) ==============================
-class ZML_SelectText:
-    """ZML 选择文本节点：通过外部接口输入文本，并在节点内选择合并。"""
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                # 节点内部的控件
-                "分隔符": ("STRING", {"multiline": False, "default": ","}),
-                "启用1": ("BOOLEAN", {"default": True, "label_on": "启用 1", "label_off": "禁用 1"}),
-                "启用2": ("BOOLEAN", {"default": False, "label_on": "启用 2", "label_off": "禁用 2"}),
-                "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
-                "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
-                "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
-            },
-            "optional": {
-                # 外部文本输入接口
-                "文本1": ("STRING", {"forceInput": True}),
-                "文本2": ("STRING", {"forceInput": True}),
-                "文本3": ("STRING", {"forceInput": True}),
-                "文本4": ("STRING", {"forceInput": True}),
-                "文本5": ("STRING", {"forceInput": True}),
-            }
-        }
-
-    CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("文本",)
-    FUNCTION = "select_and_combine"
-
-    def select_and_combine(self, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None):
-        """根据启用状态组合来自接口的文本"""
-        # 将启用状态和对应的文本配对。如果接口未连接，其值为None，我们将其视为空字符串。
-        inputs = [
-            (启用1, 文本1 or ""),
-            (启用2, 文本2 or ""),
-            (启用3, 文本3 or ""),
-            (启用4, 文本4 or ""),
-            (启用5, 文本5 or ""),
-        ]
-
-        # 过滤出已启用且内容非空的文本
-        enabled_texts = [text.strip() for is_enabled, text in inputs if is_enabled and text.strip()]
-
-        # 使用分隔符连接文本
-        combined = 分隔符.join(enabled_texts)
-
-        return (combined,)
-
-# ============================== 选择文本V2节点 (内部输入版) ==============================
-class ZML_SelectTextV2:
-    """ZML 选择文本V2节点：在节点内部输入文本并选择合并。"""
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                # 节点内部的控件
-                "文本1": ("STRING", {"multiline": True, "default": ""}),
-                "文本2": ("STRING", {"multiline": True, "default": ""}),
-                "文本3": ("STRING", {"multiline": True, "default": ""}),
-                "文本4": ("STRING", {"multiline": True, "default": ""}),
-                "文本5": ("STRING", {"multiline": True, "default": ""}),
-                "分隔符": ("STRING", {"multiline": False, "default": ","}),
-                "启用1": ("BOOLEAN", {"default": True, "label_on": "启用 1", "label_off": "禁用 1"}),
-                "启用2": ("BOOLEAN", {"default": False, "label_on": "启用 2", "label_off": "禁用 2"}),
-                "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
-                "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
-                "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
-            }
-        }
-
-    CATEGORY = "image/ZML_图像"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("文本",)
-    FUNCTION = "select_and_combine_v2"
-
-    def select_and_combine_v2(self, 文本1, 文本2, 文本3, 文本4, 文本5, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5):
-        """根据启用状态组合来自节点内部的文本"""
-        # 将启用状态和对应的文本配对
-        inputs = [
-            (启用1, 文本1),
-            (启用2, 文本2),
-            (启用3, 文本3),
-            (启用4, 文本4),
-            (启用5, 文本5),
-        ]
-
-        # 过滤出已启用且内容非空的文本
-        enabled_texts = [text.strip() for is_enabled, text in inputs if is_enabled and text.strip()]
-
-        # 使用分隔符连接文本
-        combined = 分隔符.join(enabled_texts)
-
-        return (combined,)
-
-
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
-    "ZML_TextFormatter": ZML_TextFormatter,
-    "ZML_TextFilter": ZML_TextFilter,
-    "ZML_DeleteText": ZML_DeleteText,
-    "ZML_TextLine": ZML_TextLine,
-    "ZML_MultiTextInput5": ZML_MultiTextInput5,
-    "ZML_MultiTextInput3": ZML_MultiTextInput3,
-    "ZML_SelectText": ZML_SelectText,
-    "ZML_SelectTextV2": ZML_SelectTextV2,
+    "ZML_SaveImage": ZML_SaveImage,
+    "ZML_LoadImage": ZML_LoadImage,
+    "ZML_LoadImageFromPath": ZML_LoadImageFromPath
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ZML_TextFormatter": "ZML_文本转格式",
-    "ZML_TextFilter": "ZML_筛选提示词",
-    "ZML_DeleteText": "ZML_删除文本",
-    "ZML_TextLine": "ZML_文本行",
-    "ZML_MultiTextInput5": "ZML_多文本输入_五",
-    "ZML_MultiTextInput3": "ZML_多文本输入_三",
-    "ZML_SelectText": "ZML_选择文本",
-    "ZML_SelectTextV2": "ZML_选择文本V2",
+    "ZML_SaveImage": "ZML_保存图像",
+    "ZML_LoadImage": "ZML_加载图像",
+    "ZML_LoadImageFromPath": "ZML_从路径加载图像"
 }
