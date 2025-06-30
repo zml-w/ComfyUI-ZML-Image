@@ -575,6 +575,104 @@ class ZML_MultiTextInput3:
         
         return (combined,)
 
+# ============================== 选择文本节点 (接口版) ==============================
+class ZML_SelectText:
+    """ZML 选择文本节点：通过外部接口输入文本，并在节点内选择合并。"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                # 节点内部的控件
+                "分隔符": ("STRING", {"multiline": False, "default": ","}),
+                "启用1": ("BOOLEAN", {"default": True, "label_on": "启用 1", "label_off": "禁用 1"}),
+                "启用2": ("BOOLEAN", {"default": False, "label_on": "启用 2", "label_off": "禁用 2"}),
+                "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
+                "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
+                "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
+            },
+            "optional": {
+                # 外部文本输入接口
+                "文本1": ("STRING", {"forceInput": True}),
+                "文本2": ("STRING", {"forceInput": True}),
+                "文本3": ("STRING", {"forceInput": True}),
+                "文本4": ("STRING", {"forceInput": True}),
+                "文本5": ("STRING", {"forceInput": True}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
+    FUNCTION = "select_and_combine"
+
+    def select_and_combine(self, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None):
+        """根据启用状态组合来自接口的文本"""
+        # 将启用状态和对应的文本配对。如果接口未连接，其值为None，我们将其视为空字符串。
+        inputs = [
+            (启用1, 文本1 or ""),
+            (启用2, 文本2 or ""),
+            (启用3, 文本3 or ""),
+            (启用4, 文本4 or ""),
+            (启用5, 文本5 or ""),
+        ]
+
+        # 过滤出已启用且内容非空的文本
+        enabled_texts = [text.strip() for is_enabled, text in inputs if is_enabled and text.strip()]
+
+        # 使用分隔符连接文本
+        combined = 分隔符.join(enabled_texts)
+
+        return (combined,)
+
+# ============================== 选择文本V2节点 (内部输入版) ==============================
+class ZML_SelectTextV2:
+    """ZML 选择文本V2节点：在节点内部输入文本并选择合并。"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                # 节点内部的控件
+                "文本1": ("STRING", {"multiline": True, "default": ""}),
+                "文本2": ("STRING", {"multiline": True, "default": ""}),
+                "文本3": ("STRING", {"multiline": True, "default": ""}),
+                "文本4": ("STRING", {"multiline": True, "default": ""}),
+                "文本5": ("STRING", {"multiline": True, "default": ""}),
+                "分隔符": ("STRING", {"multiline": False, "default": ","}),
+                "启用1": ("BOOLEAN", {"default": True, "label_on": "启用 1", "label_off": "禁用 1"}),
+                "启用2": ("BOOLEAN", {"default": False, "label_on": "启用 2", "label_off": "禁用 2"}),
+                "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
+                "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
+                "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
+    FUNCTION = "select_and_combine_v2"
+
+    def select_and_combine_v2(self, 文本1, 文本2, 文本3, 文本4, 文本5, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5):
+        """根据启用状态组合来自节点内部的文本"""
+        # 将启用状态和对应的文本配对
+        inputs = [
+            (启用1, 文本1),
+            (启用2, 文本2),
+            (启用3, 文本3),
+            (启用4, 文本4),
+            (启用5, 文本5),
+        ]
+
+        # 过滤出已启用且内容非空的文本
+        enabled_texts = [text.strip() for is_enabled, text in inputs if is_enabled and text.strip()]
+
+        # 使用分隔符连接文本
+        combined = 分隔符.join(enabled_texts)
+
+        return (combined,)
+
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
@@ -583,13 +681,17 @@ NODE_CLASS_MAPPINGS = {
     "ZML_TextLine": ZML_TextLine,
     "ZML_MultiTextInput5": ZML_MultiTextInput5,
     "ZML_MultiTextInput3": ZML_MultiTextInput3,
+    "ZML_SelectText": ZML_SelectText,
+    "ZML_SelectTextV2": ZML_SelectTextV2,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFormatter": "ZML_文本转格式",
-    "ZML_TextFilter": "ZML_筛选提示词",  # 更名为筛选提示词
-    "ZML_DeleteText": "ZML_删除文本",  # 新增删除文本节点
+    "ZML_TextFilter": "ZML_筛选提示词",
+    "ZML_DeleteText": "ZML_删除文本",
     "ZML_TextLine": "ZML_文本行",
     "ZML_MultiTextInput5": "ZML_多文本输入_五",
     "ZML_MultiTextInput3": "ZML_多文本输入_三",
+    "ZML_SelectText": "ZML_选择文本",
+    "ZML_SelectTextV2": "ZML_选择文本V2",
 }
