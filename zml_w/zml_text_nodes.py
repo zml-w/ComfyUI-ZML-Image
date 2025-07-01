@@ -657,12 +657,11 @@ class ZML_DualInteger:
     def get_simple_dimensions(self, A, B):
         return (A, B)
 
-# ============================== 双整数V2节点 (Renamed) ==============================
+# ============================== 双整数V2节点 (MODIFIED) ==============================
 class ZML_DualIntegerV2:
     """
     ZML 双整数V2节点
-    提供固定的宽和高，以及从文本列表中随机选择的宽和高。
-    新增“随机宽高对应”功能，并修复了随机问题。
+    提供固定的宽和高，以及从文本列表中按索引或随机选择的宽和高。
     """
     @classmethod
     def INPUT_TYPES(cls):
@@ -670,22 +669,23 @@ class ZML_DualIntegerV2:
             "required": {
                 "宽": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
                 "高": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
-                "随机宽文本": ("STRING", {
+                "预设宽": ("STRING", {
                     "multiline": False,
                     "default": "832,1024,1216",
                     "placeholder": "用英文逗号,分隔多个宽度值"
                 }),
-                "随机高文本": ("STRING", {
+                "预设高": ("STRING", {
                     "multiline": False,
-                    "default": "832,1024,1216",
+                    "default": "1216,1024,832",
                     "placeholder": "用英文逗号,分隔多个高度值"
                 }),
+                "索引值": ("INT", {"default": 0, "min": 0, "max": 114514, "step": 1}),
                 "随机宽高对应": ("BOOLEAN", {"default": True, "label_on": "开启对应", "label_off": "独立随机"}),
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "INT", "INT")
-    RETURN_NAMES = ("宽", "高", "随机宽", "随机高")
+    RETURN_TYPES = ("INT", "INT", "INT", "INT", "STRING")
+    RETURN_NAMES = ("宽", "高", "预设宽", "预设高", "help")
     FUNCTION = "get_dimensions"
     CATEGORY = "image/ZML_图像"
 
@@ -694,41 +694,57 @@ class ZML_DualIntegerV2:
         # 强制节点在每次执行时都重新运行，以确保随机性
         return float("nan")
 
-    def get_dimensions(self, 宽, 高, 随机宽文本, 随机高文本, 随机宽高对应):
+    def get_dimensions(self, 宽, 高, 预设宽, 预设高, 索引值, 随机宽高对应):
+        help_text = "你好，欢迎使用ZML节点~\n你可以在预设宽高框里输入你想要的分辨率，然后用英文逗号‘,’来隔开它们。当索引值为‘0’或大于预设宽高框里值得总数时（默认有三个），预设宽高的输出接口会随机输出预设宽高框里的值，如果索引值没有超过预设宽高里值得总数，则按照对应得索引来输出预设宽和预设高。\n当你开启‘随机宽高对应’的时候宽和高是使用同一个索引值的，比如随机到了默认预设下的第一个值，则输出为‘832*1216’，随机到第三个值输出为‘1216*832’，关闭‘随机宽高对应’的时候宽和高是独立索引，你可能会随机到‘832*832’或‘1216*1216’。\n好啦~就那么简单！感谢你使用ZML节点，祝你使用愉快~天天开心~"
+        
         # --- 解析文本输入 ---
         valid_widths = []
-        for item in 随机宽文本.split(','):
+        for item in 预设宽.split(','):
             try:
                 valid_widths.append(int(item.strip()))
             except ValueError:
                 pass
         
         valid_heights = []
-        for item in 随机高文本.split(','):
+        for item in 预设高.split(','):
             try:
                 valid_heights.append(int(item.strip()))
             except ValueError:
                 pass
 
-        random_width = 宽
-        random_height = 高
-
-        # --- 根据模式决定随机方式 ---
-        if 随机宽高对应 and valid_widths and valid_heights:
-            # 开启对应模式，且两个列表都有效
-            # 使用较短的列表长度作为随机范围，以避免索引越界
-            min_len = min(len(valid_widths), len(valid_heights))
-            rand_index = random.randint(0, min_len - 1)
-            random_width = valid_widths[rand_index]
-            random_height = valid_heights[rand_index]
-        else:
-            # 独立随机模式（或当任一列表无效时的后备模式）
-            if valid_widths:
-                random_width = random.choice(valid_widths)
-            if valid_heights:
-                random_height = random.choice(valid_heights)
+        preset_width = 宽
+        preset_height = 高
+        
+        use_random = True
+        # --- 根据索引值决定是索引还是随机 ---
+        if 索引值 > 0 and valid_widths and valid_heights:
+            # 将1-based索引转换为0-based
+            actual_index = 索引值 - 1
             
-        return (宽, 高, random_width, random_height)
+            # 检查索引是否在两个列表的有效范围内
+            if actual_index < len(valid_widths) and actual_index < len(valid_heights):
+                preset_width = valid_widths[actual_index]
+                preset_height = valid_heights[actual_index]
+                use_random = False # 找到了有效索引，不再随机
+
+        # --- 如果需要随机 (索引为0或超出范围) ---
+        if use_random:
+            if 随机宽高对应 and valid_widths and valid_heights:
+                # 开启对应模式，且两个列表都有效
+                # 使用较短的列表长度作为随机范围，以避免索引越界
+                min_len = min(len(valid_widths), len(valid_heights))
+                if min_len > 0:
+                    rand_index = random.randint(0, min_len - 1)
+                    preset_width = valid_widths[rand_index]
+                    preset_height = valid_heights[rand_index]
+            else:
+                # 独立随机模式（或当任一列表无效时的后备模式）
+                if valid_widths:
+                    preset_width = random.choice(valid_widths)
+                if valid_heights:
+                    preset_height = random.choice(valid_heights)
+            
+        return (宽, 高, preset_width, preset_height, help_text)
 
 
 # ============================== 节点注册 ==============================
@@ -737,8 +753,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_WriteText": ZML_WriteText,
     "ZML_ImageToHTML": ZML_ImageToHTML,
     "ZML_GIFLoader": ZML_GIFLoader,
-    "ZML_DualInteger": ZML_DualInteger,          # 新增节点
-    "ZML_DualIntegerV2": ZML_DualIntegerV2,      # 重命名后的节点
+    "ZML_DualInteger": ZML_DualInteger,          
+    "ZML_DualIntegerV2": ZML_DualIntegerV2,      
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -746,6 +762,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_WriteText": "ZML_写入文本",
     "ZML_ImageToHTML": "ZML_图片转HTML",
     "ZML_GIFLoader": "ZML_GIF文件路径",
-    "ZML_DualInteger": "ZML_双整数",             # 新增节点显示名称
-    "ZML_DualIntegerV2": "ZML_双整数V2",         # 重命名后的节点显示名称
+    "ZML_DualInteger": "ZML_双整数",             
+    "ZML_DualIntegerV2": "ZML_双整数V2",         
 }
