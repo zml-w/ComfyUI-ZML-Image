@@ -667,8 +667,6 @@ class ZML_DualIntegerV2:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "宽": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
-                "高": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
                 "预设宽": ("STRING", {
                     "multiline": False,
                     "default": "832,1024,1216",
@@ -684,8 +682,8 @@ class ZML_DualIntegerV2:
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "INT", "INT", "STRING")
-    RETURN_NAMES = ("宽", "高", "预设宽", "预设高", "help")
+    RETURN_TYPES = ("INT", "INT", "STRING")
+    RETURN_NAMES = ("预设宽", "预设高", "help")
     FUNCTION = "get_dimensions"
     CATEGORY = "image/ZML_图像"
 
@@ -694,7 +692,7 @@ class ZML_DualIntegerV2:
         # 强制节点在每次执行时都重新运行，以确保随机性
         return float("nan")
 
-    def get_dimensions(self, 宽, 高, 预设宽, 预设高, 索引值, 随机宽高对应):
+    def get_dimensions(self, 预设宽, 预设高, 索引值, 随机宽高对应):
         help_text = "你好，欢迎使用ZML节点~\n你可以在预设宽高框里输入你想要的分辨率，然后用英文逗号‘,’来隔开它们。当索引值为‘0’或大于预设宽高框里值得总数时（默认有三个），预设宽高的输出接口会随机输出预设宽高框里的值，如果索引值没有超过预设宽高里值得总数，则按照对应得索引来输出预设宽和预设高。\n当你开启‘随机宽高对应’的时候宽和高是使用同一个索引值的，比如随机到了默认预设下的第一个值，则输出为‘832*1216’，随机到第三个值输出为‘1216*832’，关闭‘随机宽高对应’的时候宽和高是独立索引，你可能会随机到‘832*832’或‘1216*1216’。\n好啦~就那么简单！感谢你使用ZML节点，祝你使用愉快~天天开心~"
         
         # --- 解析文本输入 ---
@@ -712,8 +710,9 @@ class ZML_DualIntegerV2:
             except ValueError:
                 pass
 
-        preset_width = 宽
-        preset_height = 高
+        # 提供一个默认的回退值
+        preset_width = 1024
+        preset_height = 1024
         
         use_random = True
         # --- 根据索引值决定是索引还是随机 ---
@@ -744,7 +743,7 @@ class ZML_DualIntegerV2:
                 if valid_heights:
                     preset_height = random.choice(valid_heights)
             
-        return (宽, 高, preset_width, preset_height, help_text)
+        return (preset_width, preset_height, help_text)
 
 
 # ============================== 节点注册 ==============================
