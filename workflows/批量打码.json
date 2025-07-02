@@ -1,0 +1,986 @@
+{
+  "id": "ead2efa3-aac6-4368-bc8e-b3eef606ecc4",
+  "revision": 0,
+  "last_node_id": 27,
+  "last_link_id": 41,
+  "nodes": [
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        -3240,
+        5280
+      ],
+      "size": [
+        250,
+        340
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            25
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.42",
+        "Node name for S&R": "LoadImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "克鲁鲁#-#00035.png",
+        "image"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 19,
+      "type": "PreviewBridge",
+      "pos": [
+        -2760,
+        5960
+      ],
+      "size": [
+        210,
+        338
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 2,
+      "inputs": [
+        {
+          "label": "图像",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 30
+        }
+      ],
+      "outputs": [
+        {
+          "label": "图像",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            31
+          ]
+        },
+        {
+          "label": "遮罩",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-impact-pack",
+        "ver": "705698faf242851881abd7d1e1774baa3cf47136",
+        "Node name for S&R": "PreviewBridge",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "$19-0",
+        false,
+        "never"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 16,
+      "type": "easy loadImagesForLoop",
+      "pos": [
+        -3090,
+        5960
+      ],
+      "size": [
+        320,
+        230
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 2,
+      "inputs": [
+        {
+          "label": "初始值1",
+          "name": "initial_value1",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "label": "初始值2",
+          "name": "initial_value2",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "label": "directory",
+          "name": "directory",
+          "type": "STRING",
+          "widget": {
+            "name": "directory"
+          },
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "label": "流",
+          "name": "flow",
+          "shape": 5,
+          "type": "FLOW_CONTROL",
+          "slot_index": 0,
+          "links": [
+            27
+          ]
+        },
+        {
+          "label": "索引",
+          "name": "index",
+          "type": "INT",
+          "slot_index": 1,
+          "links": []
+        },
+        {
+          "label": "图像",
+          "name": "image",
+          "type": "IMAGE",
+          "slot_index": 2,
+          "links": [
+            30
+          ]
+        },
+        {
+          "label": "遮罩",
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "label": "名称",
+          "name": "name",
+          "type": "STRING",
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "label": "值1",
+          "name": "value1",
+          "type": "*",
+          "slot_index": 5,
+          "links": []
+        },
+        {
+          "label": "值2",
+          "name": "value2",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-easy-use",
+        "ver": "ccb4ba08fcfc508e16dedf6491a85efe74f27e2b",
+        "Node name for S&R": "easy loadImagesForLoop",
+        "widget_ue_connectable": {
+          "directory": true
+        }
+      },
+      "widgets_values": [
+        "",
+        0,
+        -1
+      ],
+      "color": "#008181",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": 1
+    },
+    {
+      "id": 20,
+      "type": "ZML_AutoCensorNode",
+      "pos": [
+        -2540,
+        5960
+      ],
+      "size": [
+        240,
+        210
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "原始图像",
+          "type": "IMAGE",
+          "link": 31
+        },
+        {
+          "name": "覆盖图",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 33
+        }
+      ],
+      "outputs": [
+        {
+          "name": "处理后图像",
+          "type": "IMAGE",
+          "links": [
+            34,
+            36
+          ]
+        },
+        {
+          "name": "检测遮罩",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "zml-image",
+        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
+        "Node name for S&R": "ZML_AutoCensorNode",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "bbox\\face_yolov8m.pt",
+        0.5,
+        "图像",
+        5,
+        1,
+        0
+      ],
+      "shape": 1
+    },
+    {
+      "id": 22,
+      "type": "LoadImage",
+      "pos": [
+        -2540,
+        6210
+      ],
+      "size": [
+        240,
+        326
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            33
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.42",
+        "Node name for S&R": "LoadImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "00006-864234819-(tiny fairy_2),(1fairy_2),size difference,tiny fairy,1man,fishnets,looking back,(bare foot_2),, best quality,amazing quality,ver.png",
+        "image"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 23,
+      "type": "ZML_SaveImage",
+      "pos": [
+        -2290,
+        5960
+      ],
+      "size": [
+        240,
+        320
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "图像",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 34
+        }
+      ],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "Help",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "zml-image",
+        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
+        "Node name for S&R": "ZML_SaveImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "ZML",
+        "",
+        "禁用",
+        "启用",
+        "",
+        "启用",
+        "",
+        "禁用",
+        "禁用",
+        1,
+        "启用"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 18,
+      "type": "ZML_TextInput",
+      "pos": [
+        -3500,
+        5960
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "文本",
+          "type": "STRING",
+          "links": [
+            29
+          ]
+        }
+      ],
+      "title": "文件夹路径",
+      "properties": {
+        "cnr_id": "zml-image",
+        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
+        "Node name for S&R": "ZML_TextInput",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "E:\\111\\AI\\ComfyUI\\ComfyUI-aki-v1.4\\output\\文生图\\NSFW抽卡\\申鹤",
+        [
+          false,
+          true
+        ]
+      ],
+      "shape": 1
+    },
+    {
+      "id": 17,
+      "type": "easy forLoopEnd",
+      "pos": [
+        -3090,
+        6230
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 15,
+      "mode": 2,
+      "inputs": [
+        {
+          "label": "流",
+          "name": "flow",
+          "shape": 5,
+          "type": "FLOW_CONTROL",
+          "link": 27
+        },
+        {
+          "label": "初始值1",
+          "name": "initial_value1",
+          "shape": 7,
+          "type": "*",
+          "link": 36
+        },
+        {
+          "label": "初始值2",
+          "name": "initial_value2",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "值1",
+          "name": "value1",
+          "type": "*",
+          "slot_index": 0,
+          "links": [
+            40
+          ]
+        },
+        {
+          "label": "值2",
+          "name": "value2",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-easy-use",
+        "ver": "ccb4ba08fcfc508e16dedf6491a85efe74f27e2b",
+        "Node name for S&R": "easy forLoopEnd",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [],
+      "color": "#008181",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": 1
+    },
+    {
+      "id": 25,
+      "type": "PlaySound|pysssss",
+      "pos": [
+        -3090,
+        6360
+      ],
+      "size": [
+        270,
+        120
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 2,
+      "inputs": [
+        {
+          "label": "输入",
+          "name": "any",
+          "type": "*",
+          "link": 40
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "shape": 6,
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "aac13aa7ce35b07d43633c3bbe654a38c00d74f5",
+        "Node name for S&R": "PlaySound|pysssss",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "always",
+        0.5,
+        "notify.mp3"
+      ],
+      "color": "#006691",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": 1
+    },
+    {
+      "id": 12,
+      "type": "ZML_LoadImageFromPath",
+      "pos": [
+        -3500,
+        5280
+      ],
+      "size": [
+        250,
+        234
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "文本块",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "Name",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "宽",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "高",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "zml-image",
+        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
+        "Node name for S&R": "ZML_LoadImageFromPath",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "",
+        "顺序",
+        0,
+        "正规",
+        "禁用"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 3,
+      "type": "PreviewImage",
+      "pos": [
+        -2730,
+        5280
+      ],
+      "size": [
+        410,
+        590
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 22
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.42",
+        "Node name for S&R": "PreviewImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 14,
+      "type": "LoadImage",
+      "pos": [
+        -3500,
+        5550
+      ],
+      "size": [
+        250,
+        326
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            41
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.42",
+        "Node name for S&R": "LoadImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "00006-864234819-(tiny fairy_2),(1fairy_2),size difference,tiny fairy,1man,fishnets,looking back,(bare foot_2),, best quality,amazing quality,ver.png",
+        "image"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 13,
+      "type": "ZML_SaveImage",
+      "pos": [
+        -2310,
+        5280
+      ],
+      "size": [
+        260,
+        320
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "图像",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "Help",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "zml-image",
+        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
+        "Node name for S&R": "ZML_SaveImage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "ZML",
+        "",
+        "禁用",
+        "启用",
+        "",
+        "启用",
+        "",
+        "禁用",
+        "禁用",
+        1,
+        "启用"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 11,
+      "type": "ZML_AutoCensorNode",
+      "pos": [
+        -2980,
+        5280
+      ],
+      "size": [
+        240,
+        240
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "原始图像",
+          "type": "IMAGE",
+          "link": 25
+        },
+        {
+          "name": "覆盖图",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 41
+        }
+      ],
+      "outputs": [
+        {
+          "name": "处理后图像",
+          "type": "IMAGE",
+          "links": [
+            22
+          ]
+        },
+        {
+          "name": "检测遮罩",
+          "type": "MASK",
+          "links": [
+            26
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "zml-image",
+        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
+        "Node name for S&R": "ZML_AutoCensorNode",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "bbox\\wenaka_yolov8s-seg.pt",
+        0.5,
+        "图像",
+        5,
+        1,
+        0
+      ],
+      "shape": 1
+    },
+    {
+      "id": 8,
+      "type": "MaskPreview",
+      "pos": [
+        -2980,
+        5560
+      ],
+      "size": [
+        240,
+        310
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "遮罩",
+          "name": "mask",
+          "type": "MASK",
+          "link": 26
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.42",
+        "Node name for S&R": "MaskPreview",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 15,
+      "type": "Note",
+      "pos": [
+        -3240,
+        5660
+      ],
+      "size": [
+        250,
+        210
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "使用yolo模型进行检查目标，支持bbox和sagm。\n\n覆盖图留空时默认填充黑色。\n\n从路径加载图像节点可以在每次运行后自动+1索引，如果文件夹里有十张图，则只需将comfyui的运行队列设置为10即可，如果你的队列上限为100，可以到设置里更改。\n\n当你更换文件夹想要刷新索引值时，只需将“custom_nodes\\ComfyUI-ZML-Image\\zml_w\\路径图像计数.json”里的值清零即可。\n\n推荐下载Wenaka炼制的专门用于打码的sagm模型：https://civitai.com/models/1736285\n\n如果你无法正常加载节点，请到GitHub上手动克隆节点包，或复制链接到秋叶启动器安装，GitHub链接：\nhttps://github.com/zml-w/ComfyUI-ZML-Image"
+      ],
+      "color": "#c09430",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": 1
+    },
+    {
+      "id": 26,
+      "type": "Note",
+      "pos": [
+        -3500,
+        6200
+      ],
+      "size": [
+        400,
+        340
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "使用yolo模型进行检查目标，支持bbox和sagm。\n\n覆盖图留空时默认填充黑色。\n\n在上方输入需要打码的图像文件夹路径，保存图像节点里输入保存的文件夹路径，默认为留空则为output。\n\n然后，直接运行即可，用这个for循环时记得把上面的工作流给停用或忽略了。\n\n推荐下载Wenaka炼制的专门用于打码的sagm模型：https://civitai.com/models/1736285\n\n如果你无法正常加载节点，请到GitHub上手动克隆节点包，或复制链接到秋叶启动器安装，GitHub链接：\nhttps://github.com/zml-w/ComfyUI-ZML-Image"
+      ],
+      "color": "#c09430",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": 1
+    }
+  ],
+  "links": [
+    [
+      22,
+      11,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      2,
+      0,
+      11,
+      0,
+      "IMAGE"
+    ],
+    [
+      26,
+      11,
+      1,
+      8,
+      0,
+      "MASK"
+    ],
+    [
+      27,
+      16,
+      0,
+      17,
+      0,
+      "FLOW_CONTROL"
+    ],
+    [
+      29,
+      18,
+      0,
+      16,
+      2,
+      "STRING"
+    ],
+    [
+      30,
+      16,
+      2,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      31,
+      19,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      33,
+      22,
+      0,
+      20,
+      1,
+      "IMAGE"
+    ],
+    [
+      34,
+      20,
+      0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      36,
+      20,
+      0,
+      17,
+      1,
+      "*"
+    ],
+    [
+      40,
+      17,
+      0,
+      25,
+      0,
+      "*"
+    ],
+    [
+      41,
+      14,
+      0,
+      11,
+      1,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "for循环打码",
+      "bounding": [
+        -3510,
+        5890,
+        1470,
+        659.5999755859375
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "常规打码",
+      "bounding": [
+        -3510,
+        5210,
+        1470,
+        670
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ue_links": [],
+    "links_added_by_ue": [],
+    "ds": {
+      "scale": 0.8769226950000027,
+      "offset": [
+        3472.31551105036,
+        -5061.761680940354
+      ]
+    },
+    "frontendVersion": "1.23.4",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
