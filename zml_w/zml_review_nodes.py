@@ -27,6 +27,37 @@ def force_compatibility_mode():
 # 节点 1: ZML_自动打码
 # ==========================================================================================
 class ZML_AutoCensorNode:
+    def __init__(self):
+        # 初始化计数器文件路径
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "review.txt")
+        self.ensure_counter_file()
+
+    def ensure_counter_file(self):
+        """确保计数器文件存在，如果不存在则创建并初始化为0"""
+        if not os.path.exists(self.counter_file):
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                f.write("0")
+
+    def increment_and_get_help_text(self):
+        """读取、增加并返回计数器的值和格式化的帮助文本"""
+        count = 0
+        try:
+            with open(self.counter_file, "r+", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content.isdigit():
+                    count = int(content)
+                count += 1
+                f.seek(0)
+                f.write(str(count))
+                f.truncate()
+        except Exception as e:
+            print(f"更新审核节点计数失败: {e}")
+            count = 1  # 如果失败则从1开始
+        return f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共处理了{count}次！！"
+
     @classmethod
     def INPUT_TYPES(cls):
         model_list = folder_paths.get_filename_list("ultralytics") or []
@@ -44,13 +75,18 @@ class ZML_AutoCensorNode:
             "optional": { "覆盖图": ("IMAGE",), }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK"); RETURN_NAMES = ("处理后图像", "检测遮罩"); FUNCTION = "process"; CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("处理后图像", "检测遮罩", "Help")
+    FUNCTION = "process"
+    CATEGORY = "image/ZML_图像"
 
     def process(self, 原始图像, YOLO模型, 置信度阈值, 覆盖模式, 拉伸图像, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
+        help_text = self.increment_and_get_help_text()
+
         if not YOLO模型:
             logging.warning("[ZML_自动打码] 未选择YOLO模型或模型列表为空。节点将透传原始图像。")
             _, h, w, _ = 原始图像.shape; empty_mask = torch.zeros((1, h, w), dtype=torch.float32)
-            return (原始图像, empty_mask)
+            return (原始图像, empty_mask, help_text)
         
         if 覆盖模式 == "图像" and 覆盖图 is None: 覆盖图 = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
         model_path = folder_paths.get_full_path("ultralytics", YOLO模型)
@@ -71,7 +107,7 @@ class ZML_AutoCensorNode:
                 final_combined_mask.paste(Image.fromarray(processed_mask_cv), (0,0), Image.fromarray(processed_mask_cv))
 
         final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
-        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1))
+        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1), help_text)
 
     def get_mask(self, result, w, h):
         if hasattr(result, 'masks') and result.masks is not None:
@@ -111,8 +147,7 @@ class ZML_AutoCensorNode:
             source_cv2[y:y+h, x:x+w][mask_roi.astype(bool)] = mosaic_roi[mask_roi.astype(bool)]
         
         elif mode == "图像":
-            # --- 核心修改点: 简化并修正图像混合逻辑 ---
-            overlay_pil = self.tensor_to_pil(overlay_image_tensor).convert("RGB") # 直接转为RGB，忽略alpha
+            overlay_pil = self.tensor_to_pil(overlay_image_tensor).convert("RGB")
             overlay_cv2_bgr = cv2.cvtColor(np.array(overlay_pil), cv2.COLOR_RGB2BGR)
 
             if mask_type == 'bbox' and stretch_image == '关闭':
@@ -122,7 +157,6 @@ class ZML_AutoCensorNode:
                 else: new_w = w; new_h = int(w / overlay_aspect)
                 scaled_overlay = cv2.resize(overlay_cv2_bgr, (new_w, new_h))
                 
-                # 创建一个与ROI相同大小的黑色画布
                 canvas = np.zeros((h, w, 3), dtype=np.uint8)
                 paste_x = (w - new_w) // 2; paste_y = (h - new_h) // 2
                 canvas[paste_y:paste_y+new_h, paste_x:paste_x+new_w] = scaled_overlay
@@ -130,10 +164,7 @@ class ZML_AutoCensorNode:
             else:
                 resized_overlay = cv2.resize(overlay_cv2_bgr, (w, h))
             
-            # 使用Numpy的where函数进行直接、不透明的像素替换
-            # `mask_roi`决定了替换的区域，`resized_overlay`提供了替换的像素
             roi_to_change = source_cv2[y:y+h, x:x+w]
-            # 将单通道的mask_roi扩展为3通道，以便与彩色图像一起使用
             mask_roi_3d = np.stack([mask_roi]*3, axis=-1)
             np.copyto(roi_to_change, resized_overlay, where=mask_roi_3d.astype(bool))
                 
@@ -159,9 +190,12 @@ class ZML_CustomCensorNode(ZML_AutoCensorNode):
             "optional": { "覆盖图": ("IMAGE",), }
         }
 
-    RETURN_NAMES = ("处理后图像", "处理后遮罩")
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
+    RETURN_NAMES = ("处理后图像", "处理后遮罩", "Help")
     
     def process(self, 原始图像, 遮罩, 覆盖模式, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
+        help_text = self.increment_and_get_help_text()
+        
         if 覆盖模式 == "图像" and 覆盖图 is None: 覆盖图 = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
 
         source_pil = self.tensor_to_pil(原始图像)
@@ -169,13 +203,12 @@ class ZML_CustomCensorNode(ZML_AutoCensorNode):
         mask_cv = (遮罩.squeeze(0).cpu().numpy() * 255).astype(np.uint8)
         
         processed_mask_cv = self.process_mask(mask_cv, 遮罩缩放系数, 遮罩膨胀)
-        # 对于自定义遮罩，我们默认其行为类似bbox，允许非拉伸，因此传递'bbox'作为类型
         source_cv2 = self.apply_overlay(source_cv2, processed_mask_cv, 覆盖模式, 覆盖图, 马赛克数量, stretch_image="启用", mask_type='bbox')
 
         final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
         processed_mask_tensor = self.pil_to_tensor(Image.fromarray(processed_mask_cv)).squeeze(-1)
         
-        return (self.pil_to_tensor(final_image_pil), processed_mask_tensor)
+        return (self.pil_to_tensor(final_image_pil), processed_mask_tensor, help_text)
 
 # --- 节点注册 ---
 NODE_CLASS_MAPPINGS = {
