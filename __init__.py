@@ -13,20 +13,23 @@ from zml_w import zml_image_nodes
 from zml_w import zml_text_nodes
 from zml_w import zml_format_nodes
 from zml_w import zml_review_nodes
+from zml_w import zml_resolution_nodes # <--- 新增的导入
 
 # 核心步骤3：直接合并所有节点的映射字典
 NODE_CLASS_MAPPINGS = {
     **zml_image_nodes.NODE_CLASS_MAPPINGS,
     **zml_text_nodes.NODE_CLASS_MAPPINGS,
     **zml_format_nodes.NODE_CLASS_MAPPINGS,
-    **zml_review_nodes.NODE_CLASS_MAPPINGS
+    **zml_review_nodes.NODE_CLASS_MAPPINGS,
+    **zml_resolution_nodes.NODE_CLASS_MAPPINGS, # <--- 新增的映射
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     **zml_image_nodes.NODE_DISPLAY_NAME_MAPPINGS,
     **zml_text_nodes.NODE_DISPLAY_NAME_MAPPINGS,
     **zml_format_nodes.NODE_DISPLAY_NAME_MAPPINGS,
-    **zml_review_nodes.NODE_DISPLAY_NAME_MAPPINGS
+    **zml_review_nodes.NODE_DISPLAY_NAME_MAPPINGS,
+    **zml_resolution_nodes.NODE_DISPLAY_NAME_MAPPINGS, # <--- 新增的映射
 }
 
 # 核心步骤4：导出主映射，供ComfyUI使用
