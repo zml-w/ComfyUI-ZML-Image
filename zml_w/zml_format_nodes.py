@@ -1,5 +1,3 @@
-# custom_nodes/zml_format_nodes.py
-
 import re
 import os
 import time
@@ -62,7 +60,11 @@ class ZML_TextFormatter:
     def __init__(self):
         # 初始化计数文件路径
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        self.counter_file = os.path.join(self.node_dir, "转格式计数.txt")
+
+        # 将计数器文件路径移动到 "counter" 子文件夹
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "转格式计数.txt")
         
         # 确保计数器文件存在
         self.ensure_counter_file()
@@ -365,8 +367,12 @@ class ZML_TextLine:
     def __init__(self):
         self.help_text = "你好~欢迎使用ZML节点~索引模式是按照索引值加载文本行，随机模式就是随机文本行，顺序模式是一行流加载文本，每次运行都会递增一次行数，顺序模式的索引值是独立计算的，在重启comfyui是清零，当然你也可以修改‘ComfyUI-ZML-Image\zml_w\行计数.json’里的值来自由的决定计数，多个节点的索引是分开计算的，所以就算你使用一百个此节点同时运行，也不会出错。好啦~祝你天天开心~"
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        # Change counter file to JSON for structured data storage
-        self.counter_file = os.path.join(self.node_dir, "行计数.json")
+        
+        # 将计数器文件路径移动到 "counter" 子文件夹
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "行计数.json")
+
         self.reset_counters_on_startup()
 
     def reset_counters_on_startup(self):
@@ -456,6 +462,114 @@ class ZML_TextLine:
             output_line = random.choice(lines)
 
         return (output_line, self.help_text)
+
+# ============================== 随机权重文本行节点 ==============================
+class ZML_RandomWeightedTextLine:
+    """ZML 随机权重文本行节点"""
+    
+    def __init__(self):
+        # 获取脚本所在的目录 (e.g., .../ComfyUI-ZML-Image/zml_w/)
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        # 【修正】直接在脚本所在目录中寻找 "txt" 文件夹
+        self.txt_dir = os.path.join(self.base_dir, "txt")
+        self.help_text = "你好~欢迎使用ZML节点~\n此节点会自动读取'zml_w/txt'文件夹下的txt文件。从下拉菜单中选择一个文件，节点将从中随机选取指定数量的行，并为每行赋予一个在你设定的最小值和最大值之间（包含边界）的随机权重。你还可以设置权重的的小数位数。如果每行都的结尾都带逗号，节点会自动删除来确保权重格式正确。节点自带1000画师的txt文件，你也可以自己加入其它的txt文件。\n祝你玩得开心！"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        # 获取脚本所在的目录 (e.g., .../ComfyUI-ZML-Image/zml_w/)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        # 【修正】直接在脚本所在目录中寻找 "txt" 文件夹
+        txt_dir = os.path.join(base_dir, "txt")
+
+        # 【调试日志】打印节点正在扫描的路径
+        print(f"ZML_RandomWeightedTextLine [调试信息]: 正在扫描以下目录寻找 .txt 文件: {txt_dir}")
+        
+        # 确保目录存在，避免启动时出错
+        os.makedirs(txt_dir, exist_ok=True)
+        
+        try:
+            # 获取所有以.txt结尾的文件
+            files = [f for f in os.listdir(txt_dir) if f.endswith(".txt")]
+            if files:
+                 print(f"ZML_RandomWeightedTextLine [调试信息]: 成功找到 {len(files)} 个文件。")
+            else:
+                 print(f"ZML_RandomWeightedTextLine [调试信息]: 目录存在，但未找到任何 .txt 文件。")
+
+        except Exception as e:
+            print(f"ZML_RandomWeightedTextLine [错误]: 扫描目录时出错 {txt_dir}: {e}")
+            files = []
+        
+        # 如果没有文件，显示提示信息
+        if not files:
+            files = ["未找到txt文件"]
+
+        return {
+            "required": {
+                "文件": (files, ),
+                "小数位数": (["两位", "一位"], {"default": "两位"}),
+                "随机个数": ("INT", {"default": 3, "min": 1, "step": 1}),
+                "最小权重": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 10.0, "step": 0.1}),
+                "最大权重": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 10.0, "step": 0.1}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("文本", "help")
+    FUNCTION = "generate_weighted_lines"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # 每次都重新执行以保证随机性
+        return float("nan")
+
+    def generate_weighted_lines(self, 文件, 小数位数, 随机个数, 最小权重, 最大权重):
+        # 如果下拉列表是提示信息，则不执行
+        if 文件 == "未找到txt文件":
+            return ("下拉菜单中未选择有效文件，请检查 '.../zml_w/txt' 目录下是否有txt文件并重启ComfyUI。", self.help_text)
+
+        # 构建所选文件的完整路径
+        file_path = os.path.join(self.txt_dir, 文件)
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # 1. 读取所有行
+                # 2. 对每行：去除首尾空格 -> 去除行末的中英文逗号 -> 再次去除可能产生的空格
+                # 3. 过滤掉处理后为空的行
+                lines = [line.strip().rstrip(',，').strip() for line in f.readlines() if line.strip()]
+        except FileNotFoundError:
+            return (f"错误: 文件 '{文件}' 未在目录 '{self.txt_dir}' 中找到。", self.help_text)
+        except Exception as e:
+            return (f"错误: 读取文件 '{文件}' 时发生错误: {e}", self.help_text)
+
+        # 如果文件为空或所有行都被过滤，则返回空
+        if not lines:
+            return ("", self.help_text)
+
+        # 确保最小权重不大于最大权重
+        min_w = min(最小权重, 最大权重)
+        max_w = max(最小权重, 最大权重)
+
+        # 确定实际要选择的行数（不能超过文件中的总有效行数）
+        count = min(随机个数, len(lines))
+        
+        # 从有效行中随机选择不重复的行
+        selected_lines = random.sample(lines, count)
+        
+        # 根据选项确定小数精度
+        precision = 2 if 小数位数 == "两位" else 1
+
+        # 为每一行生成带权重的格式
+        weighted_lines = []
+        for line in selected_lines:
+            # 生成指定范围内的随机权重
+            weight = round(random.uniform(min_w, max_w), precision)
+            weighted_lines.append(f"({line}:{weight})")
+            
+        # 用逗号和空格连接所有处理过的行
+        output_text = ", ".join(weighted_lines)
+
+        return (output_text, self.help_text)
 
 # ============================== 多文本输入节点（五个输入框） ==============================
 class ZML_MultiTextInput5:
@@ -679,6 +793,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_TextFilter": ZML_TextFilter,
     "ZML_DeleteText": ZML_DeleteText,
     "ZML_TextLine": ZML_TextLine,
+    "ZML_RandomWeightedTextLine": ZML_RandomWeightedTextLine, # 更新后的节点
     "ZML_MultiTextInput5": ZML_MultiTextInput5,
     "ZML_MultiTextInput3": ZML_MultiTextInput3,
     "ZML_SelectText": ZML_SelectText,
@@ -690,6 +805,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFilter": "ZML_筛选提示词",
     "ZML_DeleteText": "ZML_删除文本",
     "ZML_TextLine": "ZML_文本行",
+    "ZML_RandomWeightedTextLine": "ZML_随机权重文本行", # 节点显示名称
     "ZML_MultiTextInput5": "ZML_多文本输入_五",
     "ZML_MultiTextInput3": "ZML_多文本输入_三",
     "ZML_SelectText": "ZML_选择文本",
