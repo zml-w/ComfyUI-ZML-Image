@@ -27,9 +27,11 @@ class ZML_SaveImage:
         self.type = "output"
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
         
-        # 计数器文件路径
-        self.counter_file = os.path.join(self.node_dir, "counter.txt")
-        self.total_counter_file = os.path.join(self.node_dir, "总次数.txt")
+        # 将计数器文件路径移动到 "counter" 子文件夹
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "counter.txt")
+        self.total_counter_file = os.path.join(self.counter_dir, "总次数.txt")
         
         # 确保计数器文件存在并重置重启计数器
         self.ensure_counter_files()
@@ -60,8 +62,9 @@ class ZML_SaveImage:
                 "图像": ("IMAGE", {}),  # 将图像改为可选输入
             },
             "required": {
+                "操作模式": (["保存图像", "仅预览图像"], {"default": "保存图像"}), # 新增操作模式
                 "文件名前缀": ("STRING", {"default": "ZML", "placeholder": "文件名前缀"}),
-                "保存路径": ("STRING", {"default": "", "placeholder": "相对/绝对路径 (留空使用output)"}),
+                "保存路径": ("STRING", {"default": "output/ZML/%Y-%m-%d", "placeholder": "相对/绝对路径 (留空使用output)"}),
                 "使用时间戳": (["启用", "禁用"], {"default": "禁用"}),
                 "使用计数器": (["启用", "禁用"], {"default": "启用"}),
                 "文件名后缀": ("STRING", {"default": "", "placeholder": "可选后缀"}),
@@ -170,8 +173,10 @@ class ZML_SaveImage:
         修改：支持无图像输入，增加缩放和清除元数据功能，更新txt保存格式
         """
         # 从kwargs中获取其他参数
+        操作模式 = kwargs.get("操作模式", "保存图像")
         文件名前缀 = kwargs.get("文件名前缀", "ZML")
         保存路径 = kwargs.get("保存路径", "")
+        保存路径 = datetime.datetime.now().strftime(保存路径)
         使用时间戳 = kwargs.get("使用时间戳", "禁用")
         使用计数器 = kwargs.get("使用计数器", "启用")
         文件名后缀 = kwargs.get("文件名后缀", "")
@@ -185,9 +190,19 @@ class ZML_SaveImage:
         extra_pnginfo = kwargs.get("extra_pnginfo", None)
         unique_id = kwargs.get("unique_id", None) # 获取 unique_id
 
-        # 增加总次数计数器（无论是否有图像）
-        total_count = self.increment_total_counter()
-        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#000001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
+        # 仅在“保存图像”模式下增加总次数计数器
+        total_count = 0
+        if 操作模式 == "保存图像":
+            total_count = self.increment_total_counter()
+        else:
+            try: # 预览模式下只读取总数，不增加
+                 if os.path.exists(self.total_counter_file):
+                    with open(self.total_counter_file, "r", encoding="utf-8") as f:
+                        total_count = int(f.read().strip())
+            except Exception:
+                total_count = 0
+
+        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n默认的保存路径是在output文件夹下新建一个‘ZML’文件夹，然后根据当前的日期再创建一个子文件夹来保存图像。如果清空路径，则默认保存在output文件里。自定义路径支持保存到comfyui外的文件夹里。\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#000001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
         
         # 如果没有图像输入，创建白色占位图像
         if 图像 is None or 图像.size(0) == 0:
@@ -198,10 +213,17 @@ class ZML_SaveImage:
             return {"result": (placeholder_image, help_output)}
         
         filename_prefix = self.sanitize_filename(文件名前缀)
-        save_path = self.ensure_directory(self.format_path(保存路径))
         filename_suffix = self.sanitize_filename(文件名后缀)
         text_content = 文本块存储.strip()  # 清理文本内容
         
+        # 根据操作模式设置保存路径和UI类型
+        if 操作模式 == "仅预览图像":
+            save_path = folder_paths.get_temp_directory()
+            ui_type = "temp"
+        else:
+            save_path = self.ensure_directory(self.format_path(保存路径))
+            ui_type = "output"
+
         result_paths = []
         saved_txt_files = []  # 保存的txt文件列表
         
@@ -217,8 +239,10 @@ class ZML_SaveImage:
                 components.append(timestamp)
             
             if 使用计数器 == "启用":
-                counter_value = self.get_next_counter()
-                components.append(f"{counter_value:05d}")
+                # 仅在“保存图像”模式下增加计数器
+                if 操作模式 == "保存图像":
+                    counter_value = self.get_next_counter()
+                    components.append(f"{counter_value:05d}")
             
             if filename_suffix:
                 components.append(filename_suffix)
@@ -301,14 +325,14 @@ class ZML_SaveImage:
                     # 保存图像
                     pil_image.save(final_image_path, pnginfo=metadata, compress_level=4)
                     
-                    # 保存同名txt文件（如果启用）
-                    if 保存同名txt文件 == "启用":
+                    # 仅在“保存图像”模式下保存同名txt文件
+                    if 操作模式 == "保存图像" and 保存同名txt文件 == "启用":
                         txt_path = os.path.splitext(final_image_path)[0] + ".txt"
                         unique_txt_path = self.get_unique_filepath(txt_path)
                         
                         # 创建txt内容
                         file_name = os.path.basename(final_image_path)
-                        txt_content = (
+                        txt_content_to_save = (
                             f"图片名称: {file_name}\n"
                             f"图片分辨率: {saved_width}x{saved_height}\n"
                             f"是否含有元数据: {has_metadata}\n"
@@ -317,7 +341,7 @@ class ZML_SaveImage:
                         )
                         
                         with open(unique_txt_path, "w", encoding="utf-8") as f:
-                            f.write(txt_content)
+                            f.write(txt_content_to_save)
                         
                         saved_txt_files.append({
                             "filename": os.path.basename(unique_txt_path),
@@ -332,11 +356,16 @@ class ZML_SaveImage:
                         file_dir = os.path.dirname(final_image_path)
                         
                         # 计算相对路径
-                        if file_dir.startswith(self.output_dir):
-                            rel_dir = os.path.relpath(file_dir, self.output_dir)
-                        else:
-                            rel_dir = ""
+                        base_dir_for_relpath = self.output_dir if ui_type == "output" else folder_paths.get_temp_directory()
                         
+                        # 确保路径是绝对的，以进行安全比较
+                        abs_file_dir = os.path.abspath(file_dir)
+                        abs_base_dir = os.path.abspath(base_dir_for_relpath)
+
+                        rel_dir = ""
+                        if abs_file_dir.startswith(abs_base_dir):
+                            rel_dir = os.path.relpath(abs_file_dir, abs_base_dir)
+
                         # 标准化路径分隔符
                         rel_dir = rel_dir.replace("\\", "/")
                         if rel_dir == ".":
@@ -346,7 +375,7 @@ class ZML_SaveImage:
                         result_paths.append({
                             "filename": file_basename,
                             "subfolder": rel_dir,
-                            "type": "output"
+                            "type": ui_type
                         })
                     except Exception:
                         pass
@@ -364,11 +393,11 @@ class ZML_SaveImage:
                     {
                         "filename": p["filename"],
                         "subfolder": p["subfolder"],
-                        "type": "output"
+                        "type": p["type"]
                     } for p in result_paths
                 ]
             }
-            if saved_txt_files:
+            if 操作模式 == "保存图像" and saved_txt_files:
                 ui_output["texts"] = [
                     {
                         "filename": t["filename"],
@@ -528,8 +557,12 @@ class ZML_LoadImageFromPath:
         self.cached_path = ""
         self.cache_time = 0
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        # **FIX 1**: Changed the counter filename as requested
-        self.counter_file = os.path.join(self.node_dir, "路径图像计数.json")
+
+        # 将计数器文件路径移动到 "counter" 子文件夹
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "路径图像计数.json")
+        
         self.reset_counters_on_startup()
     
     def reset_counters_on_startup(self):
