@@ -480,9 +480,6 @@ class ZML_RandomWeightedTextLine:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         # 【修正】直接在脚本所在目录中寻找 "txt" 文件夹
         txt_dir = os.path.join(base_dir, "txt")
-
-        # 【调试日志】打印节点正在扫描的路径
-        print(f"ZML_RandomWeightedTextLine [调试信息]: 正在扫描以下目录寻找 .txt 文件: {txt_dir}")
         
         # 确保目录存在，避免启动时出错
         os.makedirs(txt_dir, exist_ok=True)
@@ -490,12 +487,8 @@ class ZML_RandomWeightedTextLine:
         try:
             # 获取所有以.txt结尾的文件
             files = [f for f in os.listdir(txt_dir) if f.endswith(".txt")]
-            if files:
-                 print(f"ZML_RandomWeightedTextLine [调试信息]: 成功找到 {len(files)} 个文件。")
-            else:
-                 print(f"ZML_RandomWeightedTextLine [调试信息]: 目录存在，但未找到任何 .txt 文件。")
-
         except Exception as e:
+            # 保留必要的错误日志
             print(f"ZML_RandomWeightedTextLine [错误]: 扫描目录时出错 {txt_dir}: {e}")
             files = []
         
