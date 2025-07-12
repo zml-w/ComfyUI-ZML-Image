@@ -210,12 +210,125 @@ class ZML_CustomCensorNode(ZML_AutoCensorNode):
         
         return (self.pil_to_tensor(final_image_pil), processed_mask_tensor, help_text)
 
+# ==========================================================================================
+# 节点 3: ZML_遮罩分割
+# ==========================================================================================
+class ZML_MaskSplitNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "宽度": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
+                "高度": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
+                "分割比例": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
+                "分割方向": (["竖", "横"],),
+            }
+        }
+
+    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK")
+    RETURN_NAMES = ("遮罩A", "遮罩B", "单独遮罩A", "单独遮罩B", "完整遮罩")
+    FUNCTION = "process"
+    CATEGORY = "image/ZML_图像"
+
+    def process(self, 宽度, 高度, 分割比例, 分割方向):
+        # 创建基于完整尺寸的遮罩(黑底)
+        mask_a_np = np.zeros((高度, 宽度), dtype=np.float32)
+        mask_b_np = np.zeros((高度, 宽度), dtype=np.float32)
+        
+        # 创建完整的纯白遮罩
+        complete_mask_np = np.ones((高度, 宽度), dtype=np.float32)
+
+        if 分割方向 == "竖":
+            split_w = int(宽度 * 分割比例)
+            rest_w = 宽度 - split_w
+            
+            mask_a_np[:, :split_w] = 1.0
+            mask_b_np[:, split_w:] = 1.0
+
+            # 创建纯遮罩（无黑底，实际分割尺寸）
+            standalone_mask_a_np = np.ones((高度, split_w), dtype=np.float32)
+            standalone_mask_b_np = np.ones((高度, rest_w), dtype=np.float32)
+        else:  # "横"
+            split_h = int(高度 * 分割比例)
+            rest_h = 高度 - split_h
+
+            mask_a_np[:split_h, :] = 1.0
+            mask_b_np[split_h:, :] = 1.0
+            
+            # 创建纯遮罩（无黑底，实际分割尺寸）
+            standalone_mask_a_np = np.ones((split_h, 宽度), dtype=np.float32)
+            standalone_mask_b_np = np.ones((rest_h, 宽度), dtype=np.float32)
+
+        # 转换为Tensor
+        mask_a = torch.from_numpy(mask_a_np).unsqueeze(0)
+        mask_b = torch.from_numpy(mask_b_np).unsqueeze(0)
+        standalone_mask_a = torch.from_numpy(standalone_mask_a_np).unsqueeze(0)
+        standalone_mask_b = torch.from_numpy(standalone_mask_b_np).unsqueeze(0)
+        complete_mask = torch.from_numpy(complete_mask_np).unsqueeze(0)
+
+        # 安全检查：如果分割比例为0或1，会导致其中一个遮罩尺寸为0，这可能引起下游节点报错
+        # 在这种情况下，生成一个1x1的最小黑色遮罩以确保兼容性
+        if standalone_mask_a.shape[1] == 0 or standalone_mask_a.shape[2] == 0:
+            standalone_mask_a = torch.zeros((1, 1, 1), dtype=torch.float32)
+        if standalone_mask_b.shape[1] == 0 or standalone_mask_b.shape[2] == 0:
+            standalone_mask_b = torch.zeros((1, 1, 1), dtype=torch.float32)
+
+        return (mask_a, mask_b, standalone_mask_a, standalone_mask_b, complete_mask)
+
+# ==========================================================================================
+# 节点 4: ZML_遮罩分割-五
+# ==========================================================================================
+class ZML_MaskSplitNode_Five:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "宽度": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 8}),
+                "高度": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 8}),
+                "分割数量": ("INT", {"default": 5, "min": 1, "max": 5, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK")
+    RETURN_NAMES = ("遮罩1", "遮罩2", "遮罩3", "遮罩4", "遮罩5")
+    FUNCTION = "process"
+    CATEGORY = "image/ZML_图像"
+
+    def process(self, 宽度, 高度, 分割数量):
+        output_masks = []
+        
+        # 精确计算每个分割点的x坐标，以避免像素累积误差
+        x_positions = [int(i * 宽度 / 分割数量) for i in range(分割数量 + 1)]
+        x_positions[-1] = 宽度 # 确保最后一个分割点是总宽度
+
+        # 始终循环5次，因为有5个输出接口
+        for i in range(5):
+            if i < 分割数量:
+                # 如果当前索引小于选择的分割数量，则生成一个有效的分割遮罩
+                x_start = x_positions[i]
+                x_end = x_positions[i+1]
+                
+                mask_np = np.zeros((高度, 宽度), dtype=np.float32)
+                mask_np[:, x_start:x_end] = 1.0 # 绘制白色竖条
+                
+                output_masks.append(torch.from_numpy(mask_np).unsqueeze(0))
+            else:
+                # 对于未使用的输出接口，生成一个全黑的遮罩以防报错
+                black_mask_np = np.zeros((高度, 宽度), dtype=np.float32)
+                output_masks.append(torch.from_numpy(black_mask_np).unsqueeze(0))
+                
+        return tuple(output_masks)
+
 # --- 节点注册 ---
 NODE_CLASS_MAPPINGS = {
     "ZML_AutoCensorNode": ZML_AutoCensorNode,
     "ZML_CustomCensorNode": ZML_CustomCensorNode,
+    "ZML_MaskSplitNode": ZML_MaskSplitNode,
+    "ZML_MaskSplitNode_Five": ZML_MaskSplitNode_Five,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_AutoCensorNode": "ZML_自动打码",
     "ZML_CustomCensorNode": "ZML_自定义打码",
+    "ZML_MaskSplitNode": "ZML_遮罩分割",
+    "ZML_MaskSplitNode_Five": "ZML_遮罩分割-五",
 }
