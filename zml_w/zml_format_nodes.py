@@ -564,7 +564,7 @@ class ZML_RandomWeightedTextLine:
 
         return (output_text, self.help_text)
 
-# ============================== 多文本输入节点（五个输入框） ==============================
+# ============================== 多文本输入节点（五个输入框）==============================
 class ZML_MultiTextInput5:
     """ZML 多文本输入节点（五个输入框）"""
     
@@ -578,31 +578,13 @@ class ZML_MultiTextInput5:
                     "default": ",",
                     "placeholder": "输入分隔符"
                 }),
-                "文本1": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本1"
-                }),
-                "文本2": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本2"
-                }),
-                "文本3": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本3"
-                }),
-                "文本4": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本4"
-                }),
-                "文本5": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本5"
-                }),
+            },
+            "optional": {
+                "文本1": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本1"}),
+                "文本2": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本2"}),
+                "文本3": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本3"}),
+                "文本4": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本4"}),
+                "文本5": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本5"}),
             }
         }
     
@@ -611,12 +593,18 @@ class ZML_MultiTextInput5:
     RETURN_NAMES = ("文本",)
     FUNCTION = "combine_texts"
     
-    def combine_texts(self, 格式化标点符号, 分隔符, 文本1, 文本2, 文本3, 文本4, 文本5):
+    def combine_texts(self, 格式化标点符号, 分隔符, 文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None):
         """组合多个文本并应用格式化"""
-        # 将所有文本放入列表
-        texts = [文本1, 文本2, 文本3, 文本4, 文本5]
+        # 安全地将所有文本放入列表，并将None转换为空字符串
+        texts = [
+            文本1 or "",
+            文本2 or "",
+            文本3 or "",
+            文本4 or "",
+            文本5 or ""
+        ]
         
-        # 过滤掉空文本
+        # 过滤掉空文本，并去除首尾空格
         non_empty_texts = [text.strip() for text in texts if text.strip()]
         
         # 使用分隔符连接文本
@@ -628,7 +616,7 @@ class ZML_MultiTextInput5:
         
         return (combined,)
 
-# ============================== 多文本输入节点（三个输入框） ==============================
+# ============================== 多文本输入节点（三个输入框）==============================
 class ZML_MultiTextInput3:
     """ZML 多文本输入节点（三个输入框）"""
     
@@ -642,21 +630,11 @@ class ZML_MultiTextInput3:
                     "default": ",",
                     "placeholder": "输入分隔符"
                 }),
-                "文本1": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本1"
-                }),
-                "文本2": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本2"
-                }),
-                "文本3": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入文本3"
-                }),
+            },
+            "optional": {
+                "文本1": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本1"}),
+                "文本2": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本2"}),
+                "文本3": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本3"}),
             }
         }
     
@@ -665,12 +643,16 @@ class ZML_MultiTextInput3:
     RETURN_NAMES = ("文本",)
     FUNCTION = "combine_texts"
     
-    def combine_texts(self, 格式化标点符号, 分隔符, 文本1, 文本2, 文本3):
+    def combine_texts(self, 格式化标点符号, 分隔符, 文本1=None, 文本2=None, 文本3=None):
         """组合多个文本并应用格式化"""
-        # 将所有文本放入列表
-        texts = [文本1, 文本2, 文本3]
+        # 安全地将所有文本放入列表，并将None转换为空字符串
+        texts = [
+            文本1 or "",
+            文本2 or "",
+            文本3 or ""
+        ]
         
-        # 过滤掉空文本
+        # 过滤掉空文本，并去除首尾空格
         non_empty_texts = [text.strip() for text in texts if text.strip()]
         
         # 使用分隔符连接文本
