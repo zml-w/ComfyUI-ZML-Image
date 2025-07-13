@@ -127,7 +127,7 @@ class ZML_WriteText:
             print(f"写入文件时发生错误: {e}")
             raise e
 
-# ============================== 预设文本节点 (NEW) ==============================
+# ============================== 预设文本节点==============================
 # 定义预设文件的路径
 PRESET_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset text", "Preset text.txt")
 
@@ -202,7 +202,7 @@ class ZML_PresetText:
     def get_text(self, 预设):
         # 从已加载的映射中获取输出文本
         output_text = self._presets_map.get(预设, "")
-        help_text = "你好~"
+        help_text = "你好~欢迎使用ZML节点~\n此节点会读取‘ComfyUI-ZML-Image\zml_w\txt\Preset text\Preset text.txt’文件，会将文本的每一行都算为一个选项，文本由‘#-#’分割，前面的作为下拉选项的显示名称，后面的作为输出的文本，随便试试应该就可以搞明白了。\n祝你生活愉快，天天开心~"
         return (output_text, help_text)
 
 # ============================== 图片转HTML节点 ==============================
