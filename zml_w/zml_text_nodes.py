@@ -46,17 +46,17 @@ class ZML_WriteText:
     """ZML 写入文本节点"""
     
     def __init__(self):
-        self.output_dir = folder_paths.get_output_directory()
         self.type = "output"
-        self.default_file = os.path.join(self.output_dir, "文本输入.txt")
-        self.help_text = "你好，欢迎使用ZML节点~\n写入文本是将输入的文本写入到TXT文件的下一行文本中，且会格式化文本结尾符号，如果你不指定TXT文本路径的话，它会自动在output文件夹里创建一个“文本输入.txt”；\n如果你指定的路径为文件夹路径，它会尝试读取文件夹里名为“写入文件”的TXT格式文件作为写入文件，如果不存在此文件的话,它会自动创建；\n如果指定的是文件路径，但指定的文件格式不是txt的，那它也会在文件夹里自动创“写入文件.txt”；好啦~感谢你使用ZML节点，祝你使用愉快~天天开心~"
+        node_dir = os.path.dirname(os.path.abspath(__file__))
+        self.default_save_path = os.path.join(node_dir, "txt", "Text input", "文本输入.txt")
+        self.help_text = "你好，欢迎使用ZML节点~\n本节点会将文本A和文本B结合后写入指定的TXT文件。如果你不指定路径，它会自动保存在插件的 'zml_/txt/Text input' 文件夹中。\n如果路径为文件夹，则会写入该文件夹下的“文本输入.txt”里，没有此文件会自动创建。\n也可以指定路径为一个txt文件，但仅支持txt格式。/n祝你使用愉快~天天开心~"
         
     @classmethod
     def INPUT_TYPES(cls):
-        # 紧凑型输入接口
         return {
             "required": {
-                "文本": ("STRING", {"default": "", "placeholder": "输入要写入的文本"}),
+                "文本A": ("STRING", {"default": "", "placeholder": "输入文本A"}),
+                "文本B": ("STRING", {"default": "", "placeholder": "输入文本B"}),
                 "保存路径": ("STRING", {"default": "", "placeholder": "文件或文件夹路径 (可选)"}),
             }
         }
@@ -67,100 +67,143 @@ class ZML_WriteText:
     OUTPUT_NODE = True
     CATEGORY = "image/ZML_图像"
     
-    # 设置节点显示尺寸为小型
     @classmethod
     def IS_CHANGED(cls):
         return float("nan")
     
-    def format_path(self, path):
-        """格式化用户输入的路径"""
-        if not path:
-            return self.default_file
+    def write_text(self, 文本A, 文本B, 保存路径):
+        """将文本A和文本B合并后写入文件"""
         
-        path = path.strip().strip('"').strip("'")
+        # 移除文本A和文本B之间的分隔符
+        combined_text = f"{文本A}{文本B}".strip()
+
+        path_input = 保存路径.strip().strip('"').strip("'")
         
-        if not path:
-            return self.default_file
+        file_path = ""
         
-        # 如果用户输入的是文件路径（以.txt结尾）
-        if path.lower().endswith(".txt"):
-            return path
-        
-        # 否则视为文件夹路径
-        if os.path.isabs(path):
-            save_dir = path
+        # --- 路径解析逻辑 ---
+        if not path_input:
+            file_path = self.default_save_path
+        elif os.path.isdir(path_input):
+            file_path = os.path.join(path_input, "文本输入.txt")
+        elif path_input.lower().endswith(".txt"):
+            file_path = path_input
         else:
-            comfyui_root = os.path.dirname(self.output_dir)
-            save_dir = os.path.join(comfyui_root, path)
-        
-        # 确保目录存在
-        os.makedirs(save_dir, exist_ok=True)
-        
-        # 创建文件名"文本输入.txt"，如果已存在则添加(1)等
-        base_path = os.path.join(save_dir, "文本输入.txt")
-        counter = 1
-        new_path = base_path
-        
-        while os.path.exists(new_path):
-            new_path = os.path.join(save_dir, f"文本输入({counter}).txt")
-            counter += 1
-            
-        return new_path
-    
-    def ensure_directory(self, file_path):
-        """确保文件所在目录存在"""
-        dir_path = os.path.dirname(file_path)
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path, exist_ok=True)
-        return file_path
-    
-    def write_text(self, 文本, 保存路径):
-        """将文本写入文件"""
-        # 始终输出help文本
-        help_output = self.help_text
-        
-        # 处理文件路径
-        file_path = self.format_path(保存路径)
-        file_path = self.ensure_directory(file_path)
-        
-        # 获取实际写入路径
-        abs_path = os.path.abspath(file_path)
-        
-        # 如果文本为空，不写入任何内容
-        if not 文本:
-            return {"result": (help_output,), "ui": {"text": [f"文本为空，没有写入内容\n文件位置: {abs_path}"]}}
-        
+            raise ValueError("路径格式不正确，请输入一个文件夹路径或.txt文件路径。")
+
+        # --- 文件写入逻辑 ---
         try:
-            # 处理文本结尾
-            last_char = 文本[-1]
-            if last_char in ["，", "。", " "]:
-                文本 = 文本[:-1] + ","
+            dir_path = os.path.dirname(file_path)
+            os.makedirs(dir_path, exist_ok=True)
             
-            # 检查文件是否存在以及是否为空
+            abs_path = os.path.abspath(file_path)
+            
+            if not combined_text:
+                # 在UI中提示，并返回Help文本
+                return {"result": (self.help_text,), "ui": {"text": [f"文本为空，没有写入内容。\n文件位置: {abs_path}"]}}
+            
+            text_to_write = combined_text
+            if combined_text and combined_text[-1] in ["，", "。", " "]:
+                text_to_write = combined_text[:-1] + ","
+            
             file_exists = os.path.exists(file_path)
             file_is_empty = not file_exists or os.path.getsize(file_path) == 0
             
-            # 追加模式写入文本
             with open(file_path, "a", encoding="utf-8") as f:
-                # 如果文件非空，添加换行符
                 if not file_is_empty:
                     f.write("\n")
-                # 写入处理后的文本
-                f.write(文本)
+                f.write(text_to_write)
             
-            # 操作成功消息
             msg = "文本已写入"
             if file_is_empty:
-                msg += "（空文件，无换行）"
+                msg += "（新文件）"
             else:
-                msg += "（文件非空，已添加换行）"
+                msg += "（已追加）"
             
-            return {"result": (help_output,), "ui": {"text": [f"{msg}\n文件位置: {abs_path}"]}}
+            # 操作成功后，在UI中提示，并返回Help文本
+            return {"result": (self.help_text,), "ui": {"text": [f"{msg}\n文件位置: {abs_path}"]}}
         
         except Exception as e:
-            # 错误处理
-            error_msg = f"写入失败: {str(e)}"
-            return {"result": (help_output,), "ui": {"text": [error_msg]}}
+            print(f"写入文件时发生错误: {e}")
+            raise e
+
+# ============================== 预设文本节点 (NEW) ==============================
+# 定义预设文件的路径
+PRESET_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset text", "Preset text.txt")
+
+class ZML_PresetText:
+    """
+    ZML 预设文本节点
+    从预设文件中加载文本选项
+    """
+    _presets_map = {}
+    _preset_names = []
+
+    @classmethod
+    def _load_presets(cls):
+        """从文本文件中加载、解析和准备预设。"""
+        preset_dir = os.path.dirname(PRESET_FILE_PATH)
+        # 如果目录或文件不存在，则创建它们并填入默认内容
+        if not os.path.exists(preset_dir):
+            os.makedirs(preset_dir, exist_ok=True)
+        if not os.path.exists(PRESET_FILE_PATH):
+            with open(PRESET_FILE_PATH, 'w', encoding='utf-8') as f:
+                f.write("# 这是注释行，将被忽略\n")
+                f.write("001 #-# 1girl, solo, best quality\n")
+                f.write("002 #-# 1boy, safe, masterpiece\n")
+
+        try:
+            with open(PRESET_FILE_PATH, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            # 每次加载前清空旧数据
+            cls._presets_map.clear()
+            cls._preset_names.clear()
+
+            for line in lines:
+                line = line.strip()
+                # 跳过空行或以'#'开头的注释行
+                if not line or line.startswith('#'):
+                    continue
+                
+                parts = line.split('#-#', 1)
+                if len(parts) == 2:
+                    name = parts[0].strip()
+                    value = parts[1].strip()
+                    if name:  # 确保名称不为空
+                        cls._presets_map[name] = value
+                        cls._preset_names.append(name)
+            
+            # 如果加载后列表仍为空，提供一个提示选项
+            if not cls._preset_names:
+                cls._preset_names.append("文件为空或格式错误")
+                cls._presets_map["文件为空或格式错误"] = ""
+
+        except Exception as e:
+            print(f"ZML_PresetText 错误: 无法加载预设文件: {e}")
+            cls._preset_names = ["错误：无法加载文件"]
+            cls._presets_map = {"错误：无法加载文件": ""}
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        # 加载预设以填充下拉菜单
+        cls._load_presets()
+        return {
+            "required": {
+                "预设": (cls._preset_names, ),
+            }
+        }
+    
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("文本", "help")
+    FUNCTION = "get_text"
+    CATEGORY = "image/ZML_图像"
+
+    def get_text(self, 预设):
+        # 从已加载的映射中获取输出文本
+        output_text = self._presets_map.get(预设, "")
+        help_text = "你好~"
+        return (output_text, help_text)
 
 # ============================== 图片转HTML节点 ==============================
 class ZML_ImageToHTML:
@@ -750,6 +793,7 @@ class ZML_DualIntegerV2:
 NODE_CLASS_MAPPINGS = {
     "ZML_TextInput": ZML_TextInput,
     "ZML_WriteText": ZML_WriteText,
+    "ZML_PresetText": ZML_PresetText,
     "ZML_ImageToHTML": ZML_ImageToHTML,
     "ZML_GIFLoader": ZML_GIFLoader,
     "ZML_DualInteger": ZML_DualInteger,          
@@ -759,6 +803,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextInput": "ZML_文本输入",
     "ZML_WriteText": "ZML_写入文本",
+    "ZML_PresetText": "ZML_预设文本",
     "ZML_ImageToHTML": "ZML_图片转HTML",
     "ZML_GIFLoader": "ZML_GIF文件路径",
     "ZML_DualInteger": "ZML_双整数",             
