@@ -360,68 +360,88 @@ class ZML_DeleteText:
         
         return (result, self.help_text)
 
-# ============================== 文本行节点 (Final Multi-Node-Safe Version) ==============================
+# ============================== 文本行节点 (更新版) ==============================
 class ZML_TextLine:
-    """ZML 文本行节点 (支持多节点独立计数)"""
+    """ZML 文本行节点 (支持从文本框或文件读取)"""
 
     def __init__(self):
-        self.help_text = "你好~欢迎使用ZML节点~索引模式是按照索引值加载文本行，随机模式就是随机文本行，顺序模式是一行流加载文本，每次运行都会递增一次行数，顺序模式的索引值是独立计算的，在重启comfyui是清零，当然你也可以修改‘ComfyUI-ZML-Image\zml_w\行计数.json’里的值来自由的决定计数，多个节点的索引是分开计算的，所以就算你使用一百个此节点同时运行，也不会出错。好啦~祝你天天开心~"
+        self.help_text = "你好~欢迎使用ZML节点~本节点现在支持两种输入方式：文件或文本框。\n1. **文件模式**: 从下拉菜单中选择一个 'zml_w/txt' 文件夹下的txt文件。节点会忽略文本框内容，从所选文件中读取文本行。\n2. **文本框模式**: 将下拉菜单设置为'禁用'，然后可以直接在下方的文本框中输入内容。\n\n节点支持三种加载模式：\n- **索引**: 按照指定的'索引'值加载对应行。\n- **顺序**: 每次运行时按顺序加载下一行，不同节点的计数独立，重启后清零。\n- **随机**: 每次运行都随机选择一行。\n\n好啦~祝你天天开心~"
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
         
-        # 将计数器文件路径移动到 "counter" 子文件夹
+        # 定义txt文件目录和计数器文件目录
+        self.txt_dir = os.path.join(self.node_dir, "txt")
         self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.txt_dir, exist_ok=True)
         os.makedirs(self.counter_dir, exist_ok=True)
         self.counter_file = os.path.join(self.counter_dir, "行计数.json")
 
         self.reset_counters_on_startup()
 
     def reset_counters_on_startup(self):
-        """在ComfyUI启动时, 创建一个空的JSON计数器文件."""
+        """在ComfyUI启动时, 创建一个空的JSON计数器文件。"""
         try:
-            # Write an empty JSON object "{}", which clears all counters for all nodes
             with open(self.counter_file, "w", encoding="utf-8") as f:
                 json.dump({}, f)
         except Exception as e:
             print(f"重置行计数JSON文件失败: {str(e)}")
 
     def get_all_counts(self):
-        """读取整个JSON文件并返回所有节点的计数."""
+        """读取整个JSON文件并返回所有节点的计数。"""
         try:
             with open(self.counter_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
-            # If file doesn't exist or is empty/corrupt, return an empty dict
             return {}
 
     def get_sequential_count(self, node_id):
-        """获取指定node_id的当前计数值."""
+        """获取指定node_id的当前计数值。"""
         all_counts = self.get_all_counts()
-        # Return the count for the specific node_id, or 0 if it's not present
         return all_counts.get(node_id, 0)
 
     def increment_sequential_count(self, node_id):
-        """为指定的node_id增加计数并保存回文件."""
+        """为指定的node_id增加计数并保存回文件。"""
         all_counts = self.get_all_counts()
         current_count = all_counts.get(node_id, 0)
         all_counts[node_id] = current_count + 1
         
         try:
-            # Write the entire updated dictionary back to the JSON file
             with open(self.counter_file, "w", encoding="utf-8") as f:
-                json.dump(all_counts, f, indent=4) # indent for readability
+                json.dump(all_counts, f, indent=4)
         except Exception as e:
             print(f"更新行计数JSON文件失败: {str(e)}")
 
 
     @classmethod
     def INPUT_TYPES(cls):
+        # 扫描 'zml_w/txt' 目录下的txt文件
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        txt_dir = os.path.join(base_dir, "txt")
+        os.makedirs(txt_dir, exist_ok=True)
+        
+        try:
+            files = [f for f in os.listdir(txt_dir) if f.endswith(".txt")]
+        except Exception as e:
+            print(f"ZML_TextLine [错误]: 扫描目录时出错 {txt_dir}: {e}")
+            files = []
+        
+        # 创建下拉菜单列表，"禁用"作为第一个选项
+        file_list = ["禁用"] + files
+        if not files:
+            file_list = ["禁用 (未找到txt文件)"]
+
         return {
             "required": {
-                "文本": ("STRING", {"multiline": True, "default": ""}),
+                "文件选择": (file_list,),
                 "模式": (["索引", "顺序", "随机"],),
                 "索引": ("INT", {"default": 0, "min": 0, "step": 1}),
             },
-            # Add hidden inputs to get the node's unique ID
+            "optional": {
+                "文本": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "当'文件选择'为'禁用'时，此文本框生效"
+                }),
+            },
             "hidden": {
                 "prompt": "PROMPT",
                 "unique_id": "UNIQUE_ID"
@@ -437,9 +457,23 @@ class ZML_TextLine:
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
 
-    # Update function signature to accept the new hidden inputs
-    def get_line(self, 文本, 模式, 索引, unique_id, prompt):
-        lines = [line.strip() for line in 文本.splitlines() if line.strip()]
+    def get_line(self, 文件选择, 模式, 索引, unique_id, prompt, 文本=None):
+        lines = []
+        
+        # 检查是否选择了文件（而不是"禁用"选项）
+        if 文件选择 not in ["禁用", "禁用 (未找到txt文件)"]:
+            file_path = os.path.join(self.txt_dir, 文件选择)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    lines = [line.strip() for line in f.readlines() if line.strip()]
+            except FileNotFoundError:
+                return (f"错误: 文件 '{文件选择}' 未在目录 '{self.txt_dir}' 中找到。", self.help_text)
+            except Exception as e:
+                return (f"错误: 读取文件 '{文件选择}' 时发生错误: {e}", self.help_text)
+        else:
+            # 如果未选择文件，则从文本框读取
+            if 文本:
+                lines = [line.strip() for line in 文本.splitlines() if line.strip()]
 
         if not lines:
             return ("", self.help_text)
@@ -452,7 +486,6 @@ class ZML_TextLine:
             output_line = lines[safe_index]
 
         elif 模式 == "顺序":
-            # Pass the node's unique_id to the counter functions
             current_count = self.get_sequential_count(unique_id)
             safe_index = current_count % num_lines
             output_line = lines[safe_index]
@@ -768,7 +801,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_TextFilter": ZML_TextFilter,
     "ZML_DeleteText": ZML_DeleteText,
     "ZML_TextLine": ZML_TextLine,
-    "ZML_RandomWeightedTextLine": ZML_RandomWeightedTextLine, # 更新后的节点
+    "ZML_RandomWeightedTextLine": ZML_RandomWeightedTextLine,
     "ZML_MultiTextInput5": ZML_MultiTextInput5,
     "ZML_MultiTextInput3": ZML_MultiTextInput3,
     "ZML_SelectText": ZML_SelectText,
@@ -780,7 +813,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFilter": "ZML_筛选提示词",
     "ZML_DeleteText": "ZML_删除文本",
     "ZML_TextLine": "ZML_文本行",
-    "ZML_RandomWeightedTextLine": "ZML_随机权重文本行", # 节点显示名称
+    "ZML_RandomWeightedTextLine": "ZML_随机权重文本行",
     "ZML_MultiTextInput5": "ZML_多文本输入_五",
     "ZML_MultiTextInput3": "ZML_多文本输入_三",
     "ZML_SelectText": "ZML_选择文本",
