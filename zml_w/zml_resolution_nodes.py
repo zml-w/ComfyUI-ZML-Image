@@ -119,17 +119,19 @@ class ZML_AddTextWatermark:
         return {
             "required": {
                 "图像": ("IMAGE",),
-                "文本": ("STRING", {"multiline": True, "default": "ZML Watermark"}),
+                "文本": ("STRING", {"multiline": True, "default": "ZML_水印"}),
                 "字体": (fonts,),
                 "字体大小": ("INT", {"default": 48, "min": 8, "max": 1024, "step": 1}),
                 "颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则每个字颜色随机"}),
                 "不透明度": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "书写方向": (["横排", "竖排"], {"default": "横排"}),
-                "位置": (["左上", "中上", "右上", "左中", "居中", "右中", "左下", "中下", "右下"], {"default": "左上"}),
-                "水平边距": ("INT", {"default": 20, "min": 0, "max": 4096, "step": 1}),
-                "垂直边距": ("INT", {"default": 20, "min": 0, "max": 4096, "step": 1}),
+                "位置": (["左上", "中上", "右上", "左中", "居中", "右中", "左下", "中下", "右下", "全屏"], {"default": "左上"}),
+                "水平边距": ("INT", {"default": 20, "min": 0, "max": 4096, "step": 1, "description": "在“全屏”模式下，此项为水印之间的水平间距。"}),
+                "垂直边距": ("INT", {"default": 20, "min": 0, "max": 4096, "step": 1, "description": "在“全屏”模式下，此项为水印之间的垂直间距。"}),
                 "字符间距": ("INT", {"default": 0, "min": -50, "max": 100, "step": 1}),
                 "行间距": ("INT", {"default": 10, "min": -50, "max": 200, "step": 1}),
+                "全屏水印旋转角度": ("INT", {"default": -30, "min": -360, "max": 360, "step": 1, "description": "仅在“全屏”模式下生效。"}),
+                "全屏水印密度": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 5.0, "step": 0.1, "description": "调整全屏水印的密集程度。大于1更密集，小于1更稀疏。"})
             }
         }
 
@@ -240,9 +242,9 @@ class ZML_AddTextWatermark:
                 cursor_y = start_y
                 cursor_x += line_width + line_spacing
 
-    def add_watermark(self, 图像, 文本, 字体, 字体大小, 颜色, 不透明度, 书写方向, 位置, 水平边距, 垂直边距, 字符间距, 行间距):
+    def add_watermark(self, 图像, 文本, 字体, 字体大小, 颜色, 不透明度, 书写方向, 位置, 水平边距, 垂直边距, 字符间距, 行间距, 全屏水印旋转角度, 全屏水印密度):
         count = self.increment_counter()
-        help_text = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共添加了{count}次水印！！颜色代码那里留空时有惊喜哦~\n在这里提供一些常用的颜色代码：\n黑色: #000000\n白色: #FFFFF\n红色: #FF0000\n蓝色: #0000FF\n黄色: #FFFF00\n绿色: #008000\n粉色: #FFC0CB\n紫色: #800080\n祝你天天开心~"
+        help_text = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共添加了{count}次水印！！颜色代码那里留空时有惊喜哦~\n在这里提供一些常用的颜色代码：\n黑色: #000000\n白色: #FFFFFF\n红色: #FF0000\n蓝色: #0000FF\n黄色: #FFFF00\n绿色: #008000\n粉色: #FFC0CB\n紫色: #800080\n祝你天天开心~"
 
         font = ImageFont.load_default()
         if 字体 != "Default":
@@ -252,30 +254,73 @@ class ZML_AddTextWatermark:
             except Exception as e:
                 print(f"字体加载失败: {e}，将使用默认字体。")
 
-        # 检查颜色输入是否为空
         is_random_color = not 颜色.strip()
         fill_color = None if is_random_color else self.hex_to_rgba(颜色, 不透明度)
 
         processed_images = []
         for img_tensor in 图像:
             pil_image = self.tensor_to_pil(img_tensor).convert("RGBA")
-            draw = ImageDraw.Draw(pil_image)
             img_width, img_height = pil_image.size
 
-            max_dim = (img_width - (水平边距 * 2)) if 书写方向 == "横排" else (img_height - (垂直边距 * 2))
-            lines = self._prepare_lines(文本, font, max_dim, 字符间距, 书写方向)
-            
-            text_width, text_height = self._get_text_block_size(lines, font, 字符间距, 行间距, 书写方向)
+            if 位置 == "全屏":
+                # --- 全屏模式逻辑 ---
+                lines = 文本.split('\n')
+                text_width, text_height = self._get_text_block_size(lines, font, 字符间距, 行间距, 书写方向)
+                
+                if text_width == 0 or text_height == 0:
+                    processed_images.append(img_tensor.unsqueeze(0) if len(img_tensor.shape) == 3 else img_tensor)
+                    continue
 
-            if "左" in 位置: x = 水平边距
-            elif "右" in 位置: x = img_width - text_width - 水平边距
-            else: x = (img_width - text_width) / 2
+                padding = 10
+                tile_w = text_width + (2 * padding)
+                tile_h = text_height + (2 * padding)
+                
+                text_img = Image.new('RGBA', (tile_w, tile_h))
+                text_draw = ImageDraw.Draw(text_img)
+                
+                self._draw_text_manually(text_draw, lines, padding, padding, font, fill_color, 不透明度, 字符间距, 行间距, 书写方向)
+                
+                rotated_text_img = text_img.rotate(全屏水印旋转角度, expand=True, resample=Image.BICUBIC)
+                r_width, r_height = rotated_text_img.size
+                
+                x_spacing = 水平边距
+                y_spacing = 垂直边距
 
-            if "上" in 位置: y = 垂直边距
-            elif "下" in 位置: y = img_height - text_height - 垂直边距
-            else: y = (img_height - text_height) / 2
+                step_x = int((r_width + x_spacing) / 全屏水印密度)
+                if step_x < 1: step_x = 1
+                
+                step_y = int((r_height + y_spacing) / 全屏水印密度)
+                if step_y < 1: step_y = 1
+                
+                stagger_offset = step_x // 2
+                
+                row_index = 0
+                for y in range(-r_height, img_height, step_y):
+                    start_x = -r_width
+                    if (row_index % 2) != 0:
+                        start_x += stagger_offset
+                    
+                    for x in range(start_x, img_width, step_x):
+                        pil_image.paste(rotated_text_img, (x, y), rotated_text_img)
+                    row_index += 1
 
-            self._draw_text_manually(draw, lines, x, y, font, fill_color, 不透明度, 字符间距, 行间距, 书写方向)
+            else:
+                # --- 其他位置模式逻辑 ---
+                draw = ImageDraw.Draw(pil_image)
+                max_dim = (img_width - (水平边距 * 2)) if 书写方向 == "横排" else (img_height - (垂直边距 * 2))
+                lines = self._prepare_lines(文本, font, max_dim, 字符间距, 书写方向)
+                
+                text_width, text_height = self._get_text_block_size(lines, font, 字符间距, 行间距, 书写方向)
+
+                if "左" in 位置: x = 水平边距
+                elif "右" in 位置: x = img_width - text_width - 水平边距
+                else: x = (img_width - text_width) // 2
+
+                if "上" in 位置: y = 垂直边距
+                elif "下" in 位置: y = img_height - text_height - 垂直边距
+                else: y = (img_height - text_height) // 2
+
+                self._draw_text_manually(draw, lines, x, y, font, fill_color, 不透明度, 字符间距, 行间距, 书写方向)
             
             processed_image_rgb = pil_image.convert("RGB")
             processed_images.append(self.pil_to_tensor(processed_image_rgb))
