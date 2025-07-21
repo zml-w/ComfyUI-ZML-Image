@@ -4,7 +4,10 @@ import torch
 import numpy as np
 from PIL import Image, ImageDraw
 import os
-from ultralytics import YOLO
+try:
+    from ultralytics import YOLO
+except ImportError:
+    print("Warning: ultralytics is not installed. ZML_AutoCensorNode will not work without it.")
 import folder_paths
 import logging
 from contextlib import contextmanager
@@ -60,7 +63,14 @@ class ZML_AutoCensorNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        model_list = folder_paths.get_filename_list("ultralytics") or []
+        # [修改] START: 使用 try-except 块来防止因找不到 'ultralytics' 路径而崩溃
+        try:
+            model_list = folder_paths.get_filename_list("ultralytics") or []
+        except KeyError:
+            model_list = []
+            print("[ZML_AutoCensorNode] Warning: 'ultralytics' model folder not found or not configured in extra_model_paths.yaml. The node will load, but no models will be available.")
+        # [修改] END
+        
         return {
             "required": {
                 "原始图像": ("IMAGE",),
