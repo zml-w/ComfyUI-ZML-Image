@@ -44,7 +44,8 @@ from zml_w import zml_image_nodes
 from zml_w import zml_text_nodes
 from zml_w import zml_format_nodes
 from zml_w import zml_review_nodes
-from zml_w import zml_resolution_nodes # <--- 添加这一行
+from zml_w import zml_resolution_nodes
+from zml_w import zml_lora_nodes  # <--- 添加这一行, 导入新的Lora节点
 
 # 核心步骤3：直接合并所有节点的映射字典
 NODE_CLASS_MAPPINGS = {
@@ -52,7 +53,8 @@ NODE_CLASS_MAPPINGS = {
     **zml_text_nodes.NODE_CLASS_MAPPINGS,
     **zml_format_nodes.NODE_CLASS_MAPPINGS,
     **zml_review_nodes.NODE_CLASS_MAPPINGS,
-    **zml_resolution_nodes.NODE_CLASS_MAPPINGS, # <--- 取消这一行的注释
+    **zml_resolution_nodes.NODE_CLASS_MAPPINGS,
+    **zml_lora_nodes.NODE_CLASS_MAPPINGS,  # <--- 添加这一行
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -60,7 +62,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **zml_text_nodes.NODE_DISPLAY_NAME_MAPPINGS,
     **zml_format_nodes.NODE_DISPLAY_NAME_MAPPINGS,
     **zml_review_nodes.NODE_DISPLAY_NAME_MAPPINGS,
-    **zml_resolution_nodes.NODE_DISPLAY_NAME_MAPPINGS, # <--- 取消这一行的注释
+    **zml_resolution_nodes.NODE_DISPLAY_NAME_MAPPINGS,
+    **zml_lora_nodes.NODE_DISPLAY_NAME_MAPPINGS, # <--- 添加这一行
 }
 
 WEB_DIRECTORY = "zml_w"
