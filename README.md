@@ -12,7 +12,8 @@
 
 合并图像节点，就是将2-4张图像ps到一起，目前虽然已经有其它节点做出了此功能，但我觉得不是太好操作，所以制作了此节点。和裁剪图像节点一样，也是点击按钮打开ui来处理图像，不需要事先运行工作流，只需要使用加载图像的节点连接到此节点上，然后点击按钮打开ui来编辑图像，编辑好后你的操作会保存到节点内部，直接运行节点即可输出之前处理好的图像。
 
-基于ComfyUI-Custom-Scripts里的lora节点（LoRA加载器(pysss)）创建新三个新的节点，原节点GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。感谢作者的付出。在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。这真是一个伟大的创意，再次感谢原作者的付出。
+基于ComfyUI-Custom-Scripts里的lora节点（LoRA加载器(pysss)）创建新三个新的节点，原节点GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。
+感谢作者的付出。在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。这真是一个伟大的创意，再次感谢原作者的付出。
 
 ——————————————
 
