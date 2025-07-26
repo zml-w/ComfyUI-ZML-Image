@@ -164,7 +164,7 @@ class ZML_AddTextWatermark:
 class ZML_CropPureColorBackground:
     @classmethod
     def INPUT_TYPES(cls):
-        return { "required": { "图像": ("IMAGE",), "处理模式": (["矩形", "不规则形状"],), "背景颜色": (["透明", "白色", "绿色"],), "阈值": ("INT", {"default": 10, "min": 0, "max": 255}), "不规则形状保留像素": ("INT", {"default": 50, "min": 0, "max": 256}), "透明图像添加背景": (["无", "白色", "绿色"],), } }
+        return { "required": { "图像": ("IMAGE",), "处理模式": (["矩形", "不规则形状"],), "背景颜色": (["白色", "绿色", "透明"],), "阈值": ("INT", {"default": 10, "min": 0, "max": 255}), "不规则形状保留像素": ("INT", {"default": 50, "min": 0, "max": 256}), "透明图像添加背景": (["无", "白色", "绿色"],), } }
     RETURN_TYPES = ("IMAGE",); RETURN_NAMES = ("图像",); FUNCTION = "crop_background"; CATEGORY = "image/ZML_图像/图像"
     def tensor_to_pil(self, tensor):
         img_np = np.clip(255. * tensor.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
