@@ -331,39 +331,100 @@ class ZML_AddSolidColorBackground:
         return (torch.cat(processed_images, dim=0),)
 
 
-# ============================== 可视化裁剪图像节点 ==============================
+# ============================== 可视化裁剪图像节点 [MODIFIED] ==============================
 class ZML_VisualCropImage:
     @classmethod
     def INPUT_TYPES(cls):
         return { "required": { "图像": ("IMAGE",), "模式": (["矩形", "圆形", "路径选择", "画笔"],), "裁剪比例": (["禁用", "1:1", "16:9", "9:16", "4:3", "3:4"],), "裁剪宽度": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}), "裁剪高度": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}), "crop_data": ("STRING", {"multiline": True, "default": "{}", "widget": "hidden"}), } }
-    RETURN_TYPES = ("IMAGE",); RETURN_NAMES = ("图像",); FUNCTION = "crop_visually"; CATEGORY = "image/ZML_图像/图像"
-    def tensor_to_pil(self, t): return Image.fromarray(np.clip(255. * t.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
-    def pil_to_tensor(self, p): return torch.from_numpy(np.array(p).astype(np.float32) / 255.0).unsqueeze(0)
+    
+    # [MODIFIED] Added MASK to return types and names
+    RETURN_TYPES = ("IMAGE", "MASK",)
+    RETURN_NAMES = ("图像", "遮罩",)
+    FUNCTION = "crop_visually"
+    CATEGORY = "image/ZML_图像/图像"
+
+    def tensor_to_pil(self, t): 
+        return Image.fromarray(np.clip(255. * t.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
+
+    def pil_to_tensor(self, p): 
+        return torch.from_numpy(np.array(p).astype(np.float32) / 255.0).unsqueeze(0)
+
+    # [MAJOR REWRITE] This function now generates both the cropped image and a full-size mask
     def crop_visually(self, 图像, 模式, **kwargs):
         crop_data = kwargs.get("crop_data", "{}")
-        try: data = json.loads(crop_data)
-        except: return (图像,)
-        cropped_images = []
+        try:
+            data = json.loads(crop_data)
+        except:
+            # 如果没有有效数据，返回原始图像和全黑的遮罩
+            black_mask = torch.zeros_like(图像[:, :, :, 0]) # [N, H, W]
+            return (图像, black_mask,)
+        
+        cropped_images_list = []
+        mask_list = []
+
+        # 处理批次中的每张图像
         for img_tensor in 图像:
             pil_image = self.tensor_to_pil(img_tensor)
+            
+            # 创建一个与原图等大的黑色遮罩
+            full_size_mask = Image.new("L", pil_image.size, 0)
+            draw = ImageDraw.Draw(full_size_mask)
+
+            final_cropped_pil = None # 用于存放裁剪后的PIL图像
+
+            # 根据模式绘制不同的形状到遮罩上，并进行裁剪
             if 模式 in ["路径选择", "画笔"]:
-                points, bbox_data = data.get("points"), data.get("bbox")
-                if not points or not bbox_data: return (图像,)
-                pts = [(p['x'], p['y']) for p in points]; bbox = (int(bbox_data["x"]), int(bbox_data["y"]), int(bbox_data["x"]) + int(bbox_data["width"]), int(bbox_data["y"]) + int(bbox_data["height"]))
-                if not pts: return (图像,)
-                pil_image = pil_image.convert("RGBA"); mask = Image.new("L", pil_image.size, 0); draw = ImageDraw.Draw(mask)
-                draw.polygon(pts, fill=255); output = pil_image.copy(); output.putalpha(mask)
-                final_cropped = output.crop(bbox)
-            else:
+                points = data.get("points")
+                bbox_data = data.get("bbox")
+                if not points or not bbox_data: return (图像, torch.zeros_like(图像[:,:,:,0]))
+
+                pts = [(p['x'], p['y']) for p in points]
+                bbox = (int(bbox_data["x"]), int(bbox_data["y"]), int(bbox_data["x"]) + int(bbox_data["width"]), int(bbox_data["y"]) + int(bbox_data["height"]))
+                if not pts: return (图像, torch.zeros_like(图像[:,:,:,0]))
+
+                draw.polygon(pts, fill=255) # 在全尺寸遮罩上绘制多边形
+                
+                img_rgba = pil_image.convert("RGBA")
+                output = Image.new("RGBA", img_rgba.size)
+                output.paste(img_rgba, mask=full_size_mask) # 使用遮罩粘贴
+                final_cropped_pil = output.crop(bbox)
+
+            else: # 矩形或圆形模式
                 x, y, w, h = int(data.get("x",0)), int(data.get("y",0)), int(data.get("width",0)), int(data.get("height",0))
-                if w == 0 or h == 0: return (图像,)
+                if w == 0 or h == 0: return (图像, torch.zeros_like(图像[:,:,:,0]))
+
+                crop_box = (x, y, x + w, y + h)
+
                 if 模式 == "圆形":
-                    pil_image = pil_image.convert("RGBA"); mask = Image.new("L", pil_image.size, 0); draw = ImageDraw.Draw(mask)
-                    draw.ellipse((x, y, x + w, y + h), fill=255); output = pil_image.copy(); output.putalpha(mask)
-                    final_cropped = output.crop((x, y, x + w, y + h))
-                else: final_cropped = pil_image.crop((x, y, x + w, y + h))
-            cropped_images.append(self.pil_to_tensor(final_cropped))
-        return (torch.cat(cropped_images, dim=0),)
+                    draw.ellipse(crop_box, fill=255) # 在全尺寸遮罩上绘制圆形
+                    
+                    img_rgba = pil_image.convert("RGBA")
+                    output = Image.new("RGBA", img_rgba.size)
+                    output.paste(img_rgba, mask=full_size_mask) # 使用遮罩粘贴
+                    final_cropped_pil = output.crop(crop_box)
+                else: # 矩形模式
+                    draw.rectangle(crop_box, fill=255) # 在全尺寸遮罩上绘制矩形
+                    final_cropped_pil = pil_image.crop(crop_box)
+            
+            # 将处理好的图像和遮罩添加到列表中
+            if final_cropped_pil:
+                cropped_images_list.append(self.pil_to_tensor(final_cropped_pil))
+                
+                # 将遮罩转换为张量 (H, W) -> (1, H, W)
+                mask_np = np.array(full_size_mask).astype(np.float32) / 255.0
+                mask_tensor = torch.from_numpy(mask_np).unsqueeze(0)
+                mask_list.append(mask_tensor)
+
+        # 如果列表为空（例如裁剪数据无效），则返回原始图像
+        if not cropped_images_list or not mask_list:
+             black_mask = torch.zeros_like(图像[:, :, :, 0])
+             return (图像, black_mask,)
+
+        # 将列表中的所有张量合并成一个批处理张量
+        final_cropped_tensors = torch.cat(cropped_images_list, dim=0)
+        final_mask_tensors = torch.cat(mask_list, dim=0)
+        
+        return (final_cropped_tensors, final_mask_tensors)
 
 # ============================== 合并图像节点 (新) ==============================
 class ZML_MergeImages:
@@ -386,79 +447,54 @@ class ZML_MergeImages:
     FUNCTION = "merge_images"
     CATEGORY = "image/ZML_图像/图像"
 
-    # [MODIFIED] Helper to convert a single tensor slice to PIL
-    def tensor_to_pil(self, tensor_slice):
+    def _tensor_to_pil(self, tensor_slice): # Renamed to avoid conflict
         img_np = np.clip(255. * tensor_slice.cpu().numpy(), 0, 255).astype(np.uint8)
         return Image.fromarray(img_np)
 
-    # [MODIFIED] Helper to convert a PIL image back to a tensor
-    def pil_to_tensor(self, pil_image):
+    def _pil_to_tensor(self, pil_image): # Renamed to avoid conflict
         return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
-    # [MAJOR REWRITE] The merging logic is now in Python
     def merge_images(self, 底图, 前景图_1, transform_data, 前景图_2=None, 前景图_3=None):
         try:
             data = json.loads(transform_data)
-            # [MODIFIED] We now expect a 'layers' key, not 'image_data'
             if not data or 'layers' not in data or not data['layers']:
-                # If no transform data, return the background as is
                 return (底图,)
             layer_params = data['layers']
         except (json.JSONDecodeError, KeyError):
-             # If data is invalid, return the background as is
             return (底图,)
 
-        # Prepare a list of all foreground images that were provided
         fg_images = [前景图_1, 前景图_2, 前景图_3]
         
         output_images = []
         batch_size = 底图.shape[0]
 
-        # Process each image in the batch
         for i in range(batch_size):
-            # Start with the background image
-            bg_pil = self.tensor_to_pil(底图[i]).convert("RGBA")
+            bg_pil = self._tensor_to_pil(底图[i]).convert("RGBA")
 
-            # Iterate through available foregrounds and their corresponding parameters
             for layer_idx, fg_tensor_batch in enumerate(fg_images):
                 if fg_tensor_batch is not None and i < fg_tensor_batch.shape[0]:
-                    # Ensure there are parameters for this layer
-                    if layer_idx >= len(layer_params):
-                        continue
+                    if layer_idx >= len(layer_params): continue
                     
                     params = layer_params[layer_idx]
-                    if not params:
-                        continue
+                    if not params: continue
 
-                    # Get the specific foreground image for this batch item
-                    fg_pil = self.tensor_to_pil(fg_tensor_batch[i]).convert("RGBA")
+                    fg_pil = self._tensor_to_pil(fg_tensor_batch[i]).convert("RGBA")
 
-                    # 1. Scale the foreground
                     new_width = int(fg_pil.width * params.get('scaleX', 1.0))
                     new_height = int(fg_pil.height * params.get('scaleY', 1.0))
                     if new_width <= 0 or new_height <= 0: continue
                     fg_pil_resized = fg_pil.resize((new_width, new_height), Image.Resampling.LANCZOS)
                     
-                    # 2. Rotate the foreground
-                    # Fabric.js angle is clockwise, PIL is counter-clockwise, so we negate it.
-                    # expand=True ensures the image is not cropped after rotation.
                     fg_pil_rotated = fg_pil_resized.rotate(-params.get('angle', 0), expand=True, resample=Image.Resampling.BICUBIC)
                     
-                    # 3. Calculate paste position
-                    # The 'left' and 'top' from JS are the center of the rotated object.
-                    # We need to calculate the top-left corner for PIL's paste method.
                     paste_x = int(params.get('left', 0) - fg_pil_rotated.width / 2)
                     paste_y = int(params.get('top', 0) - fg_pil_rotated.height / 2)
 
-                    # 4. Paste the transformed foreground onto the background
-                    # The third argument (the rotated image itself) acts as the alpha mask.
                     bg_pil.paste(fg_pil_rotated, (paste_x, paste_y), fg_pil_rotated)
 
-            # Convert final composed image back to RGB and then to a tensor
             final_pil = bg_pil.convert("RGB")
-            output_images.append(self.pil_to_tensor(final_pil))
+            output_images.append(self._pil_to_tensor(final_pil))
 
-        # Combine all processed images in the batch into a single tensor
         return (torch.cat(output_images, dim=0),)
 
 
@@ -467,7 +503,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_LimitResolution": ZML_LimitResolution,
     "ZML_AddTextWatermark": ZML_AddTextWatermark,
     "ZML_CropPureColorBackground": ZML_CropPureColorBackground,
-    "ZML_AddSolidColorBackground": ZML_AddSolidColorBackground, # 新增节点
+    "ZML_AddSolidColorBackground": ZML_AddSolidColorBackground,
     "ZML_VisualCropImage": ZML_VisualCropImage,
     "ZML_MergeImages": ZML_MergeImages,
 }
@@ -475,7 +511,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LimitResolution": "ZML_限制分辨率格式",
     "ZML_AddTextWatermark": "ZML_添加文字水印",
     "ZML_CropPureColorBackground": "ZML_限制纯色背景大小",
-    "ZML_AddSolidColorBackground": "ZML_添加纯色背景", # 新增节点显示名称
+    "ZML_AddSolidColorBackground": "ZML_添加纯色背景",
     "ZML_VisualCropImage": "ZML_可视化裁剪图像",
     "ZML_MergeImages": "ZML_合并图像",
 }
