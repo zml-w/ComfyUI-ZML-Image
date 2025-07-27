@@ -290,9 +290,9 @@ function showMergeModal(node, widget) {
 
     const bgUrl = bgNode.imgs[0].src;
     const fgSources = [];
-    if (fgNode1 && fgNode1.imgs) fgSources.push({ index: 1, url: fgNode1.imgs[0].src, image: fgNode1.imgs[0] });
-    if (fgNode2 && fgNode2.imgs) fgSources.push({ index: 2, url: fgNode2.imgs[0].src, image: fgNode2.imgs[0] });
-    if (fgNode3 && fgNode3.imgs) fgSources.push({ index: 3, url: fgNode3.imgs[0].src, image: fgNode3.imgs[0] });
+    if (fgNode1 && fgNode1.imgs) fgSources.push({ index: 0, name: 1, url: fgNode1.imgs[0].src, image: fgNode1.imgs[0] });
+    if (fgNode2 && fgNode2.imgs) fgSources.push({ index: 1, name: 2, url: fgNode2.imgs[0].src, image: fgNode2.imgs[0] });
+    if (fgNode3 && fgNode3.imgs) fgSources.push({ index: 2, name: 3, url: fgNode3.imgs[0].src, image: fgNode3.imgs[0] });
 
     const modalHtml = `
         <div class="zml-modal">
@@ -309,7 +309,7 @@ function showMergeModal(node, widget) {
                  </style>
                  <div class="zml-editor-main" id="zml-editor-main-container"></div>
                  <div id="zml-layer-controls"></div>
-                 <p class="zml-editor-tip">自由移动、缩放、旋转前景图层。</p>
+                 <p class="zml-editor-tip">自由移动、缩放、旋转前景图层。点击图像或下方按钮可将其置顶。</p>
                  <div class="zml-editor-controls" id="zml-merge-controls">
                     <button id="zml-reset-btn" class="zml-editor-btn" style="background-color: #5bc0de;">重置当前层</button>
                     <button id="zml-confirm-btn" class="zml-editor-btn" style="background-color: #4CAF50;">确认</button>
@@ -324,7 +324,6 @@ function showMergeModal(node, widget) {
     loadScript('https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js').then(() => {
         let uiCanvas, uiCanvasScale = 1.0;
         let fabricLayers = [];
-        // [MODIFIED] allLayerParams现在是最终要发送到后端的数据
         let allLayerParams = [];
         let layerButtons = [];
 
@@ -340,30 +339,27 @@ function showMergeModal(node, widget) {
                 uiCanvas.setBackgroundImage(fBg, uiCanvas.renderAll.bind(uiCanvas), { scaleX: uiCanvasScale, scaleY: uiCanvasScale });
             });
             
+            let loadedParams = [];
             try {
-                // [MODIFIED] 解析时，可能只包含layers
                 const data = JSON.parse(widget.data.value);
                 if(data && data.layers && data.layers.length > 0) {
-                   allLayerParams = data.layers;
-                } else if (Array.isArray(data)) { // 向后兼容旧的、只存数组的格式
-                   allLayerParams = data;
+                   loadedParams = data.layers;
                 }
             } catch (e) { /* 忽略解析错误，使用默认位置 */ }
             
             fgArray.forEach((fgData, index) => {
                  fabric.Image.fromURL(fgData.url, (fFg) => {
-                    // [MODIFIED] 为每个图层对象设置一个唯一的id，与其在数组中的索引对应
-                    fFg.set({ id: index, borderColor: 'yellow', cornerColor: '#f0ad4e', cornerStrokeColor: 'black', cornerStyle: 'circle', transparentCorners: false, borderScaleFactor: 2 });
+                    fFg.set({ id: fgData.index, borderColor: 'yellow', cornerColor: '#f0ad4e', cornerStrokeColor: 'black', cornerStyle: 'circle', transparentCorners: false, borderScaleFactor: 2 });
                     
-                    let transformParams = allLayerParams[index];
+                    let transformParams = loadedParams.find(p => p.original_index === fgData.index)?.params;
+
                     if (!transformParams || transformParams.left === undefined) {
                         const fgImg = fgData.image;
                         const initialScale = (bgImg.naturalWidth * (0.3 + index*0.1)) / fgImg.naturalWidth;
                         transformParams = { left: bgImg.naturalWidth / 2, top: bgImg.naturalHeight / 2, scaleX: initialScale, scaleY: initialScale, angle: 0, originX: 'center', originY: 'center' };
-                        allLayerParams[index] = transformParams;
                     }
+                    allLayerParams[fgData.index] = transformParams;
                     
-                    // 应用缩放以在UI画布上正确显示
                     const displayParams = { ...transformParams };
                     displayParams.left *= uiCanvasScale;
                     displayParams.top *= uiCanvasScale;
@@ -372,19 +368,27 @@ function showMergeModal(node, widget) {
                     fFg.set(displayParams);
                     
                     uiCanvas.add(fFg);
-                    fabricLayers[index] = fFg;
+                    fabricLayers[fgData.index] = fFg;
 
                     if(index === 0) uiCanvas.setActiveObject(fFg);
                     uiCanvas.renderAll();
                 });
             });
+            
+            if (loadedParams.length > 0) {
+                setTimeout(() => {
+                    const sortedObjects = loadedParams.map(p => fabricLayers[p.original_index]).filter(Boolean);
+                    sortedObjects.forEach(obj => uiCanvas.bringToFront(obj));
+                    if(sortedObjects.length > 0) uiCanvas.setActiveObject(sortedObjects[sortedObjects.length-1]);
+                    uiCanvas.renderAll();
+                }, 200);
+            }
 
-            // 当图层被移动、缩放或旋转后，更新其在 allLayerParams 中的原始（非UI）尺寸参数
+
             uiCanvas.on('object:modified', (e) => {
                 if(!e.target) return;
                 const obj = e.target;
                 const layerIndex = obj.id;
-                // [MODIFIED] 确保保存的是相对于原始图像的参数
                 allLayerParams[layerIndex] = {
                     left: obj.left / uiCanvasScale, top: obj.top / uiCanvasScale,
                     scaleX: obj.scaleX / uiCanvasScale, scaleY: obj.scaleY / uiCanvasScale,
@@ -392,27 +396,60 @@ function showMergeModal(node, widget) {
                 };
             });
              
+            // --- [MODIFICATION START] ---
+            const updateActiveButton = (activeObj) => {
+                if(!activeObj) return;
+                layerButtons.forEach((btn) => {
+                    // 使用按钮上存储的索引进行比较
+                    if (btn.layerIndex === activeObj.id) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            };
+
+            // [NEW] 监听鼠标按下事件，实现点击图像置顶
+            uiCanvas.on('mouse:down', function(options) {
+                if (options.target && options.target.id !== undefined) {
+                    const targetLayer = options.target;
+                    uiCanvas.bringToFront(targetLayer);
+                    // 不需要手动设置active object，fabric会自动处理
+                    // uiCanvas.setActiveObject(targetLayer); 
+                    uiCanvas.renderAll();
+                    updateActiveButton(targetLayer);
+                }
+            });
+
+            // 监听选择事件，确保按钮状态同步
+            uiCanvas.on('selection:created', (e) => updateActiveButton(e.selected[0]));
+            uiCanvas.on('selection:updated', (e) => updateActiveButton(e.selected[0]));
+            // --- [MODIFICATION END] ---
+
             if (fgSources.length > 1) {
                 const layerControls = modal.querySelector('#zml-layer-controls');
-                fgSources.forEach((fg, index) => {
+                fgSources.forEach((fg) => {
                     const btn = document.createElement('button');
-                    btn.textContent = `前景 ${fg.index}`;
+                    btn.textContent = `前景 ${fg.name}`;
                     btn.className = 'zml-editor-btn zml-layer-btn';
                     btn.style.backgroundColor = '#337ab7';
+                    btn.layerIndex = fg.index; // 在按钮上存储它对应的图层索引
                     btn.onclick = () => {
-                        const targetLayer = fabricLayers[index];
+                        const targetLayer = fabricLayers[fg.index];
                         if(targetLayer) {
                            uiCanvas.setActiveObject(targetLayer);
                            uiCanvas.bringToFront(targetLayer);
                            uiCanvas.renderAll();
-                           layerButtons.forEach(b => b.classList.remove('active'));
-                           btn.classList.add('active');
+                           updateActiveButton(targetLayer);
                         }
                     };
                     layerControls.appendChild(btn);
                     layerButtons.push(btn);
                 });
-                if(layerButtons.length > 0) layerButtons[0].classList.add('active');
+                
+                if(layerButtons.length > 0) {
+                    setTimeout(() => updateActiveButton(uiCanvas.getActiveObject() || fabricLayers[0]), 200);
+                }
             }
         };
 
@@ -422,7 +459,7 @@ function showMergeModal(node, widget) {
             const fgImageObjects = fgSources.map(s => {
                 const img = new Image();
                 img.src = s.url;
-                return {url: s.url, image: img};
+                return { ...s, image: img };
             });
             
             let loadedCount = 0;
@@ -446,8 +483,7 @@ function showMergeModal(node, widget) {
             const activeObj = uiCanvas.getActiveObject();
             if (activeObj && bgImg.naturalWidth > 0) {
                  const layerIndex = activeObj.id;
-                 const originalFgImg = fgSources[layerIndex].image;
-                 // 重置到一个合理的初始大小和位置
+                 const originalFgImg = fgSources.find(f => f.index === layerIndex).image;
                  const initialScale = (bgImg.naturalWidth * 0.5) / originalFgImg.naturalWidth;
                  const initialUiScale = initialScale * uiCanvasScale;
 
@@ -457,19 +493,22 @@ function showMergeModal(node, widget) {
                  });
                  activeObj.setCoords();
                  uiCanvas.renderAll();
-                 // 手动触发修改事件以更新参数
                  uiCanvas.fire('object:modified', { target: activeObj });
             }
         };
 
-        // [MAJOR CHANGE] “确认”按钮的点击事件
         modal.querySelector('#zml-confirm-btn').onclick = () => {
-            // [REMOVED] 不再创建离屏Canvas和生成Base64图像数据
+            const orderedObjects = uiCanvas.getObjects().filter(o => o.id !== undefined);
             
-            // [MODIFIED] 只将包含图层参数的数组封装成一个对象后字符串化
-            // 这样做可以方便未来扩展，比如增加一个全局的合成模式等
+            const orderedLayerData = orderedObjects.map(obj => {
+                return {
+                    original_index: obj.id,
+                    params: allLayerParams[obj.id]
+                };
+            });
+
             const final_data = {
-                layers: allLayerParams
+                layers: orderedLayerData
             };
             
             widget.data.value = JSON.stringify(final_data);
