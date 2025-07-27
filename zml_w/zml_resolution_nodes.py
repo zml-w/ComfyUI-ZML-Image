@@ -2,7 +2,7 @@
 
 import math
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import numpy as np
 import torch
 import random
@@ -386,30 +386,81 @@ class ZML_MergeImages:
     FUNCTION = "merge_images"
     CATEGORY = "image/ZML_图像/图像"
 
-    def tensor_to_pil(self, t):
-        return Image.fromarray(np.clip(255. * t.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
+    # [MODIFIED] Helper to convert a single tensor slice to PIL
+    def tensor_to_pil(self, tensor_slice):
+        img_np = np.clip(255. * tensor_slice.cpu().numpy(), 0, 255).astype(np.uint8)
+        return Image.fromarray(img_np)
 
-    def pil_to_tensor(self, p):
-        return torch.from_numpy(np.array(p).astype(np.float32) / 255.0).unsqueeze(0)
+    # [MODIFIED] Helper to convert a PIL image back to a tensor
+    def pil_to_tensor(self, pil_image):
+        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
+    # [MAJOR REWRITE] The merging logic is now in Python
     def merge_images(self, 底图, 前景图_1, transform_data, 前景图_2=None, 前景图_3=None):
         try:
             data = json.loads(transform_data)
-            if not data or 'image_data' not in data:
+            # [MODIFIED] We now expect a 'layers' key, not 'image_data'
+            if not data or 'layers' not in data or not data['layers']:
+                # If no transform data, return the background as is
                 return (底图,)
-        except:
+            layer_params = data['layers']
+        except (json.JSONDecodeError, KeyError):
+             # If data is invalid, return the background as is
             return (底图,)
 
-        b64_img_data = data["image_data"].split(',')[1]
-        img_bytes = base64.b64decode(b64_img_data)
-        final_pil = Image.open(BytesIO(img_bytes)).convert("RGB")
-
-        final_tensor = self.pil_to_tensor(final_pil)
-        batch_size = 底图.shape[0]
-        if batch_size > 1:
-            final_tensor = final_tensor.repeat(batch_size, 1, 1, 1)
+        # Prepare a list of all foreground images that were provided
+        fg_images = [前景图_1, 前景图_2, 前景图_3]
         
-        return (final_tensor,)
+        output_images = []
+        batch_size = 底图.shape[0]
+
+        # Process each image in the batch
+        for i in range(batch_size):
+            # Start with the background image
+            bg_pil = self.tensor_to_pil(底图[i]).convert("RGBA")
+
+            # Iterate through available foregrounds and their corresponding parameters
+            for layer_idx, fg_tensor_batch in enumerate(fg_images):
+                if fg_tensor_batch is not None and i < fg_tensor_batch.shape[0]:
+                    # Ensure there are parameters for this layer
+                    if layer_idx >= len(layer_params):
+                        continue
+                    
+                    params = layer_params[layer_idx]
+                    if not params:
+                        continue
+
+                    # Get the specific foreground image for this batch item
+                    fg_pil = self.tensor_to_pil(fg_tensor_batch[i]).convert("RGBA")
+
+                    # 1. Scale the foreground
+                    new_width = int(fg_pil.width * params.get('scaleX', 1.0))
+                    new_height = int(fg_pil.height * params.get('scaleY', 1.0))
+                    if new_width <= 0 or new_height <= 0: continue
+                    fg_pil_resized = fg_pil.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    
+                    # 2. Rotate the foreground
+                    # Fabric.js angle is clockwise, PIL is counter-clockwise, so we negate it.
+                    # expand=True ensures the image is not cropped after rotation.
+                    fg_pil_rotated = fg_pil_resized.rotate(-params.get('angle', 0), expand=True, resample=Image.Resampling.BICUBIC)
+                    
+                    # 3. Calculate paste position
+                    # The 'left' and 'top' from JS are the center of the rotated object.
+                    # We need to calculate the top-left corner for PIL's paste method.
+                    paste_x = int(params.get('left', 0) - fg_pil_rotated.width / 2)
+                    paste_y = int(params.get('top', 0) - fg_pil_rotated.height / 2)
+
+                    # 4. Paste the transformed foreground onto the background
+                    # The third argument (the rotated image itself) acts as the alpha mask.
+                    bg_pil.paste(fg_pil_rotated, (paste_x, paste_y), fg_pil_rotated)
+
+            # Convert final composed image back to RGB and then to a tensor
+            final_pil = bg_pil.convert("RGB")
+            output_images.append(self.pil_to_tensor(final_pil))
+
+        # Combine all processed images in the batch into a single tensor
+        return (torch.cat(output_images, dim=0),)
+
 
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
