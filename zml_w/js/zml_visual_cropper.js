@@ -324,6 +324,7 @@ function showMergeModal(node, widget) {
     loadScript('https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js').then(() => {
         let uiCanvas, uiCanvasScale = 1.0;
         let fabricLayers = [];
+        // [MODIFIED] allLayerParams现在是最终要发送到后端的数据
         let allLayerParams = [];
         let layerButtons = [];
 
@@ -340,12 +341,18 @@ function showMergeModal(node, widget) {
             });
             
             try {
+                // [MODIFIED] 解析时，可能只包含layers
                 const data = JSON.parse(widget.data.value);
-                if(data.layers && data.layers.length > 0) allLayerParams = data.layers;
-            } catch (e) { /* Fallback to default positions */ }
+                if(data && data.layers && data.layers.length > 0) {
+                   allLayerParams = data.layers;
+                } else if (Array.isArray(data)) { // 向后兼容旧的、只存数组的格式
+                   allLayerParams = data;
+                }
+            } catch (e) { /* 忽略解析错误，使用默认位置 */ }
             
             fgArray.forEach((fgData, index) => {
                  fabric.Image.fromURL(fgData.url, (fFg) => {
+                    // [MODIFIED] 为每个图层对象设置一个唯一的id，与其在数组中的索引对应
                     fFg.set({ id: index, borderColor: 'yellow', cornerColor: '#f0ad4e', cornerStrokeColor: 'black', cornerStyle: 'circle', transparentCorners: false, borderScaleFactor: 2 });
                     
                     let transformParams = allLayerParams[index];
@@ -356,6 +363,7 @@ function showMergeModal(node, widget) {
                         allLayerParams[index] = transformParams;
                     }
                     
+                    // 应用缩放以在UI画布上正确显示
                     const displayParams = { ...transformParams };
                     displayParams.left *= uiCanvasScale;
                     displayParams.top *= uiCanvasScale;
@@ -371,10 +379,12 @@ function showMergeModal(node, widget) {
                 });
             });
 
+            // 当图层被移动、缩放或旋转后，更新其在 allLayerParams 中的原始（非UI）尺寸参数
             uiCanvas.on('object:modified', (e) => {
                 if(!e.target) return;
                 const obj = e.target;
                 const layerIndex = obj.id;
+                // [MODIFIED] 确保保存的是相对于原始图像的参数
                 allLayerParams[layerIndex] = {
                     left: obj.left / uiCanvasScale, top: obj.top / uiCanvasScale,
                     scaleX: obj.scaleX / uiCanvasScale, scaleY: obj.scaleY / uiCanvasScale,
@@ -437,6 +447,7 @@ function showMergeModal(node, widget) {
             if (activeObj && bgImg.naturalWidth > 0) {
                  const layerIndex = activeObj.id;
                  const originalFgImg = fgSources[layerIndex].image;
+                 // 重置到一个合理的初始大小和位置
                  const initialScale = (bgImg.naturalWidth * 0.5) / originalFgImg.naturalWidth;
                  const initialUiScale = initialScale * uiCanvasScale;
 
@@ -446,43 +457,26 @@ function showMergeModal(node, widget) {
                  });
                  activeObj.setCoords();
                  uiCanvas.renderAll();
+                 // 手动触发修改事件以更新参数
                  uiCanvas.fire('object:modified', { target: activeObj });
             }
         };
 
+        // [MAJOR CHANGE] “确认”按钮的点击事件
         modal.querySelector('#zml-confirm-btn').onclick = () => {
-            modal.querySelector('#zml-confirm-btn').textContent = "合成中...";
+            // [REMOVED] 不再创建离屏Canvas和生成Base64图像数据
             
-            const offscreenCanvas = new fabric.StaticCanvas(null);
-            const bgConfirmImg = new Image();
-            bgConfirmImg.src = bgUrl;
-            bgConfirmImg.onload = () => {
-                offscreenCanvas.setWidth(bgConfirmImg.naturalWidth).setHeight(bgConfirmImg.naturalHeight);
-
-                fabric.Image.fromURL(bgUrl, (offBg) => {
-                    offBg.set({selectable: false, evented: false});
-                    offscreenCanvas.add(offBg);
-                    
-                    let loadedFgCount = 0;
-                    fgSources.forEach((fgData, index) => {
-                       fabric.Image.fromURL(fgData.url, (offFg) => {
-                           offFg.set(allLayerParams[index]);
-                           offscreenCanvas.add(offFg);
-                           loadedFgCount++;
-                           if(loadedFgCount === fgSources.length) {
-                               offscreenCanvas.renderAll();
-                               widget.data.value = JSON.stringify({
-                                   image_data: offscreenCanvas.toDataURL({format: 'png'}),
-                                   layers: allLayerParams
-                               });
-                               node.onWidgetValue_changed?.(widget.data, widget.data.value);
-                               closeModal(modal);
-                           }
-                       });
-                    });
-                });
+            // [MODIFIED] 只将包含图层参数的数组封装成一个对象后字符串化
+            // 这样做可以方便未来扩展，比如增加一个全局的合成模式等
+            const final_data = {
+                layers: allLayerParams
             };
+            
+            widget.data.value = JSON.stringify(final_data);
+            node.onWidgetValue_changed?.(widget.data, widget.data.value);
+            closeModal(modal);
         };
+        
         modal.querySelector('#zml-cancel-btn').onclick = () => closeModal(modal);
     });
 }
