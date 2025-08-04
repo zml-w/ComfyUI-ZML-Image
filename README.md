@@ -46,7 +46,8 @@
 
 10、可以随机整数或预设整数并通过索引调用，随机生图分辨率和快速切换分辨率变得简单。
 
-11、基于ComfyUI-Custom-Scripts里的lora节点（LoRA加载器(pysss)）创建新三个新的节点，原节点GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。感谢作者的付出。在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。这真是一个伟大的创意，再次感谢原作者的付出。
+11、基于ComfyUI-Custom-Scripts里的lora节点（LoRA加载器(pysss)）创建新三个新的节点，原节点GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts
+。感谢作者的付出。在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。这真是一个伟大的创意，再次感谢原作者的付出。
 
 12、可视化裁剪图像节点，将加载图像的节点连接到此节点上，然后点击“裁剪图像”的按钮来打开ui进行手动调整裁剪区域，支持矩形、圆形、路径选择、画笔（套索）选择四种裁剪方式，不需要再打开ps啦！
 
