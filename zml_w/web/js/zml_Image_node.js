@@ -72,19 +72,10 @@ app.registerExtension({
 		$el("style", {
 			textContent: `
                 .zml-image-preview {
-                    position: absolute;
-                    left: 0;
-                    top: 0;
-                    width: auto;
-                    height: auto;
-                    max-width: ${IMAGE_WIDTH}px;
-                    max-height: ${IMAGE_HEIGHT}px;
-                    object-fit: contain;
-                    object-position: top left;
-                    z-index: 9999;
-                    pointer-events: none;
-                    background-color: #111;
-                    border: 1px solid #444;
+                    position: absolute; left: 0; top: 0; width: auto; height: auto;
+                    max-width: ${IMAGE_WIDTH}px; max-height: ${IMAGE_HEIGHT}px;
+                    object-fit: contain; object-position: top left; z-index: 9999;
+                    pointer-events: none; background-color: #111; border: 1px solid #444;
                 }
 				.zml-image-preview.left { object-position: top right; }
                 .zml-image-browser-folder {
@@ -94,49 +85,37 @@ app.registerExtension({
 				.zml-image-browser-arrow { display: inline-block; width: 15px; }
                 .zml-image-browser-contents { display: none; padding-left: 15px; }
                 .zml-image-browser-file {
-                    display: block; width: calc(100% - 10px); margin-bottom: 5px;
-                    text-align: left; padding: 5px; background-color: #444;
-                    border: 1px solid #555; border-radius: 3px; cursor: pointer;
+                    display: block; width: calc(100% - 10px); margin-bottom: 5px; text-align: left;
+                    padding: 5px; background-color: #444; border: 1px solid #555;
+                    border-radius: 3px; cursor: pointer;
                 }
                 .zml-image-browser-file:hover { background-color: #555; border-color: #777; }
-                
-                /* --- 标签化图片加载器UI样式 --- */
                 .zml-tag-modal {
-                    position: fixed; top: 5%; left: 5%; right: 5%; bottom: 5%;
-                    background-color: #222; border: 1px solid #555; border-radius: 8px;
-                    z-index: 1001; display: flex; flex-direction: column;
-                    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                    position: fixed; top: 5%; left: 5%; right: 5%; bottom: 5%; background-color: #222;
+                    border: 1px solid #555; border-radius: 8px; z-index: 1001;
+                    display: flex; flex-direction: column; box-shadow: 0 0 20px rgba(0,0,0,0.5);
                 }
                 .zml-tag-modal-header {
                     padding: 10px; background-color: #333; font-size: 1.2em;
                     border-bottom: 1px solid #555; text-align: center;
                 }
-                .zml-tag-modal-breadcrumbs {
-                    padding: 10px; background-color: #2a2a2a; border-bottom: 1px solid #444; color: #ccc;
-                }
+                .zml-tag-modal-breadcrumbs { padding: 10px; background-color: #2a2a2a; border-bottom: 1px solid #444; color: #ccc; }
                 .zml-tag-modal-content {
-                    flex-grow: 1; padding: 15px; overflow-y: auto;
-                    display: flex; flex-direction: column; gap: 20px;
+                    flex-grow: 1; padding: 15px; overflow-y: auto; display: flex;
+                    flex-direction: column; gap: 20px;
                 }
-                .zml-folder-container {
-                    display: flex; flex-wrap: wrap; gap: 10px;
-                    padding-bottom: 15px; border-bottom: 1px solid #444;
-                }
-                .zml-image-container {
-                    display: flex; flex-wrap: wrap; gap: 10px;
-                }
+                .zml-folder-container { display: flex; flex-wrap: wrap; gap: 10px; padding-bottom: 15px; border-bottom: 1px solid #444; }
+                .zml-image-container { display: flex; flex-wrap: wrap; gap: 10px; }
                 .zml-tag-btn {
                     padding: 8px 16px; border: 1px solid #4a5a79; border-radius: 20px;
-                    background-color: #4a5a79; cursor: pointer; color: #e0e5ff;
-                    transition: all 0.2s;
+                    background-color: #4a5a79; cursor: pointer; color: #e0e5ff; transition: all 0.2s;
                 }
                 .zml-tag-btn:hover { background-color: #5a6a89; border-color: #7a8ab9; color: #fff; }
                 .zml-img-btn {
-                    padding: 10px 15px; border: 1px solid #555; border-radius: 5px;
-                    background-color: #444; cursor: pointer; color: #eee;
-                    transition: background-color 0.2s, border-color 0.2s;
-                    text-align: center; display: flex; flex-direction: column;
-                    align-items: center; min-width: 120px; max-width: 150px;
+                    padding: 10px 15px; border: 1px solid #555; border-radius: 5px; background-color: #444;
+                    cursor: pointer; color: #eee; transition: background-color 0.2s, border-color 0.2s;
+                    text-align: center; display: flex; flex-direction: column; align-items: center;
+                    min-width: 120px; max-width: 150px;
                 }
                 .zml-img-btn:hover { background-color: #555; border-color: #777; }
                 .zml-img-btn span { word-break: break-all; }
@@ -145,36 +124,25 @@ app.registerExtension({
                     padding: 10px 20px; border-top: 1px solid #444; background-color: #333;
                     display: flex; justify-content: space-between; align-items: center;
                 }
-                .zml-info-text {
-                    font-size: 0.8em; color: #999;
-                }
-                /* [修改] 底部右侧动作按钮的容器 */
-                .zml-footer-actions {
-                    display: flex; align-items: center; gap: 10px;
-                }
-                .zml-tag-selected-count {
-                    color: #ccc; margin: 0 10px; /* 作为分隔 */
-                }
-                .zml-action-btn {
-                    padding: 8px 16px; border: none;
-                    color: white; border-radius: 5px; cursor: pointer;
-                    transition: background-color 0.2s;
-                }
-                /* [修改2] 撤回按钮 */
+                .zml-info-text { font-size: 0.8em; color: #999; }
+                .zml-footer-actions { display: flex; align-items: center; gap: 10px; }
+                .zml-tag-selected-count { color: #ccc; margin: 0 10px; }
+                .zml-action-btn { padding: 8px 16px; border: none; color: white; border-radius: 5px; cursor: pointer; transition: background-color 0.2s; }
                 .zml-undo-btn { background-color: #8a6d3b; }
                 .zml-undo-btn:hover { background-color: #a0804a; }
                 .zml-undo-btn:disabled { background-color: #555; color: #888; cursor: not-allowed; }
-                /* [修改1] 清空按钮 */
                 .zml-clear-btn { background-color: #8c5a5a; }
                 .zml-clear-btn:hover { background-color: #a06a6a; }
                 .zml-tag-modal-confirm-btn { background-color: #57a; }
                 .zml-tag-modal-confirm-btn:hover { background-color: #68b; }
+                .zml-preview-toggle { display: flex; align-items: center; gap: 6px; color: #ccc; font-size: 0.9em; cursor: pointer; }
 			`,
 			parent: document.body,
 		});
     },
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name === "ZML_TextBlockLoader") {
+            // ZML_TextBlockLoader code remains unchanged
             const onNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 onNodeCreated?.apply(this, arguments);
@@ -279,7 +247,8 @@ app.registerExtension({
                 this.addWidget("button", "打开标签选择器", "open", () => {
                     const backdrop = $el("div", { style: { position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0, 0, 0, 0.7)", zIndex: "1000" } });
 
-                    // --- [修改] 创建所有底部按钮 ---
+                    const previewToggleCheckbox = $el("input", { type: "checkbox" });
+                    const previewToggle = $el("label.zml-preview-toggle", [ previewToggleCheckbox, $el("span", { textContent: "启用预览" }) ]);
                     const undoBtn = $el("button.zml-action-btn.zml-undo-btn", { textContent: "撤回" });
                     const clearBtn = $el("button.zml-action-btn.zml-clear-btn", { textContent: "清空" });
                     const confirmBtn = $el("button.zml-action-btn.zml-tag-modal-confirm-btn", { textContent: "确认" });
@@ -287,20 +256,25 @@ app.registerExtension({
                     
                     const modal = $el("div.zml-tag-modal", [
                         $el("div.zml-tag-modal-header", { textContent: "标签化图片选择器" }),
-                        $el("div.zml-tag-modal-breadcrumbs", { textContent: "路径: /" }),
+                        $el("div.zml-tag-modal-breadcrumbs"),
                         $el("div.zml-tag-modal-content"),
-                        // --- [修改] 使用新的底部栏布局 ---
+                        // --- [修改] 在底部栏左侧增加提示文字 ---
                         $el("div.zml-tag-modal-footer", [
-                            $el("span.zml-info-text", { textContent: "读取路径: ./output" }),
-                            $el("div.zml-footer-actions", [ undoBtn, clearBtn, countEl, confirmBtn ])
+                            $el("div", [
+                                $el("span.zml-info-text", { textContent: "读取路径: ./output" }),
+                                $el("br"),
+                                $el("span.zml-info-text", { textContent: "开启预览后，快速滑动鼠标查看多个图片可能会导致控制台有报错信息，但完全可以忽略掉它" })
+                            ]),
+                            $el("div.zml-footer-actions", [ previewToggle, undoBtn, clearBtn, countEl, confirmBtn ])
                         ])
                     ]);
 
                     document.body.appendChild(backdrop);
                     document.body.appendChild(modal);
 
-                    let fileTree = {}, currentPath = [], selectedFiles = [];
-                    let historyStack = []; // [修改2] 用于存储历史记录的栈
+                    let fileTree = {}, currentPath = [], selectedFiles = [], historyStack = [];
+                    let isPreviewEnabled = localStorage.getItem("zml.previewEnabled") !== "false";
+                    previewToggleCheckbox.checked = isPreviewEnabled;
 
                     const widget = this.widgets.find(w => w.name === "selected_files_json");
                     if (widget && widget.value) {
@@ -313,26 +287,27 @@ app.registerExtension({
                     const contentEl = modal.querySelector(".zml-tag-modal-content");
                     const breadcrumbsEl = modal.querySelector(".zml-tag-modal-breadcrumbs");
                     
-                    const updateUiState = () => {
-                        countEl.textContent = `已选: ${selectedFiles.length}`;
-                        undoBtn.disabled = historyStack.length === 0;
-                    };
+                    const updateUiState = () => { countEl.textContent = `已选: ${selectedFiles.length}`; undoBtn.disabled = historyStack.length === 0; };
                     updateUiState();
 
                     const closeModal = () => { hideImage(); backdrop.remove(); modal.remove(); };
                     backdrop.onclick = closeModal;
                     confirmBtn.onclick = () => { if (widget) widget.value = JSON.stringify(selectedFiles); closeModal(); };
                     
+                    previewToggle.onchange = () => {
+                        isPreviewEnabled = previewToggleCheckbox.checked;
+                        localStorage.setItem("zml.previewEnabled", isPreviewEnabled);
+                    };
+
                     const pushHistory = () => {
-                        // 使用JSON方法进行深拷贝，防止引用问题
                         historyStack.push(JSON.parse(JSON.stringify(selectedFiles)));
-                        if (historyStack.length > 20) historyStack.shift(); // 限制历史记录数量
+                        if (historyStack.length > 20) historyStack.shift();
                         updateUiState();
                     };
 
                     undoBtn.onclick = () => {
                         if (historyStack.length > 0) {
-                            selectedFiles = historyStack.pop(); // 恢复上一个状态
+                            selectedFiles = historyStack.pop();
                             renderCurrentLevel();
                             updateUiState();
                         }
@@ -372,13 +347,14 @@ app.registerExtension({
                                     imgBtn.classList.add("selected");
                                 }
                                 imgBtn.addEventListener("mouseover", () => {
+                                    if (!isPreviewEnabled) return;
                                     const subfolder = encodeRFC3986URIComponent(fileInfo.subfolder), filename = encodeRFC3986URIComponent(fileInfo.filename);
                                     imageHost.src = `${ZML_API_PREFIX}/view_image?filename=${filename}&subfolder=${subfolder}&t=${+new Date()}`;
                                     showImage(imgBtn);
                                 });
                                 imgBtn.addEventListener("mouseout", hideImage);
                                 imgBtn.onclick = () => {
-                                    pushHistory(); // 在每次点击时保存当前状态
+                                    pushHistory();
                                     const index = selectedFiles.findIndex(f => f.filename === fileInfo.filename && f.subfolder === fileInfo.subfolder);
                                     if (index > -1) {
                                         selectedFiles.splice(index, 1);
