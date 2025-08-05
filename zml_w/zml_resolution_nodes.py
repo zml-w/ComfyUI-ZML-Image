@@ -159,67 +159,139 @@ class ZML_AddTextWatermark:
                 self._draw_text_manually(draw, lines, x, y, font, fill_color, 不透明度, 字符间距, 行间距, 书写方向)
             processed_images.append(self.pil_to_tensor(pil_image))
         return (torch.cat(processed_images, dim=0), help_text)
-
 # ============================== 限制纯色背景大小节点 ==============================
 class ZML_CropPureColorBackground:
     @classmethod
     def INPUT_TYPES(cls):
-        return { "required": { "图像": ("IMAGE",), "处理模式": (["矩形", "不规则形状"],), "背景颜色": (["白色", "绿色", "透明"],), "阈值": ("INT", {"default": 10, "min": 0, "max": 255}), "不规则形状保留像素": ("INT", {"default": 50, "min": 0, "max": 256}), "透明图像添加背景": (["无", "白色", "绿色"],), } }
+        return { 
+            "required": { 
+                "图像": ("IMAGE",), 
+                "处理模式": (["矩形", "不规则形状"],), 
+                "背景颜色": (["白色", "黑色", "绿色", "透明", "自定义"],), 
+                "阈值": ("INT", {"default": 10, "min": 0, "max": 255}), 
+                "不规则形状保留像素": ("INT", {"default": 50, "min": 0, "max": 256}), 
+                "透明图像添加背景": (["无", "白色", "绿色"],), 
+            },
+            "optional": {
+                "自定义背景颜色": ("STRING", {"default": "#000000"}),
+            }
+        }
     RETURN_TYPES = ("IMAGE",); RETURN_NAMES = ("图像",); FUNCTION = "crop_background"; CATEGORY = "image/ZML_图像/图像"
+    
     def tensor_to_pil(self, tensor):
         img_np = np.clip(255. * tensor.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
         return Image.fromarray(img_np, 'RGBA' if img_np.shape[-1] == 4 else 'RGB')
-    def pil_to_tensor(self, pil_image): return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
-    def crop_background(self, 图像, 处理模式, 背景颜色, 阈值, 不规则形状保留像素, 透明图像添加背景):
+
+    def pil_to_tensor(self, pil_image): 
+        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def crop_background(self, 图像, 处理模式, 背景颜色, 阈值, 不规则形状保留像素, 透明图像添加背景, 自定义背景颜色="#000000"):
         cropped_images = []
         for img_tensor in 图像:
             pil_image = self.tensor_to_pil(img_tensor).convert("RGBA"); np_image = np.array(pil_image); h, w = np_image.shape[:2]
+            
             target_rgb = None
-            if 背景颜色 != "透明": target_rgb = np.array((255, 255, 255) if 背景颜色 == "白色" else (0, 255, 0), dtype=np.float32)
+            if 背景颜色 != "透明":
+                if 背景颜色 == "白色":
+                    target_rgb = np.array([255, 255, 255], dtype=np.float32)
+                elif 背景颜色 == "黑色":
+                    target_rgb = np.array([0, 0, 0], dtype=np.float32)
+                elif 背景颜色 == "绿色":
+                    target_rgb = np.array([0, 255, 0], dtype=np.float32)
+                elif 背景颜色 == "自定义":
+                    try:
+                        hex_color = 自定义背景颜色.lstrip('#')
+                        r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                        target_rgb = np.array([r, g, b], dtype=np.float32)
+                    except Exception as e:
+                        print(f"ZML_CropPureColorBackground: 无效的自定义颜色代码'{自定义背景颜色}'，将使用黑色作为默认背景。错误: {e}")
+                        target_rgb = np.array([0, 0, 0], dtype=np.float32)
+
             def is_background(y, x):
                 pixel = np_image[y, x]
-                if 背景颜色 == "透明": return pixel[3] == 0
-                else: return np.sum(np.abs(pixel[:3].astype(np.float32) - target_rgb)) <= 阈值
+                if 背景颜色 == "透明": 
+                    return pixel[3] == 0
+                else: 
+                    if target_rgb is None: return False
+                    return np.sum(np.abs(pixel[:3].astype(np.float32) - target_rgb)) <= 阈值
+
             final_pil = None
             if 处理模式 == "矩形":
-                if 背景颜色 == "透明": mask = np_image[:, :, 3] > 0
-                else: mask = np.sum(np.abs(np_image[..., :3].astype(np.float32) - target_rgb), axis=-1) > 阈值
+                if 背景颜色 == "透明": 
+                    mask = np_image[:, :, 3] > 0
+                else: 
+                    if target_rgb is None:
+                        mask = np.ones((h, w), dtype=bool)
+                    else:
+                        mask = np.sum(np.abs(np_image[..., :3].astype(np.float32) - target_rgb), axis=-1) > 阈值
+                
                 coords = np.argwhere(mask)
-                if coords.size > 0: y1, x1 = coords.min(axis=0); y2, x2 = coords.max(axis=0); final_pil = Image.fromarray(np_image[y1:y2+1, x1:x2+1], 'RGBA')
-            else:
-                border_bg_mask = np.zeros((h, w), dtype=bool); q = deque()
-                for c in range(w):
-                    if is_background(0, c) and not border_bg_mask[0, c]: q.append((0, c)); border_bg_mask[0, c] = True
-                    if is_background(h-1, c) and not border_bg_mask[h-1, c]: q.append((h-1, c)); border_bg_mask[h-1, c] = True
-                for r in range(1, h-1):
-                    if is_background(r, 0) and not border_bg_mask[r, 0]: q.append((r, 0)); border_bg_mask[r, 0] = True
-                    if is_background(r, w-1) and not border_bg_mask[r, w-1]: q.append((r, w-1)); border_bg_mask[r, w-1] = True
-                while q:
-                    y, x = q.popleft()
-                    for dy, dx in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                        ny, nx = y + dy, x + dx
-                        if 0 <= ny < h and 0 <= nx < w and not border_bg_mask[ny, nx] and is_background(ny, nx): border_bg_mask[ny, nx] = True; q.append((ny, nx))
-                final_alpha_mask = None
-                if 不规则形状保留像素 > 0 and binary_dilation is not None:
-                    dilated_mask = binary_dilation(~border_bg_mask, iterations=不规则形状保留像素); final_alpha_mask = ~dilated_mask
-                else: final_alpha_mask = border_bg_mask
-                output_np = np_image.copy(); output_np[final_alpha_mask, 3] = 0
-                visible_coords = np.argwhere(~final_alpha_mask)
-                if visible_coords.size > 0: y1, x1 = visible_coords.min(axis=0); y2, x2 = visible_coords.max(axis=0); final_pil = Image.fromarray(output_np[y1:y2+1, x1:x2+1], 'RGBA')
+                if coords.size > 0: 
+                    y1, x1 = coords.min(axis=0); y2, x2 = coords.max(axis=0)
+                    final_pil = Image.fromarray(np_image[y1:y2+1, x1:x2+1], 'RGBA')
+            else: # 不规则形状
+                if binary_dilation is None:
+                    print("ZML_CropPureColorBackground: Scipy not installed. '不规则形状' mode is disabled.")
+                    final_pil = pil_image
+                else:
+                    border_bg_mask = np.zeros((h, w), dtype=bool); q = deque()
+                    for c in range(w):
+                        if is_background(0, c) and not border_bg_mask[0, c]: q.append((0, c)); border_bg_mask[0, c] = True
+                        if is_background(h-1, c) and not border_bg_mask[h-1, c]: q.append((h-1, c)); border_bg_mask[h-1, c] = True
+                    for r in range(1, h-1):
+                        if is_background(r, 0) and not border_bg_mask[r, 0]: q.append((r, 0)); border_bg_mask[r, 0] = True
+                        if is_background(r, w-1) and not border_bg_mask[r, w-1]: q.append((r, w-1)); border_bg_mask[r, w-1] = True
+                    
+                    while q:
+                        y, x = q.popleft()
+                        for dy, dx in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                            ny, nx = y + dy, x + dx
+                            if 0 <= ny < h and 0 <= nx < w and not border_bg_mask[ny, nx] and is_background(ny, nx): 
+                                border_bg_mask[ny, nx] = True; q.append((ny, nx))
+                    
+                    final_alpha_mask = None
+                    if 不规则形状保留像素 > 0:
+                        dilated_mask = binary_dilation(~border_bg_mask, iterations=不规则形状保留像素)
+                        final_alpha_mask = ~dilated_mask
+                    else: 
+                        final_alpha_mask = border_bg_mask
+                    
+                    output_np = np_image.copy()
+                    output_np[final_alpha_mask, 3] = 0
+                    visible_coords = np.argwhere(~final_alpha_mask)
+                    if visible_coords.size > 0: 
+                        y1, x1 = visible_coords.min(axis=0); y2, x2 = visible_coords.max(axis=0)
+                        final_pil = Image.fromarray(output_np[y1:y2+1, x1:x2+1], 'RGBA')
+
             if final_pil is None:
-                fallback_color = (0,0,0,0); bg_map = {"白色": (255, 255, 255), "绿色": (0, 255, 0)}
-                if 背景颜色 == "透明" and 透明图像添加背景 != "无": final_pil = Image.new("RGB", (1, 1), bg_map[透明图像添加背景])
+                fallback_color = (0,0,0,0)
+                bg_map = {"白色": (255, 255, 255), "绿色": (0, 255, 0)}
+                if 背景颜色 == "透明" and 透明图像添加背景 != "无": 
+                    final_pil = Image.new("RGB", (1, 1), bg_map[透明图像添加背景])
                 else:
                     if 背景颜色 == "白色": fallback_color = (255,255,255,255)
+                    elif 背景颜色 == "黑色": fallback_color = (0,0,0,255)
                     elif 背景颜色 == "绿色": fallback_color = (0,255,0,255)
+                    elif 背景颜色 == "自定义":
+                        try:
+                            hex_color = 自定义背景颜色.lstrip('#')
+                            r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                            fallback_color = (r, g, b, 255)
+                        except:
+                            fallback_color = (0,0,0,255)
                     final_pil = Image.new("RGBA", (1, 1), fallback_color)
+
             if final_pil.mode == 'RGBA' and 透明图像添加背景 != "无":
                 bg_color = {"白色": (255, 255, 255), "绿色": (0, 255, 0)}[透明图像添加背景]
-                background = Image.new("RGB", final_pil.size, bg_color); background.paste(final_pil, (0, 0), final_pil); final_pil = background
+                background = Image.new("RGB", final_pil.size, bg_color)
+                background.paste(final_pil, (0, 0), final_pil)
+                final_pil = background
+            
             cropped_images.append(self.pil_to_tensor(final_pil))
+        
         return (torch.cat(cropped_images, dim=0),)
 
-# ============================== 添加纯色背景节点 (新) ==============================
+# ============================== 添加纯色背景节点==============================
 class ZML_AddSolidColorBackground:
     @classmethod
     def INPUT_TYPES(cls):
@@ -331,7 +403,7 @@ class ZML_AddSolidColorBackground:
         return (torch.cat(processed_images, dim=0),)
 
 
-# ============================== 可视化裁剪图像节点 [MODIFIED] ==============================
+# ============================== 可视化裁剪图像节点 ==============================
 class ZML_VisualCropImage:
     @classmethod
     def INPUT_TYPES(cls):
@@ -428,7 +500,7 @@ class ZML_VisualCropImage:
         
         return (final_cropped_tensors, final_mask_tensors)
 
-# ============================== 合并图像节点 (新) [MODIFIED] ==============================
+# ============================== 合并图像节点==============================
 class ZML_MergeImages:
     @classmethod
     def INPUT_TYPES(cls):
@@ -841,7 +913,7 @@ class ZML_TextToImage:
         
         return (output_tensor, help_text)
 
-# ============================== 图像绘画节点 ==============================
+# ============================== 画画 ==============================
 class ZML_ImagePainter:
     @classmethod
     def INPUT_TYPES(cls):
@@ -909,7 +981,7 @@ class ZML_ImagePainter:
 
         return (torch.cat(processed_images, dim=0),)
 
-# ============================== 取色器节点 (新) ==============================
+# ============================== 取色器节点 ==============================
 class ZML_ColorPicker:
     @classmethod
     def INPUT_TYPES(cls):

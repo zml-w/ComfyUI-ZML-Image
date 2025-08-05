@@ -1,5 +1,5 @@
 # zml_w/zml_review_nodes.py
-# FINAL VERSION (UI Localization & Custom Skin Support)
+# FINAL & COMPLETE VERSION
 
 import torch
 import numpy as np
@@ -19,7 +19,7 @@ import cv2
 import server
 from aiohttp import web
 
-# --- API Endpoint (Correct and Final) ---
+# --- API Endpoint (For Pause Node) ---
 @server.PromptServer.instance.routes.post("/zml/unpause")
 async def unpause_node(request):
     try:
@@ -35,10 +35,9 @@ async def unpause_node(request):
         else:
             return web.Response(status=400, text="Node ID or selected output not provided")
     except Exception as e:
-        # print(f"[ZML_PauseNode] Error unpausing: {e}") 
         return web.Response(status=500, text=f"Error: {e}")
 
-# --- Compatibility Loader (Unchanged) ---
+# --- Compatibility Loader ---
 @contextmanager
 def force_compatibility_mode():
     original_load = torch.load
@@ -175,7 +174,7 @@ class ZML_PauseNode:
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "STRING",)
     RETURN_NAMES = ("图像_1", "图像_2", "图像_3", "help",)
     FUNCTION = "pause_workflow"
-    CATEGORY = "image/ZML_图像/图像"
+    CATEGORY = "image/ZML_图像/工具"
 
     def pause_workflow(self, 暂停时长, 占位符大小, 图像=None, prompt=None, unique_id=None):
         help_text = "如果后续的节点要连上VAE和采样器，那需要将占位符大小改为64x64像素。如果只是对图像进行处理，则可以选择1x1像素。如果后面接保存图像节点，那推荐你使用我的‘ZML_保存图像’节点，它在收到1*1的图像和64*64的纯黑图像时并不会保存，和这个节点完美契合。"
@@ -235,18 +234,107 @@ class ZML_PauseNode:
 
         return tuple(outputs) + (help_text,)
 
+# --- API Endpoint (For Audio Player) ---
+@server.PromptServer.instance.routes.get("/zml/get_audio")
+async def get_audio_file(request):
+    filename = request.query.get('filename')
+    if not filename:
+        return web.Response(status=400, text="Filename not provided")
 
+    base_filename = os.path.basename(filename)
+    if base_filename != filename:
+        return web.Response(status=403, text="Forbidden")
+    
+    audio_dir = os.path.join(os.path.dirname(__file__), "audio")
+    file_path = os.path.join(audio_dir, base_filename)
+
+    if not os.path.exists(file_path):
+        return web.Response(status=404, text=f"Audio file not found: {filename}")
+
+    content_type = 'application/octet-stream'
+    if filename.lower().endswith('.mp3'):
+        content_type = 'audio/mpeg'
+    elif filename.lower().endswith('.wav'):
+        content_type = 'audio/wav'
+    elif filename.lower().endswith('.ogg'):
+        content_type = 'audio/ogg'
+
+    try:
+        with open(file_path, 'rb') as f:
+            audio_data = f.read()
+        return web.Response(body=audio_data, content_type=content_type)
+    except Exception as e:
+        return web.Response(status=500, text=f"Error reading file: {e}")
+
+# ============================== AnyType HACK ==============================
+# Hack: 一个在“不等于”比较中永远返回 False 的字符串类型，从而在逻辑上“等于”任何东西。
+class AnyType(str):
+    def __ne__(self, __value: object) -> bool:
+        return False
+
+# 创建一个 AnyType 的实例，其值为通配符"*"
+any = AnyType("*")
+# =====================================================================================
+
+
+# ============================== 音频播放器节点 ==============================
+class ZML_AudioPlayerNode:
+    # 恢复为终端节点 (Output Node)
+    OUTPUT_NODE = True
+
+    def __init__(self):
+        self.audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio")
+        os.makedirs(self.audio_dir, exist_ok=True)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio")
+        if not os.path.exists(audio_dir):
+            os.makedirs(audio_dir)
+        
+        supported_formats = ('.mp3', '.wav', '.ogg')
+        audio_files = [f for f in os.listdir(audio_dir) if f.lower().endswith(supported_formats)]
+        
+        if not audio_files:
+            audio_files = ["(空) 请在zml_w/audio文件夹中放入音频"]
+
+        return {
+            "required": {
+                "音频文件": (audio_files,),
+            },
+            "optional": {
+                # 使用 any 对象实例作为类型，而不是字符串 "*"
+                "任意": (any, {}), 
+            }
+        }
+
+    # 返回类型为空，因为它是一个终端节点
+    RETURN_TYPES = ()
+    FUNCTION = "do_nothing"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def do_nothing(self, 音频文件, 任意=None):
+        # 后端什么也不做，返回一个空的 UI 结果即可
+        return {"ui": {"text": ["played audio"]}}
+
+# ============================== MAPPINGS ==============================
+
+# 更新 NODE_CLASS_MAPPINGS
 NODE_CLASS_MAPPINGS = {
     "ZML_AutoCensorNode": ZML_AutoCensorNode,
     "ZML_CustomCensorNode": ZML_CustomCensorNode,
     "ZML_MaskSplitNode": ZML_MaskSplitNode,
     "ZML_MaskSplitNode_Five": ZML_MaskSplitNode_Five,
     "ZML_PauseNode": ZML_PauseNode,
+    "ZML_AudioPlayerNode": ZML_AudioPlayerNode,
 }
+
+# 更新 NODE_DISPLAY_NAME_MAPPINGS
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_AutoCensorNode": "ZML_自动打码",
     "ZML_CustomCensorNode": "ZML_自定义打码",
     "ZML_MaskSplitNode": "ZML_遮罩分割",
     "ZML_MaskSplitNode_Five": "ZML_遮罩分割-五",
     "ZML_PauseNode": "ZML_图像暂停",
+    "ZML_AudioPlayerNode": "ZML_音频播放器",
 }

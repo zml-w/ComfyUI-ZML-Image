@@ -140,11 +140,12 @@ class ZML_PresetText:
     _presets_map = {}
     _preset_names = []
 
-    @classmethod
-    def _load_presets(cls):
-        """从文本文件中加载、解析和准备预设。"""
+    def __init__(self):
+        """
+        构造函数，仅在节点实例被创建时（即拖动到画布上时）执行。
+        我们在这里检查并创建默认的预设文件。
+        """
         preset_dir = os.path.dirname(PRESET_FILE_PATH)
-        # 如果目录或文件不存在，则创建它们并填入默认内容
         if not os.path.exists(preset_dir):
             os.makedirs(preset_dir, exist_ok=True)
         if not os.path.exists(PRESET_FILE_PATH):
@@ -153,14 +154,26 @@ class ZML_PresetText:
                 f.write("001 #-# 1girl, solo, best quality\n")
                 f.write("002 #-# 1boy, safe, masterpiece\n")
 
+    @classmethod
+    def _load_presets(cls):
+        """
+        从文本文件中加载、解析和准备预设。
+        这个方法现在只负责读取文件，不再创建文件。
+        """
+        # 每次加载前清空旧数据
+        cls._presets_map.clear()
+        cls._preset_names.clear()
+
+        if not os.path.exists(PRESET_FILE_PATH):
+            # 如果文件不存在，只在下拉菜单中给一个提示
+            cls._preset_names.append("预设文件不存在 (请添加节点到画布以自动创建)")
+            cls._presets_map["预设文件不存在 (请添加节点到画布以自动创建)"] = ""
+            return
+
         try:
             with open(PRESET_FILE_PATH, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
-            # 每次加载前清空旧数据
-            cls._presets_map.clear()
-            cls._preset_names.clear()
-
             for line in lines:
                 line = line.strip()
                 # 跳过空行或以'#'开头的注释行

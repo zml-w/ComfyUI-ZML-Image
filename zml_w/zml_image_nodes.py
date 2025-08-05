@@ -1,5 +1,8 @@
-# custom_nodes/zml_image_nodes.py
+# custom_nodes/zml_w/zml_image_nodes.py
 
+import server
+from aiohttp import web
+from PIL import Image, PngImagePlugin
 import os
 import time
 import torch
@@ -10,6 +13,7 @@ import datetime
 import re
 import json
 import random
+import urllib.parse
 
 # 获取所有支持的图像扩展名
 if hasattr(folder_paths, 'supported_image_extensions'):
@@ -444,7 +448,7 @@ class ZML_SaveImage:
             else:
                 return {"result": (output_image, help_output)}
 
-# ============================== 加载图像节点 (读取PNG文本块) (已修改) ==============================
+# ============================== 加载图像节点 (读取PNG文本块)==============================
 class ZML_LoadImage:
     """
     ZML 加载图像节点
@@ -539,11 +543,13 @@ class ZML_LoadImage:
             return "无效图像文件: {}".format(图像)
         return True
 
-# ============================== 从路径加载图像节点 (Corrected) ==============================
+# zml_image_nodes.py 中需要替换的 ZML_LoadImageFromPath 类
+
+# ============================== 从路径加载图像节点  ==============================
 class ZML_LoadImageFromPath:
     """
     ZML 从路径加载图像节点
-    支持随机、顺序、全部索引和读取PNG文本块
+    支持随机、顺序、全部索引和读取PNG文本块。
     """
     
     def __init__(self):
@@ -552,7 +558,6 @@ class ZML_LoadImageFromPath:
         self.cache_time = 0
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
 
-        # 将计数器文件路径移动到 "counter" 子文件夹
         self.counter_dir = os.path.join(self.node_dir, "counter")
         os.makedirs(self.counter_dir, exist_ok=True)
         self.counter_file = os.path.join(self.counter_dir, "路径图像计数.json")
@@ -560,15 +565,13 @@ class ZML_LoadImageFromPath:
         self.reset_counters_on_startup()
     
     def reset_counters_on_startup(self):
-        """在ComfyUI启动时, 创建一个空的JSON计数器文件."""
         try:
-            with open(self.counter_file, "w", encoding="utf-8") as f: # 修正编码为 utf-8
+            with open(self.counter_file, "w", encoding="utf-8") as f:
                 json.dump({}, f)
         except Exception as e:
             print(f"重置路径加载图像计数JSON文件失败: {str(e)}")
 
     def get_all_counts(self):
-        """读取整个JSON文件并返回所有节点的计数."""
         try:
             with open(self.counter_file, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -576,11 +579,9 @@ class ZML_LoadImageFromPath:
             return {}
 
     def get_sequential_count(self, node_id):
-        """获取指定node_id的当前计数值."""
         return self.get_all_counts().get(node_id, 0)
 
     def increment_sequential_count(self, node_id):
-        """为指定的node_id增加计数并保存回文件."""
         all_counts = self.get_all_counts()
         current_count = all_counts.get(node_id, 0)
         all_counts[node_id] = current_count + 1
@@ -606,63 +607,63 @@ class ZML_LoadImageFromPath:
             },
         }
     
+    # 1. 修改返回类型和名称
     RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT")
-    RETURN_NAMES = ("图像", "文本块", "Name", "宽", "高")
+    RETURN_NAMES = ("图像列表", "文本块", "Name", "宽", "高")
     FUNCTION = "load_image"
     CATEGORY = "image/ZML_图像/图像"
+
+    # 2. 新增 OUTPUT_IS_LIST 属性，声明第一个输出是列表
+    OUTPUT_IS_LIST = (True, False, False, False, False,)
     
     def _load_single_image_from_path(self, image_path, read_text_block):
-        """Helper function to load one image and its metadata."""
         with Image.open(image_path) as img:
             text_content = "未读取"
             if read_text_block == "启用":
-                text_content = img.text.get("comfy_text_block", "未找到文本块内容")
+                if hasattr(img, 'text') and "comfy_text_block" in img.text:
+                    text_content = img.text["comfy_text_block"]
+                else:
+                    text_content = "未找到文本块内容"
             
             img = ImageOps.exif_transpose(img)
             width, height = img.size
             
-            image = img.convert("RGB")
+            if img.mode == 'RGBA' or img.mode == 'LA' or (img.mode == 'P' and 'transparency' in img.info):
+                image = img.convert('RGBA')
+            else:
+                image = img.convert('RGB')
+            
             image_np = np.array(image).astype(np.float32) / 255.0
             image_tensor = torch.from_numpy(image_np)[None,]
             
             return (image_tensor, text_content, int(width), int(height))
 
     def normalize_name(self, filename, level):
-        """根据正规等级处理图像名称"""
-        if not filename:
-            return ""
-        
+        if not filename: return ""
         base_name = os.path.splitext(filename)[0]
-        if level == "禁用":
-            return filename
-        elif level == "仅名称":
-            return base_name
-        elif level == "正规":
-            return base_name.split("#-#", 1)[0].strip()
+        if level == "禁用": return filename
+        elif level == "仅名称": return base_name
+        elif level == "正规": return base_name.split("#-#", 1)[0].strip()
         elif level == "反向":
             parts = base_name.split("#-#")
             return parts[-1].strip() if len(parts) > 0 else base_name
 
     def scan_directory(self, folder_path):
-        """扫描文件夹获取图像文件列表（按名称递增排序）"""
-        if not os.path.isdir(folder_path):
-            return []
-        
+        if not os.path.isdir(folder_path): return []
         files = [f for f in os.listdir(folder_path) if os.path.splitext(f)[1].lower() in supported_image_extensions]
         files.sort()
         return files
 
     def load_image(self, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
         current_time = time.time()
-        if (not self.cached_files or 
-            文件夹路径 != self.cached_path or 
-            current_time - self.cache_time > 60):
+        if (not self.cached_files or 文件夹路径 != self.cached_path or current_time - self.cache_time > 60):
             self.cached_files = self.scan_directory(文件夹路径)
             self.cached_path = 文件夹路径
             self.cache_time = current_time
         
+        # 3. 修改：当找不到文件时，返回空的列表
         if not self.cached_files:
-            return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "未找到图像", "没有找到图像", 64, 64)
+            return ([], "未找到图像", "没有找到图像", 0, 0)
 
         if 索引模式 == "全部":
             image_tensors = []
@@ -674,31 +675,26 @@ class ZML_LoadImageFromPath:
                     (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
                     image_tensors.append(tensor)
                     if first_image_meta is None:
-                        # Store metadata from the first image
                         first_image_meta = {
-                            "text": text,
-                            "name": self.normalize_name(filename, 正规化),
-                            "width": width,
-                            "height": height
+                            "text": text, "name": self.normalize_name(filename, 正规化),
+                            "width": width, "height": height
                         }
                 except Exception as e:
                     print(f"加载图像失败: {filename}, 错误: {e}")
                     continue
             
             if not image_tensors:
-                return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "加载失败", "文件夹中所有图像均加载失败", 64, 64)
+                return ([], "加载失败", "文件夹中所有图像均加载失败", 0, 0)
 
-            # Combine all tensors into a single batch
-            batch_tensor = torch.cat(image_tensors, dim=0)
-            return (batch_tensor, first_image_meta["text"], first_image_meta["name"], first_image_meta["width"], first_image_meta["height"])
+            # 4. 修改：不再合并，直接返回图像列表
+            # 其他输出仍然使用第一张图的信息
+            return (image_tensors, first_image_meta["text"], first_image_meta["name"], first_image_meta["width"], first_image_meta["height"])
 
-        # For all other modes (that select a single image)
+        # 处理单图模式 (固定、随机、顺序)
         num_files = len(self.cached_files)
         index = 0
-        if 索引模式 == "固定索引":
-            index = 图像索引 % num_files
-        elif 索引模式 == "随机索引":
-            index = random.randint(0, num_files - 1)
+        if 索引模式 == "固定索引": index = 图像索引 % num_files
+        elif 索引模式 == "随机索引": index = random.randint(0, num_files - 1)
         elif 索引模式 == "顺序":
             count = self.get_sequential_count(unique_id)
             index = count % num_files
@@ -710,23 +706,242 @@ class ZML_LoadImageFromPath:
         try:
             (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
             normalized_name = self.normalize_name(selected_filename, 正规化)
-            return (tensor, text, normalized_name, width, height)
+            # 5. 修改：将单个张量包装在列表中以匹配输出类型
+            return ([tensor], text, normalized_name, width, height)
         except Exception as e:
-            return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "加载失败", f"加载失败: {selected_filename}, {e}", 64, 64)
+            # 6. 修改：加载失败时也返回空列表
+            return ([], "加载失败", f"加载失败: {selected_filename}, {e}", 0, 0)
     
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
 
-# ============================== 节点注册 ==============================
+# ============================== 文本块加载器 ==============================
+class ZML_TextBlockLoader:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                # 这个输入框是多行的，并且会被JS代码动态填充
+                "text_from_image": ("STRING", {"multiline": True, "default": "点击下方按钮从图片加载..."}),
+            },
+            "hidden": {
+                 # 用一个隐藏值来触发刷新，如果需要的话
+                "trigger": ("INT", {"default": 0}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本块",)
+    FUNCTION = "load_text"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def load_text(self, text_from_image, trigger=0):
+        # 功能非常简单，就是把输入框的文本直接输出
+        return (text_from_image,)
+
+# ============================== API 路由设置 ==============================
+
+# API 1: 获取 output 文件夹中的所有图片 (支持子文件夹)
+@server.PromptServer.instance.routes.get("/zml/get_output_images")
+async def get_output_images(request):
+    output_dir = folder_paths.get_output_directory()
+    image_files = []
+    
+    for root, dirs, files in os.walk(output_dir, followlinks=True):
+        for file in files:
+            if os.path.splitext(file)[1].lower() in supported_image_extensions:
+                subfolder = os.path.relpath(root, output_dir)
+                if subfolder == '.':
+                    subfolder = ''
+                image_files.append({
+                    "filename": file,
+                    "subfolder": subfolder.replace("\\", "/") # 统一路径分隔符
+                })
+
+    # 按完整路径排序
+    image_files.sort(key=lambda x: os.path.join(x['subfolder'], x['filename']))
+    return web.json_response(image_files)
+
+# API 2: 根据文件名获取图片中的文本块
+@server.PromptServer.instance.routes.get("/zml/get_image_text_block")
+async def get_image_text_block(request):
+    if "filename" not in request.query:
+        return web.Response(status=400, text="Filename parameter is missing")
+    
+    filename = request.query.get("filename")
+    subfolder = request.query.get("subfolder", "")
+
+    # 安全检查: 防止路径穿越
+    if ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
+        return web.Response(status=400, text="Invalid filename or subfolder")
+
+    image_path = os.path.join(folder_paths.get_output_directory(), subfolder, filename)
+
+    if not os.path.exists(image_path):
+        return web.Response(status=404, text="Image not found")
+
+    try:
+        with Image.open(image_path) as img:
+            text_content = img.text.get("comfy_text_block", "未在此图片中找到'comfy_text_block'。")
+            return web.json_response({"text": text_content})
+    except Exception as e:
+        return web.Response(status=500, text=f"Error reading image: {e}")
+
+# API 3: 用于预览图像
+@server.PromptServer.instance.routes.get("/zml/view_image")
+async def view_image(request):
+    if "filename" not in request.query:
+        return web.Response(status=400, text="Filename parameter is missing")
+
+    filename = request.query.get("filename")
+    subfolder = request.query.get("subfolder", "")
+    
+    # 安全检查
+    if ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
+        return web.Response(status=400, text="Invalid filename or subfolder")
+    
+    # 构建安全的文件路径
+    image_path = os.path.join(folder_paths.get_output_directory(), subfolder, filename)
+    image_path = os.path.abspath(image_path)
+    
+    # 再次确认路径在允许的目录内
+    if not image_path.startswith(os.path.abspath(folder_paths.get_output_directory())):
+        return web.Response(status=403, text="Forbidden")
+
+    if os.path.exists(image_path):
+        return web.FileResponse(image_path)
+    else:
+        return web.Response(status=404, text="Image not found")
+
+# ============================== 标签化图片加载器 ==============================
+class ZML_TagImageLoader:
+    """
+    ZML 标签化图片加载器
+    - 图像输出为列表，以支持不同分辨率。
+    - 文本块输出为单个字符串，用分隔符连接。
+    - 新增文本块加载状态的验证输出。
+    """
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "selected_files_json": ("STRING", {"multiline": True, "default": "[]"}),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    # 1. 新增第三个输出端口
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING",)
+    RETURN_NAMES = ("图像列表", "文本块", "文本块验证",) 
+    FUNCTION = "load_images_by_tags"
+    CATEGORY = "image/ZML_图像/工具"
+
+    # 2. 更新列表输出设置：只有第一个输出(图像)是列表
+    OUTPUT_IS_LIST = (True, False, False,)
+
+    def load_images_by_tags(self, selected_files_json="[]", **kwargs):
+        # 如果没有选择，则返回空的图像列表和两个空字符串
+        if not selected_files_json or selected_files_json == "[]":
+            return ([], "", "")
+
+        try:
+            file_list = json.loads(selected_files_json)
+        except json.JSONDecodeError:
+            print("ZML_TagImageLoader: JSON解析失败。")
+            return ([], "", "JSON解析失败")
+
+        if not isinstance(file_list, list) or not file_list:
+            return ([], "", "选择列表为空或格式不正确")
+
+        image_tensors = []
+        text_blocks = []
+        validation_messages = [] # 用于存储验证信息的列表
+
+        for item in file_list:
+            subfolder = item.get("subfolder", "")
+            filename = item.get("filename", "")
+
+            if ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
+                validation_messages.append(f"{filename}：无效路径，已跳过")
+                continue
+            
+            image_path = os.path.join(self.output_dir, subfolder, filename)
+
+            if not os.path.exists(image_path):
+                validation_messages.append(f"{filename}：文件不存在，已跳过")
+                continue
+
+            try:
+                with Image.open(image_path) as img:
+                    has_text_block = False
+                    text_content = "未在此图片中找到文本块。"
+                    
+                    # 检查并读取文本块
+                    if hasattr(img, 'text') and "comfy_text_block" in img.text:
+                        text_content = img.text["comfy_text_block"]
+                        has_text_block = True
+                    
+                    text_blocks.append(text_content)
+                    
+                    # 记录验证信息
+                    if has_text_block:
+                        validation_messages.append(f"{filename}：含有文本块")
+                    else:
+                        validation_messages.append(f"{filename}：不含文本块")
+
+                    # 处理图像
+                    img = ImageOps.exif_transpose(img)
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    image_np = np.array(img).astype(np.float32) / 255.0
+                    image_tensor = torch.from_numpy(image_np)[None,]
+                    image_tensors.append(image_tensor)
+                    
+            except Exception as e:
+                # 记录加载失败的验证信息
+                validation_messages.append(f"{filename}：加载失败 ({e})")
+
+        if not image_tensors:
+            final_validation_output = "\n".join(validation_messages)
+            return ([], "", final_validation_output)
+
+        # 3. 准备两个字符串输出
+        # 将所有文本块合并成一个字符串
+        text_separator = "\n\n"
+        final_text_output = text_separator.join(text_blocks)
+        
+        # 将所有验证信息合并成一个字符串
+        validation_separator = "\n\n" + ("-"*25) + "\n\n"
+        final_validation_output = validation_separator.join(validation_messages)
+        
+        # 4. 返回三个输出
+        return (image_tensors, final_text_output, final_validation_output)
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+
+# ============================== 节点注册 (更新) ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_SaveImage": ZML_SaveImage,
     "ZML_LoadImage": ZML_LoadImage,
-    "ZML_LoadImageFromPath": ZML_LoadImageFromPath
+    "ZML_LoadImageFromPath": ZML_LoadImageFromPath,
+    "ZML_TextBlockLoader": ZML_TextBlockLoader, # 注册新节点
+    "ZML_TagImageLoader": ZML_TagImageLoader, # <--- 添加这一行
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SaveImage": "ZML_保存图像",
     "ZML_LoadImage": "ZML_加载图像",
-    "ZML_LoadImageFromPath": "ZML_从路径加载图像"
+    "ZML_LoadImageFromPath": "ZML_从路径加载图像",
+    "ZML_TextBlockLoader": "ZML_文本块加载器", # 新节点的显示名称
+    "ZML_TagImageLoader": "ZML_标签化图片加载器", # <--- 添加这一行
 }
