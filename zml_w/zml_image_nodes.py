@@ -881,7 +881,9 @@ class ZML_TagImageLoader:
             try:
                 with Image.open(image_path) as img:
                     has_text_block = False
-                    text_content = "未在此图片中找到文本块。"
+                    
+                    # 【关键修改】如果找不到文本块，则使用英文逗号作为占位符
+                    text_content = ","
                     
                     # 检查并读取文本块
                     if hasattr(img, 'text') and "comfy_text_block" in img.text:
@@ -890,7 +892,7 @@ class ZML_TagImageLoader:
                     
                     text_blocks.append(text_content)
                     
-                    # 记录验证信息
+                    # 记录验证信息 (此部分逻辑不变)
                     if has_text_block:
                         validation_messages.append(f"{filename}：含有文本块")
                     else:
