@@ -74,17 +74,12 @@
 
 ### 我打算再加一些工具脚本，脚本可能会越来越多，为了方便干脆另起一个仓库了：
 
-#### https://github.com/zml-w/ZML-Image-Script/tree/main
+https://github.com/zml-w/ZML-Image-Script/tree/main
 
 ### 大部分节点都有“help”输出接口，里面写着节点的详细介绍，没写的基本上都是随便试试就知道怎么用的。
 
-——————————————
-
-
-
-
 <details>
-<summary>部分节点图像展示</summary>
+<summary>部分节点展示</summary>
   
 > <img width="1632" height="875" alt="1" src="https://github.com/user-attachments/assets/77ccda88-1851-4948-a45b-2f42b46d7f53" />
 >
