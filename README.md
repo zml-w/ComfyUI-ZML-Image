@@ -1,4 +1,4 @@
-<img width="1601" height="784" alt="2" src="https://github.com/user-attachments/assets/a8e909a6-d260-4229-85ce-a64305f0a8c9" /># 版本更新介绍
+# 版本更新介绍
 > 最新更新日期：2025.08.06 又一次超级大更新！！
 
 > 增加了标签化图像加载节点，UI借鉴了weilin，可以通过点击按钮来批量加载图像并读取文本块，鼠标悬停在按钮上还可以预览图像！
