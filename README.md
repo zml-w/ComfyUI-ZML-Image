@@ -1,4 +1,4 @@
-# 版本更新介绍
+<img width="1601" height="784" alt="2" src="https://github.com/user-attachments/assets/a8e909a6-d260-4229-85ce-a64305f0a8c9" /># 版本更新介绍
 > 最新更新日期：2025.08.06 又一次超级大更新！！
 
 > 增加了标签化图像加载节点，UI借鉴了weilin，可以通过点击按钮来批量加载图像并读取文本块，鼠标悬停在按钮上还可以预览图像！
@@ -81,3 +81,37 @@
 > 17、图像暂停节点，节点会卡住15s，让你选择这次的图像输出哪个管道，只做了三个输出接口，未选中的接口只会输出占位图像，而不会输出输入的图像。可以接在采样器后面，图像满意就保存，不满意就仅预览，一般的图像保存节点会将占位图像也保存了，即使它只有1\\\*1像素，但用ZML\\\_保存图像节点就不会，专门做了优化。
 
 </details>
+
+
+<details>
+<summary>部分节点图像展示</summary>
+  
+> <img width="1632" height="875" alt="1" src="https://github.com/user-attachments/assets/77ccda88-1851-4948-a45b-2f42b46d7f53" />
+>
+> <img width="1601" height="784" alt="2" src="https://github.com/user-attachments/assets/21f9d0aa-834e-48dd-9384-584e0a215284" />
+>
+> <img width="1210" height="913" alt="3" src="https://github.com/user-attachments/assets/3359a2fd-a55a-4068-aa25-0338298b7c0b" />
+>
+> <img width="1698" height="862" alt="4" src="https://github.com/user-attachments/assets/059746d8-31e0-4c97-a620-6e490a6a79b4" />
+> 
+> <img width="1607" height="755" alt="5" src="https://github.com/user-attachments/assets/8fe91394-8874-4eb4-85dc-d7f8ce6a86da" />
+>
+> <img width="1719" height="745" alt="6" src="https://github.com/user-attachments/assets/2eee7e21-52a0-4d6a-bd9f-8edd52e84eff" />
+>
+> <img width="1261" height="762" alt="7" src="https://github.com/user-attachments/assets/a1e67136-0ed7-4664-8f3a-3de69282f71b" />
+>
+> <img width="982" height="893" alt="8" src="https://github.com/user-attachments/assets/dd905d68-138d-4c30-a0e2-dbdb206c11e9" />
+>
+> <img width="1254" height="753" alt="9" src="https://github.com/user-attachments/assets/14e6f8df-8b36-4d06-a827-8bbdef1b0e8f" />
+>
+> <img width="1389" height="683" alt="10" src="https://github.com/user-attachments/assets/0757a6e3-d557-4284-ad56-dcc0e004b41c" />
+>
+> <img width="1294" height="816" alt="11" src="https://github.com/user-attachments/assets/de9b70a5-03b0-426a-90fc-bf1d8295abf2" />
+>
+> <img width="1131" height="712" alt="12" src="https://github.com/user-attachments/assets/c0d253aa-96c2-4a9e-b64f-682f3908fa2e" />
+>
+> <img width="1196" height="639" alt="13" src="https://github.com/user-attachments/assets/c1793444-d44f-47cd-89a4-67c408cde01e" />
+
+</details>
+
+
