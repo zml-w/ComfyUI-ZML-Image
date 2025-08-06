@@ -254,7 +254,7 @@ function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, 
     });
 }
 
-// ======================= ZML_MergeImages 节点 =======================
+// ======================= ZML_MergeImages 节点 (使用旧版逻辑) =======================
 app.registerExtension({
     name: "ZML.MergeImages",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
@@ -283,6 +283,7 @@ function showMergeModal(node, widget) {
 
     const bgUrl = bgNode.imgs[0].src;
     const fgSources = [];
+    // 旧版前端逻辑，fgSources数组的顺序就是图层的顺序
     if (fgNode1 && fgNode1.imgs) fgSources.push({ index: 0, name: 1, url: fgNode1.imgs[0].src, image: fgNode1.imgs[0] });
     if (fgNode2 && fgNode2.imgs) fgSources.push({ index: 1, name: 2, url: fgNode2.imgs[0].src, image: fgNode2.imgs[0] });
     if (fgNode3 && fgNode3.imgs) fgSources.push({ index: 2, name: 3, url: fgNode3.imgs[0].src, image: fgNode3.imgs[0] });
@@ -302,7 +303,7 @@ function showMergeModal(node, widget) {
                  </style>
                  <div class="zml-editor-main" id="zml-editor-main-container"></div>
                  <div id="zml-layer-controls"></div>
-                 <p class="zml-editor-tip">自由移动、缩放、旋转前景图层。点击图像或下方按钮可将其置顶。</p>
+                 <p class="zml-editor-tip">自由移动、缩放、旋转前景图层。</p>
                  <div class="zml-editor-controls" id="zml-merge-controls">
                     <button id="zml-reset-btn" class="zml-editor-btn" style="background-color: #5bc0de;">重置当前层</button>
                     <button id="zml-confirm-btn" class="zml-editor-btn" style="background-color: #4CAF50;">确认</button>
@@ -332,26 +333,27 @@ function showMergeModal(node, widget) {
                 uiCanvas.setBackgroundImage(fBg, uiCanvas.renderAll.bind(uiCanvas), { scaleX: uiCanvasScale, scaleY: uiCanvasScale });
             });
             
+            // [旧版逻辑] 解析时，假设数据是包含参数的数组
             let loadedParams = [];
             try {
-                const data = JSON.parse(widget.data.value);
-                if(data && data.layers && data.layers.length > 0) {
-                   loadedParams = data.layers;
+                loadedParams = JSON.parse(widget.data.value);
+                if (!Array.isArray(loadedParams)) {
+                    loadedParams = [];
                 }
             } catch (e) { /* 忽略解析错误，使用默认位置 */ }
             
             fgArray.forEach((fgData, index) => {
                  fabric.Image.fromURL(fgData.url, (fFg) => {
-                    fFg.set({ id: fgData.index, borderColor: 'yellow', cornerColor: '#f0ad4e', cornerStrokeColor: 'black', cornerStyle: 'circle', transparentCorners: false, borderScaleFactor: 2 });
+                    // 旧版逻辑：id就是index
+                    fFg.set({ id: index, borderColor: 'yellow', cornerColor: '#f0ad4e', cornerStrokeColor: 'black', cornerStyle: 'circle', transparentCorners: false, borderScaleFactor: 2 });
                     
-                    let transformParams = loadedParams.find(p => p.original_index === fgData.index)?.params;
-
+                    let transformParams = loadedParams[index];
                     if (!transformParams || transformParams.left === undefined) {
                         const fgImg = fgData.image;
                         const initialScale = (bgImg.naturalWidth * (0.3 + index*0.1)) / fgImg.naturalWidth;
                         transformParams = { left: bgImg.naturalWidth / 2, top: bgImg.naturalHeight / 2, scaleX: initialScale, scaleY: initialScale, angle: 0, originX: 'center', originY: 'center' };
                     }
-                    allLayerParams[fgData.index] = transformParams;
+                    allLayerParams[index] = transformParams;
                     
                     const displayParams = { ...transformParams };
                     displayParams.left *= uiCanvasScale;
@@ -361,21 +363,12 @@ function showMergeModal(node, widget) {
                     fFg.set(displayParams);
                     
                     uiCanvas.add(fFg);
-                    fabricLayers[fgData.index] = fFg;
+                    fabricLayers[index] = fFg;
 
                     if(index === 0) uiCanvas.setActiveObject(fFg);
                     uiCanvas.renderAll();
                 });
             });
-            
-            if (loadedParams.length > 0) {
-                setTimeout(() => {
-                    const sortedObjects = loadedParams.map(p => fabricLayers[p.original_index]).filter(Boolean);
-                    sortedObjects.forEach(obj => uiCanvas.bringToFront(obj));
-                    if(sortedObjects.length > 0) uiCanvas.setActiveObject(sortedObjects[sortedObjects.length-1]);
-                    uiCanvas.renderAll();
-                }, 200);
-            }
 
             uiCanvas.on('object:modified', (e) => {
                 if(!e.target) return;
@@ -388,53 +381,27 @@ function showMergeModal(node, widget) {
                 };
             });
              
-            const updateActiveButton = (activeObj) => {
-                if(!activeObj) return;
-                layerButtons.forEach((btn) => {
-                    if (btn.layerIndex === activeObj.id) {
-                        btn.classList.add('active');
-                    } else {
-                        btn.classList.remove('active');
-                    }
-                });
-            };
-
-            uiCanvas.on('mouse:down', function(options) {
-                if (options.target && options.target.id !== undefined) {
-                    const targetLayer = options.target;
-                    uiCanvas.bringToFront(targetLayer);
-                    uiCanvas.renderAll();
-                    updateActiveButton(targetLayer);
-                }
-            });
-
-            uiCanvas.on('selection:created', (e) => updateActiveButton(e.selected[0]));
-            uiCanvas.on('selection:updated', (e) => updateActiveButton(e.selected[0]));
-
             if (fgSources.length > 1) {
                 const layerControls = modal.querySelector('#zml-layer-controls');
-                fgSources.forEach((fg) => {
+                fgSources.forEach((fg, index) => {
                     const btn = document.createElement('button');
                     btn.textContent = `前景 ${fg.name}`;
                     btn.className = 'zml-editor-btn zml-layer-btn';
                     btn.style.backgroundColor = '#337ab7';
-                    btn.layerIndex = fg.index;
                     btn.onclick = () => {
-                        const targetLayer = fabricLayers[fg.index];
+                        const targetLayer = fabricLayers[index];
                         if(targetLayer) {
                            uiCanvas.setActiveObject(targetLayer);
                            uiCanvas.bringToFront(targetLayer);
                            uiCanvas.renderAll();
-                           updateActiveButton(targetLayer);
+                           layerButtons.forEach(b => b.classList.remove('active'));
+                           btn.classList.add('active');
                         }
                     };
                     layerControls.appendChild(btn);
                     layerButtons.push(btn);
                 });
-                
-                if(layerButtons.length > 0) {
-                    setTimeout(() => updateActiveButton(uiCanvas.getActiveObject() || fabricLayers[0]), 200);
-                }
+                if(layerButtons.length > 0) layerButtons[0].classList.add('active');
             }
         };
 
@@ -483,20 +450,8 @@ function showMergeModal(node, widget) {
         };
 
         modal.querySelector('#zml-confirm-btn').onclick = () => {
-            const orderedObjects = uiCanvas.getObjects().filter(o => o.id !== undefined);
-            
-            const orderedLayerData = orderedObjects.map(obj => {
-                return {
-                    original_index: obj.id,
-                    params: allLayerParams[obj.id]
-                };
-            });
-
-            const final_data = {
-                layers: orderedLayerData
-            };
-            
-            widget.data.value = JSON.stringify(final_data);
+            // 旧版逻辑：直接将参数数组字符串化
+            widget.data.value = JSON.stringify(allLayerParams);
             node.onWidgetValue_changed?.(widget.data, widget.data.value);
             closeModal(modal);
         };
@@ -708,15 +663,11 @@ app.registerExtension({
     },
 });
 
-
-// [--- 这是需要被完整替换的函数 ---]
 function showColorPickerModal(node, widget) {
-    // 模态框的HTML结构，新增了一个“吸管”按钮
     const modalHtml = `
         <div class="zml-modal" id="zml-color-picker-modal">
             <div class="zml-modal-content" style="max-width: 400px; padding: 20px;">
                 <style>
-                    /* 样式基本不变，只为新按钮添加一些间距 */
                     .zml-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1001; }
                     .zml-modal-content { background: #222; padding: 20px; border-radius: 8px; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; gap: 10px; }
                     .zml-color-controls { display: flex; flex-direction: column; gap: 15px; align-items: center; }
@@ -744,10 +695,8 @@ function showColorPickerModal(node, widget) {
     const confirmBtn = modal.querySelector('#zml-confirm-color-btn');
     const cancelBtn = modal.querySelector('#zml-cancel-color-btn');
     const outputPreview = modal.querySelector('#zml-output-preview');
-    const eyedropperBtn = modal.querySelector('#zml-eyedropper-btn'); // 获取吸管按钮
+    const eyedropperBtn = modal.querySelector('#zml-eyedropper-btn');
 
-    // --- 新增的吸管工具逻辑 ---
-    // 首先检查浏览器是否支持 EyeDropper API
     if (!window.EyeDropper) {
         eyedropperBtn.textContent = "浏览器不支持吸管";
         eyedropperBtn.disabled = true;
@@ -755,27 +704,18 @@ function showColorPickerModal(node, widget) {
         eyedropperBtn.onclick = async () => {
             const eyeDropper = new EyeDropper();
             try {
-                // 关键步骤：在调用吸管前，先隐藏我们的模态框（和黑色遮罩）
                 modal.style.display = 'none';
-
-                // 调用浏览器原生吸管工具
                 const result = await eyeDropper.open();
-
-                // 用户选择颜色后，用结果更新UI
                 const selectedColor = result.sRGBHex.toUpperCase();
                 colorInput.value = selectedColor;
                 outputPreview.textContent = selectedColor;
-
             } catch (e) {
-                // 用户按 Esc 键取消取色
                 console.log("吸管工具已取消。");
             } finally {
-                // 关键步骤：无论成功还是取消，都把我们的模态框重新显示出来
                 modal.style.display = 'flex';
             }
         };
     }
-    // --- 吸管工具逻辑结束 ---
 
     colorInput.oninput = (e) => {
         outputPreview.textContent = e.target.value.toUpperCase();
@@ -783,7 +723,6 @@ function showColorPickerModal(node, widget) {
 
     confirmBtn.onclick = () => {
         widget.data.value = colorInput.value.toUpperCase();
-        // 确保onWidgetValue_changed存在再调用，以兼容旧版ComfyUI
         if (node.onWidgetValue_changed) {
             node.onWidgetValue_changed(widget.data.name, widget.data.value);
         }
