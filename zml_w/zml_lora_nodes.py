@@ -240,10 +240,11 @@ class ZmlLoraMetadataParser:
                     version_desc = clean_html(raw_version_desc)
                     base_model = civitai_data.get('baseModel', 'N/A')
                     model_id = civitai_data.get('modelId')
+                    # BUG FIX: 修复了 'civitai' 未定义的错误，应使用 'civitai_data'
                     version_id = civitai_data.get('id')
                     civitai_link = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}" if model_id and version_id else "链接不可用"
 
-                    log_content_md = (
+                    log_content = (
                         f"--- 基础信息 ---\n"
                         f"基础模型: {base_model}\n"
                         f"C站链接: {civitai_link}\n\n"
@@ -252,7 +253,7 @@ class ZmlLoraMetadataParser:
                     )
                     log_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.log")
                     with open(log_dest_path, 'w', encoding='utf-8') as f:
-                        f.write(log_content_md)
+                        f.write(log_content)
                     print(f"[ZML_Parser] 介绍已保存: {log_dest_path}")
                 
                 parsed_info_str += "\n--- Civitai 信息 ---\n"
@@ -307,7 +308,7 @@ class ZmlLoraMetadataParser:
         help_content = "此节点用于解析LoRA模型文件，并从Civitai.com获取关联的元数据。\n1. 选择一个LoRA模型。\n2. 勾选需要保存的项目（图像、触发词、介绍）。\n3. 运行节点。\n4. 节点会自动计算文件哈希，访问Civitai API，并将获取到的文件保存到LoRA所在目录的 'zml' 子文件夹中。"
         return (preview_image_tensor, txt_content, log_content, parsed_info_str, help_content)
 
-# --- ZML LoraLoader 节点 (已修改) ---
+# --- ZML LoraLoader 节点 (已修正) ---
 class ZmlLoraLoader:
     def __init__(self):
         pass
@@ -316,13 +317,11 @@ class ZmlLoraLoader:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "模型": ("MODEL",),
+                "CLIP": ("CLIP",),
                 "lora_名称": (folder_paths.get_filename_list("loras"),),
                 "模型_强度": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "CLIP_强度": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
-            },
-            "optional": {
-                "模型": ("MODEL",),
-                "CLIP": ("CLIP",),
             }
         }
 
@@ -331,15 +330,14 @@ class ZmlLoraLoader:
     FUNCTION = "zml_load_lora"
     CATEGORY = "图像/ZML_图像/lora加载器"
 
-    def zml_load_lora(self, lora_名称, 模型_强度, CLIP_强度, 模型=None, CLIP=None):
-        model_out, clip_out = 模型, CLIP
+    def zml_load_lora(self, 模型, CLIP, lora_名称, 模型_强度, CLIP_强度):
+        lora_path = folder_paths.get_full_path("loras", lora_名称)
+        if lora_path:
+            lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+            model_out, clip_out = comfy.sd.load_lora_for_models(模型, CLIP, lora, 模型_强度, CLIP_强度)
+        else:
+            model_out, clip_out = (模型, CLIP)
 
-        if 模型 is not None:
-            lora_path = folder_paths.get_full_path("loras", lora_名称)
-            if lora_path:
-                lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
-                model_out, clip_out = comfy.sd.load_lora_for_models(模型, CLIP, lora, 模型_强度, CLIP_强度)
-        
         txt_content = ""
         log_content = ""
         help_content = "你好~\n加载lora的节点是基于ComfyUI-Custom-Scripts里的lora节点进行二次修改的，GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。\n感谢作者的付出~\n在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。\n文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。\n这真是一个伟大的创意，再次感谢原作者的付出。"
@@ -382,7 +380,6 @@ class ZmlLoraLoader:
             preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         
         return (model_out, clip_out, preview_image_tensor, txt_content, log_content, help_content)
-
 
 # --- ZML 原始 LoraLoaderModelOnly 节点（保留） ---
 class ZmlLoraLoaderModelOnly:
