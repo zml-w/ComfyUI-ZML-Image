@@ -1,5 +1,3 @@
-# custom_nodes/zml_text_nodes.py
-
 import os
 import folder_paths
 import re
@@ -12,8 +10,14 @@ import base64
 import html
 import random
 import json
+from aiohttp import web # 导入web模块
+import server # 导入server模块
 
 # ============================== 文本输入节点 ==============================
+
+# 定义 API 前缀
+ZML_API_PREFIX = "/zml" 
+
 class ZML_TextInput:
     """
     ZML 文本输入节点
@@ -1060,6 +1064,58 @@ class ZML_PresetResolution:
         width, height = self._resolutions_map.get(预设, (1024, 1024))
         help_text = "你好~欢迎使用ZML节点~\n此节点会读取 ‘/txt/Preset integer/Preset integer.txt’ 的文件。\n文件格式为“宽,高”，例如“1024,768”，每行一个分辨率。\n你可以通过点击“添加预设”按钮来快捷添加新的分辨率。\n祝你生活愉快，天天开心~"
         return (width, height, help_text)
+
+# ============================== API 路由（用于处理前端的添加预设请求）==============================
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/add_preset")
+async def add_preset_route(request):
+    """处理前端的文本预设添加请求"""
+    try:
+        data = await request.json()
+        name = data.get("name")
+        value = data.get("value")
+        separator = data.get("separator", "#-#")
+        
+        if not name or not value:
+            return web.Response(status=400, text="名称和内容不能为空")
+
+        new_preset_line = f"\n{name} {separator} {value}"
+        
+        # 写入预设文件
+        with open(PRESET_FILE_PATH, 'a', encoding='utf-8') as f:
+            f.write(new_preset_line)
+
+        return web.Response(status=200, text="预设已成功添加")
+    except Exception as e:
+        return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/add_resolution_preset")
+async def add_resolution_preset_route(request):
+    """处理前端的分辨率预设添加请求"""
+    try:
+        data = await request.json()
+        width = data.get("width")
+        height = data.get("height")
+
+        if not width or not height:
+            return web.Response(status=400, text="宽度和高度不能为空")
+
+        # 验证输入是否为有效的整数
+        try:
+            int(width)
+            int(height)
+        except ValueError:
+            return web.Response(status=400, text="宽度和高度必须是整数")
+
+        new_resolution_line = f"\n{width},{height}"
+        
+        # 写入分辨率预设文件
+        with open(PRESET_RESOLUTION_PATH, 'a', encoding='utf-8') as f:
+            f.write(new_resolution_line)
+
+        return web.Response(status=200, text="分辨率预设已成功添加")
+    except Exception as e:
+        return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
+        
 
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {

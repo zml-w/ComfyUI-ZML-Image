@@ -184,6 +184,8 @@ class ZmlLoraMetadataParser:
         return {
             "required": {
                 "lora_名称": (folder_paths.get_filename_list("loras"),),
+            },
+            "optional": {
                 "保存首张图像": ("BOOLEAN", {"default": False}),
                 "保存触发词为txt": ("BOOLEAN", {"default": False}),
                 "保存介绍为log": ("BOOLEAN", {"default": False}),
@@ -195,7 +197,7 @@ class ZmlLoraMetadataParser:
     FUNCTION = "parse_and_save_metadata"
     CATEGORY = "图像/ZML_图像/lora加载器"
     
-    def parse_and_save_metadata(self, lora_名称, 保存首张图像, 保存触发词为txt, 保存介绍为log):
+    def parse_and_save_metadata(self, lora_名称, 保存首张图像=False, 保存触发词为txt=False, 保存介绍为log=False):
         lora_full_path = folder_paths.get_full_path("loras", lora_名称)
         if not lora_full_path or not os.path.exists(lora_full_path):
             return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "", "", "错误: LoRA文件未找到", "")
@@ -240,7 +242,6 @@ class ZmlLoraMetadataParser:
                     version_desc = clean_html(raw_version_desc)
                     base_model = civitai_data.get('baseModel', 'N/A')
                     model_id = civitai_data.get('modelId')
-                    # BUG FIX: 修复了 'civitai' 未定义的错误，应使用 'civitai_data'
                     version_id = civitai_data.get('id')
                     civitai_link = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}" if model_id and version_id else "链接不可用"
 
@@ -308,7 +309,7 @@ class ZmlLoraMetadataParser:
         help_content = "此节点用于解析LoRA模型文件，并从Civitai.com获取关联的元数据。\n1. 选择一个LoRA模型。\n2. 勾选需要保存的项目（图像、触发词、介绍）。\n3. 运行节点。\n4. 节点会自动计算文件哈希，访问Civitai API，并将获取到的文件保存到LoRA所在目录的 'zml' 子文件夹中。"
         return (preview_image_tensor, txt_content, log_content, parsed_info_str, help_content)
 
-# --- ZML LoraLoader 节点 (已修正) ---
+# --- ZML LoraLoader 节点 ---
 class ZmlLoraLoader:
     def __init__(self):
         pass
@@ -317,9 +318,11 @@ class ZmlLoraLoader:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "lora_名称": (["None"] + folder_paths.get_filename_list("loras"),),
+            },
+            "optional": {
                 "模型": ("MODEL",),
                 "CLIP": ("CLIP",),
-                "lora_名称": (folder_paths.get_filename_list("loras"),),
                 "模型_强度": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "CLIP_强度": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
             }
@@ -330,58 +333,60 @@ class ZmlLoraLoader:
     FUNCTION = "zml_load_lora"
     CATEGORY = "图像/ZML_图像/lora加载器"
 
-    def zml_load_lora(self, 模型, CLIP, lora_名称, 模型_强度, CLIP_强度):
-        lora_path = folder_paths.get_full_path("loras", lora_名称)
-        if lora_path:
-            lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
-            model_out, clip_out = comfy.sd.load_lora_for_models(模型, CLIP, lora, 模型_强度, CLIP_强度)
-        else:
-            model_out, clip_out = (模型, CLIP)
+    def zml_load_lora(self, lora_名称, 模型=None, CLIP=None, 模型_强度=1.0, CLIP_强度=1.0):
+        model_out, clip_out = 模型, CLIP
 
+        if 模型 is not None and lora_名称 != "None":
+            lora_path = folder_paths.get_full_path("loras", lora_名称)
+            if lora_path:
+                lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+                model_out, clip_out = comfy.sd.load_lora_for_models(模型, CLIP, lora, 模型_强度, CLIP_强度)
+        
         txt_content = ""
         log_content = ""
         help_content = "你好~\n加载lora的节点是基于ComfyUI-Custom-Scripts里的lora节点进行二次修改的，GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。\n感谢作者的付出~\n在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。\n文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。\n这真是一个伟大的创意，再次感谢原作者的付出。"
         preview_image_tensor = None
         
-        lora_full_path = folder_paths.get_full_path("loras", lora_名称)
-        if lora_full_path:
-            lora_basename_no_ext = os.path.splitext(os.path.basename(lora_名称))[0]
-            lora_dir = os.path.dirname(lora_full_path)
-            
-            for ext in ['.png', '.jpg', '.jpeg', '.webp']:
-                preview_path = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}{ext}")
-                if os.path.isfile(preview_path):
+        if lora_名称 != "None":
+            lora_full_path = folder_paths.get_full_path("loras", lora_名称)
+            if lora_full_path:
+                lora_basename_no_ext = os.path.splitext(os.path.basename(lora_名称))[0]
+                lora_dir = os.path.dirname(lora_full_path)
+                
+                for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                    preview_path = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}{ext}")
+                    if os.path.isfile(preview_path):
+                        try:
+                            img = Image.open(preview_path)
+                            img_rgb = img.convert("RGB")
+                            img_array = np.array(img_rgb).astype(np.float32) / 255.0
+                            preview_image_tensor = torch.from_numpy(img_array).unsqueeze(0)
+                            break 
+                        except Exception as e:
+                            print(f"ZmlLoraLoader: 读取预览图时出错 {preview_path}: {e}")
+                
+                txt_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.txt")
+                if os.path.isfile(txt_filepath):
                     try:
-                        img = Image.open(preview_path)
-                        img_rgb = img.convert("RGB")
-                        img_array = np.array(img_rgb).astype(np.float32) / 255.0
-                        preview_image_tensor = torch.from_numpy(img_array).unsqueeze(0)
-                        break 
+                        with open(txt_filepath, 'r', encoding='utf-8') as f:
+                            txt_content = f.read()
                     except Exception as e:
-                        print(f"ZmlLoraLoader: 读取预览图时出错 {preview_path}: {e}")
-            
-            txt_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.txt")
-            if os.path.isfile(txt_filepath):
-                try:
-                    with open(txt_filepath, 'r', encoding='utf-8') as f:
-                        txt_content = f.read()
-                except Exception as e:
-                    print(f"ZmlLoraLoader: 读取txt文件时出错 {txt_filepath}: {e}")
+                        print(f"ZmlLoraLoader: 读取txt文件时出错 {txt_filepath}: {e}")
 
-            log_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.log")
-            if os.path.isfile(log_filepath):
-                try:
-                    with open(log_filepath, 'r', encoding='utf-8') as f:
-                        log_content = f.read()
-                except Exception as e:
-                    print(f"ZmlLoraLoader: 读取log文件时出错 {log_filepath}: {e}")
+                log_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.log")
+                if os.path.isfile(log_filepath):
+                    try:
+                        with open(log_filepath, 'r', encoding='utf-8') as f:
+                            log_content = f.read()
+                    except Exception as e:
+                        print(f"ZmlLoraLoader: 读取log文件时出错 {log_filepath}: {e}")
 
         if preview_image_tensor is None:
             preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         
         return (model_out, clip_out, preview_image_tensor, txt_content, log_content, help_content)
 
-# --- ZML 原始 LoraLoaderModelOnly 节点（保留） ---
+# --- ZML 原始 LoraLoaderModelOnly 节点 ---
 class ZmlLoraLoaderModelOnly:
     def __init__(self):
         pass
@@ -390,8 +395,10 @@ class ZmlLoraLoaderModelOnly:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "lora_名称": (["None"] + folder_paths.get_filename_list("loras"),),
+            },
+            "optional": {
                 "模型": ("MODEL",),
-                "lora_名称": (folder_paths.get_filename_list("loras"),),
                 "模型_强度": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
             }
         }
@@ -401,40 +408,43 @@ class ZmlLoraLoaderModelOnly:
     FUNCTION = "zml_load_lora_model_only"
     CATEGORY = "图像/ZML_图像/lora加载器"
 
-    def zml_load_lora_model_only(self, 模型, lora_名称, 模型_强度):
-        lora_path = folder_paths.get_full_path("loras", lora_名称)
-        lora = comfy.utils.load_torch_file(lora_path, safe_load=True) if lora_path else None
+    def zml_load_lora_model_only(self, lora_名称, 模型=None, 模型_强度=1.0):
+        model_out = 模型
         
-        model_out, _ = comfy.sd.load_lora_for_models(模型, None, lora, 模型_强度, 0.0) 
+        if 模型 is not None and lora_名称 != "None":
+            lora_path = folder_paths.get_full_path("loras", lora_名称)
+            lora = comfy.utils.load_torch_file(lora_path, safe_load=True) if lora_path else None
+            model_out, _ = comfy.sd.load_lora_for_models(模型, None, lora, 模型_强度, 0.0) 
         
         txt_content = ""
         log_content = ""
         help_content = "你好~\n加载lora的节点是基于ComfyUI-Custom-Scripts里的lora节点进行二次修改的，GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。\n感谢作者的付出~\n在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。\n文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。\n这真是一个伟大的创意，再次感谢原作者的付出。"
         
-        lora_full_path = folder_paths.get_full_path("loras", lora_名称)
-        if lora_full_path:
-            lora_basename_no_ext = os.path.splitext(os.path.basename(lora_名称))[0]
-            lora_dir = os.path.dirname(lora_full_path)
-            
-            txt_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.txt")
-            if os.path.isfile(txt_filepath):
-                try:
-                    with open(txt_filepath, 'r', encoding='utf-8') as f:
-                        txt_content = f.read()
-                except Exception as e:
-                    print(f"ZmlLoraLoaderModelOnly: 读取txt文件时出错 {txt_filepath}: {e}")
+        if lora_名称 != "None":
+            lora_full_path = folder_paths.get_full_path("loras", lora_名称)
+            if lora_full_path:
+                lora_basename_no_ext = os.path.splitext(os.path.basename(lora_名称))[0]
+                lora_dir = os.path.dirname(lora_full_path)
+                
+                txt_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.txt")
+                if os.path.isfile(txt_filepath):
+                    try:
+                        with open(txt_filepath, 'r', encoding='utf-8') as f:
+                            txt_content = f.read()
+                    except Exception as e:
+                        print(f"ZmlLoraLoaderModelOnly: 读取txt文件时出错 {txt_filepath}: {e}")
 
-            log_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.log")
-            if os.path.isfile(log_filepath):
-                try:
-                    with open(log_filepath, 'r', encoding='utf-8') as f:
-                        log_content = f.read()
-                except Exception as e:
-                    print(f"ZmlLoraLoaderModelOnly: 读取log文件时出错 {log_filepath}: {e}")
+                log_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.log")
+                if os.path.isfile(log_filepath):
+                    try:
+                        with open(log_filepath, 'r', encoding='utf-8') as f:
+                            log_content = f.read()
+                    except Exception as e:
+                        print(f"ZmlLoraLoaderModelOnly: 读取log文件时出错 {log_filepath}: {e}")
 
         return (model_out, txt_content, log_content, help_content)
 
-# --- ZML 原始 LoraLoaderFive 节点（保留） ---
+# --- ZML 原始 LoraLoaderFive 节点 ---
 class ZmlLoraLoaderFive:
     def __init__(self):
         pass
@@ -443,16 +453,15 @@ class ZmlLoraLoaderFive:
     def INPUT_TYPES(cls):
         lora_list = ["None"] + folder_paths.get_filename_list("loras")
         inputs = {
-            "required": {
-                "模型": ("MODEL",),
-            },
+            "required": {},
             "optional": {
+                "模型": ("MODEL",),
                 "CLIP": ("CLIP",),
             }
         }
         for i in range(1, 6):
-            inputs["required"][f"lora_{i}_名称"] = (lora_list,) 
-            inputs["required"][f"权重_{i}_强度"] = ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}) 
+            inputs["optional"][f"lora_{i}_名称"] = (lora_list,) 
+            inputs["optional"][f"权重_{i}_强度"] = ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}) 
         return inputs
 
     RETURN_TYPES = ("MODEL", "CLIP", "STRING")
@@ -460,7 +469,7 @@ class ZmlLoraLoaderFive:
     FUNCTION = "load_five_loras"
     CATEGORY = "图像/ZML_图像/lora加载器"
 
-    def load_five_loras(self, 模型, CLIP=None, **kwargs):
+    def load_five_loras(self, 模型=None, CLIP=None, **kwargs):
         model_out = 模型
         clip_out = CLIP
         all_txt_content = []
@@ -495,6 +504,7 @@ class ZmlLoraLoaderFive:
 
         final_txt_output = ", ".join(filter(None, all_txt_content))
         return (model_out, clip_out, final_txt_output)
+
 
 # 注册节点
 NODE_CLASS_MAPPINGS = {
