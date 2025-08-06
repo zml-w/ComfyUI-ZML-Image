@@ -500,7 +500,7 @@ class ZML_VisualCropImage:
         
         return (final_cropped_tensors, final_mask_tensors)
 
-# ============================== 合并图像节点==============================
+# ============================== 合并图像节点 (旧版) ==============================
 class ZML_MergeImages:
     @classmethod
     def INPUT_TYPES(cls):
@@ -521,23 +521,23 @@ class ZML_MergeImages:
     FUNCTION = "merge_images"
     CATEGORY = "image/ZML_图像/图像"
 
-    def _tensor_to_pil(self, tensor_slice):
+    def _tensor_to_pil(self, tensor_slice): # Renamed to avoid conflict
         img_np = np.clip(255. * tensor_slice.cpu().numpy(), 0, 255).astype(np.uint8)
         return Image.fromarray(img_np)
 
-    def _pil_to_tensor(self, pil_image):
+    def _pil_to_tensor(self, pil_image): # Renamed to avoid conflict
         return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
     def merge_images(self, 底图, 前景图_1, transform_data, 前景图_2=None, 前景图_3=None):
         try:
             data = json.loads(transform_data)
-            layer_params = data.get('layers', [])
-            if not data or not layer_params:
+            # 旧版逻辑：直接将数据作为参数数组
+            if not isinstance(data, list):
                 return (底图,)
+            layer_params = data
         except (json.JSONDecodeError, KeyError):
             return (底图,)
 
-        # 将前景图张量放入列表中，以便通过索引访问
         fg_images = [前景图_1, 前景图_2, 前景图_3]
         
         output_images = []
@@ -546,33 +546,25 @@ class ZML_MergeImages:
         for i in range(batch_size):
             bg_pil = self._tensor_to_pil(底图[i]).convert("RGBA")
 
-            # [MODIFIED] 按照前端发送过来的图层顺序进行迭代
-            for layer_info in layer_params:
-                original_idx = layer_info.get('original_index')
-                params = layer_info.get('params')
-
-                # 检查索引和参数的有效性
-                if original_idx is None or params is None or original_idx >= len(fg_images):
-                    continue
-
-                fg_tensor_batch = fg_images[original_idx]
-                
+            for layer_idx, fg_tensor_batch in enumerate(fg_images):
                 if fg_tensor_batch is not None and i < fg_tensor_batch.shape[0]:
+                    if layer_idx >= len(layer_params): continue
+                    
+                    params = layer_params[layer_idx]
+                    if not params: continue
+
                     fg_pil = self._tensor_to_pil(fg_tensor_batch[i]).convert("RGBA")
 
-                    # 应用变换
                     new_width = int(fg_pil.width * params.get('scaleX', 1.0))
                     new_height = int(fg_pil.height * params.get('scaleY', 1.0))
-                    if new_width <= 0 or new_height <= 0:
-                        continue
-                    
+                    if new_width <= 0 or new_height <= 0: continue
                     fg_pil_resized = fg_pil.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    
                     fg_pil_rotated = fg_pil_resized.rotate(-params.get('angle', 0), expand=True, resample=Image.Resampling.BICUBIC)
                     
                     paste_x = int(params.get('left', 0) - fg_pil_rotated.width / 2)
                     paste_y = int(params.get('top', 0) - fg_pil_rotated.height / 2)
 
-                    # 将处理后的前景图粘贴到底图上
                     bg_pil.paste(fg_pil_rotated, (paste_x, paste_y), fg_pil_rotated)
 
             final_pil = bg_pil.convert("RGB")
@@ -588,10 +580,10 @@ class ZML_TextToImage:
     def __init__(self):
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
         self.font_dir = os.path.join(self.node_dir, "Text")
-        self.counter_dir = os.path.join(self.node_dir, "counter") # 添加计数器目录
+        self.counter_dir = os.path.join(self.node_dir, "counter")
         os.makedirs(self.font_dir, exist_ok=True)
         os.makedirs(self.counter_dir, exist_ok=True)
-        self.counter_file = os.path.join(self.counter_dir, "TextToImage.txt") # 独立的计数文件
+        self.counter_file = os.path.join(self.counter_dir, "TextToImage.txt")
         self.ensure_counter_file()
 
     def ensure_counter_file(self):
@@ -622,7 +614,7 @@ class ZML_TextToImage:
             "required": {
                 "文本": ("STRING", {"multiline": True, "default": "ZML_文本"}),
                 "字体": (fonts,),
-                "字体大小": ("INT", {"default": 48, "min": 1, "max": 1024}), # 字体大小最小值为1
+                "字体大小": ("INT", {"default": 48, "min": 1, "max": 1024}),
                 "颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则每个字颜色随机"}),
                 "不透明度": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "书写方向": (["横排", "竖排"],),
@@ -650,8 +642,6 @@ class ZML_TextToImage:
     def _generate_random_dark_color(self, opacity):
         while True:
             r, g, b = random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)
-            # 简单判断亮度，避免生成过于接近背景色的颜色
-            # 这里可以根据背景颜色来调整亮度的判断，但为了简化，暂时保持一个通用判断
             brightness = (r * 299 + g * 587 + b * 114) / 1000
             if brightness < 180:
                 return (r, g, b, int(opacity * 255))
@@ -772,7 +762,6 @@ class ZML_TextToImage:
         count = self.increment_counter()
         help_text = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共生成了{count}次文本图像！！颜色代码那里留空时有惊喜哦~\n常用颜色代码：\n黑色: #000000, 白色: #FFFFFF, 红色: #FF0000, 蓝色: #0000FF, 黄色: #FFFF00, 绿色: #008000\n祝你天天开心~"
 
-        # 背景颜色映射
         bg_color_map = {
             "透明": (0, 0, 0, 0),
             "白色": (255, 255, 255, 255),
@@ -788,83 +777,67 @@ class ZML_TextToImage:
         if 字体 != "Default":
             try:
                 font_path = os.path.join(self.font_dir, 字体)
-                # 初始加载字体，字体大小可能在后续调整
                 font = ImageFont.truetype(font_path, 字体大小) 
             except Exception as e:
                 print(f"字体加载失败: {e}，将使用默认字体。")
-                font = ImageFont.load_default() # 确保在字体加载失败时使用默认字体
+                font = ImageFont.load_default()
 
         is_random_color = not 颜色.strip()
         fill_color = None if is_random_color else self.hex_to_rgba(颜色, 不透明度)
 
-        # 字体大小和图像尺寸计算逻辑
         final_font_size = 字体大小
         final_img_width = 图像宽
         final_img_height = 图像高
         
-        lines_for_calc = 文本.split('\n') # 用于计算尺寸的原始文本行
+        lines_for_calc = 文本.split('\n')
 
         if 图像大小模式 == "根据字体大小决定图像尺寸":
-            # 这种模式下，图像大小由字体大小和文本内容决定，忽略图像宽、图像高输入
-            # 先用当前字体大小预估文本块尺寸
-            # 修正：_prepare_lines方法需要char_spacing参数
-            lines_for_sizing = self._prepare_lines(文本, font, 字符间距, 书写方向) # 不限制max_dim
+            lines_for_sizing = self._prepare_lines(文本, font, 字符间距, 书写方向)
             text_block_width, text_block_height = self._get_text_block_size(lines_for_sizing, font, 字符间距, 行间距, 书写方向)
 
             final_img_width = text_block_width + (水平边距 * 2)
             final_img_height = text_block_height + (垂直边距 * 2)
             
-            # 确保尺寸不小于1
             final_img_width = max(1, final_img_width)
             final_img_height = max(1, final_img_height)
 
         elif 图像大小模式 == "根据图像尺寸决定字体大小":
-            # 这种模式下，字体大小将根据图像宽、图像高以及文本内容自动调整
-            # 忽略输入的字体大小
             target_width = max(1, 图像宽 - (水平边距 * 2))
             target_height = max(1, 图像高 - (垂直边距 * 2))
 
             if target_width <= 0 or target_height <= 0:
                 print(f"ZML_TextToImage: 计算文本区域尺寸为零或负数。图像宽:{图像宽}, 水平边距:{水平边距}, 图像高:{图像高}, 垂直边距:{垂直边距}")
-                # 设定一个默认的最小尺寸以避免错误
                 target_width = 1
                 target_height = 1
 
-            # 尝试不同的字体大小，直到文本适应图像尺寸
-            # 从一个较大的字体开始递减，或者从小字体开始递增
-            # 考虑到效率，这里我们从一个初始字体大小（例如200）开始，并递减
-            # 更精确的算法可能需要二分查找
             test_font_size = 200
             while test_font_size > 0:
                 try:
                     test_font = ImageFont.truetype(font_path, test_font_size) if 字体 != "Default" else ImageFont.load_default(test_font_size)
                 except Exception:
                     test_font = ImageFont.load_default(test_font_size) if test_font_size > 0 else ImageFont.load_default()
-                    if test_font_size == 0: break # 防止死循环
+                    if test_font_size == 0: break
 
                 lines_for_sizing = self._prepare_lines(文本, test_font, 字符间距, 书写方向, max_dim=target_width if 书写方向 == "横排" else target_height)
                 tb_w, tb_h = self._get_text_block_size(lines_for_sizing, test_font, 字符间距, 行间距, 书写方向)
 
                 if 书写方向 == "横排":
-                    # 如果文本宽度或高度超出目标，减小字体大小
                     if tb_w > target_width or tb_h > target_height:
                         test_font_size -= 1
                     else:
-                        # 找到了合适的字体大小，或者达到最小字体
                         final_font_size = test_font_size
                         break
-                else: # 竖排
+                else:
                     if tb_w > target_width or tb_h > target_height:
                         test_font_size -= 1
                     else:
                         final_font_size = test_font_size
                         break
                 
-                if test_font_size <= 1: # 防止无限循环，至少保证字体大小为1
+                if test_font_size <= 1:
                     final_font_size = 1
                     break
             
-            # 根据找到的最终字体大小重新加载字体
             try:
                 font = ImageFont.truetype(font_path, final_font_size) if 字体 != "Default" else ImageFont.load_default(final_font_size)
             except Exception:
@@ -874,39 +847,28 @@ class ZML_TextToImage:
             final_img_height = 图像高
 
         elif 图像大小模式 == "字体大小和图像尺寸独立计算":
-            # 字体大小使用输入的"字体大小"，图像尺寸使用输入的"图像宽"和"图像高"
-            # 文本将根据图像尺寸进行换行
             try:
                 font = ImageFont.truetype(font_path, 字体大小) if 字体 != "Default" else ImageFont.load_default(字体大小)
             except Exception:
-                font = ImageFont.load_default(字体大小) # 确保字体能加载
+                font = ImageFont.load_default(字体大小)
             
             final_img_width = 图像宽
             final_img_height = 图像高
 
-        # 创建图像画布
         text_image = Image.new('RGBA', (max(1, final_img_width), max(1, final_img_height)), current_bg_color)
         draw = ImageDraw.Draw(text_image)
 
-        # 根据模式重新准备行，特别是在"根据图像尺寸决定字体大小"和"字体大小和图像尺寸独立计算"模式下，
-        # 需要考虑图像尺寸进行换行
         if 图像大小模式 == "根据字体大小决定图像尺寸":
-            # 这种模式下，文本块尺寸已经预估好，不需要额外限制max_dim
-            # 修正：_prepare_lines方法需要char_spacing参数
             final_lines = self._prepare_lines(文本, font, 字符间距, 书写方向)
         else:
-            # 对于需要根据图像尺寸进行文本换行的模式
             max_text_dim = (final_img_width - (水平边距 * 2)) if 书写方向 == "横排" else (final_img_height - (垂直边距 * 2))
             final_lines = self._prepare_lines(文本, font, 字符间距, 书写方向, max_dim=max_text_dim)
 
-
-        # 计算文本绘制的起始位置（居中）
         text_block_actual_width, text_block_actual_height = self._get_text_block_size(final_lines, font, 字符间距, 行间距, 书写方向)
         
         start_x = 水平边距 + (final_img_width - (水平边距 * 2) - text_block_actual_width) // 2
         start_y = 垂直边距 + (final_img_height - (垂直边距 * 2) - text_block_actual_height) // 2
 
-        # 绘制文本
         self._draw_text_manually(draw, final_lines, start_x, start_y, font, fill_color, 不透明度, 字符间距, 行间距, 书写方向)
         
         output_tensor = self.pil_to_tensor(text_image)
