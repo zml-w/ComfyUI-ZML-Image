@@ -243,8 +243,7 @@ class ZmlLoraMetadataParser:
                     version_id = civitai_data.get('id')
                     civitai_link = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}" if model_id and version_id else "链接不可用"
 
-                    # --- 修改：调整log文件格式 ---
-                    log_content = (
+                    log_content_md = (
                         f"--- 基础信息 ---\n"
                         f"基础模型: {base_model}\n"
                         f"C站链接: {civitai_link}\n\n"
@@ -253,7 +252,7 @@ class ZmlLoraMetadataParser:
                     )
                     log_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.log")
                     with open(log_dest_path, 'w', encoding='utf-8') as f:
-                        f.write(log_content)
+                        f.write(log_content_md)
                     print(f"[ZML_Parser] 介绍已保存: {log_dest_path}")
                 
                 parsed_info_str += "\n--- Civitai 信息 ---\n"
@@ -267,7 +266,6 @@ class ZmlLoraMetadataParser:
         else:
             parsed_info_str = "未执行任何保存操作。\n请开启至少一个保存选项后重新运行。"
 
-        # --- 修改：为“解析”输出添加更多信息 ---
         try:
             lora_meta = comfy.utils.load_torch_file(lora_full_path, safe_load=True)
             if lora_meta and '__metadata__' in lora_meta:
@@ -286,7 +284,6 @@ class ZmlLoraMetadataParser:
             parsed_info_str += f"\n\n--- 训练详情 (来自文件) ---\n无法解析文件元数据: {e}"
 
 
-        # 读取本地文件作为输出
         preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         txt_content, log_content = "", ""
         for ext in ['.png', '.jpg', '.jpeg', '.webp']:
@@ -310,7 +307,7 @@ class ZmlLoraMetadataParser:
         help_content = "此节点用于解析LoRA模型文件，并从Civitai.com获取关联的元数据。\n1. 选择一个LoRA模型。\n2. 勾选需要保存的项目（图像、触发词、介绍）。\n3. 运行节点。\n4. 节点会自动计算文件哈希，访问Civitai API，并将获取到的文件保存到LoRA所在目录的 'zml' 子文件夹中。"
         return (preview_image_tensor, txt_content, log_content, parsed_info_str, help_content)
 
-# --- ZML LoraLoader 节点 (已修正) ---
+# --- ZML LoraLoader 节点 (已修改) ---
 class ZmlLoraLoader:
     def __init__(self):
         pass
@@ -319,11 +316,13 @@ class ZmlLoraLoader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "模型": ("MODEL",),
-                "CLIP": ("CLIP",),
                 "lora_名称": (folder_paths.get_filename_list("loras"),),
                 "模型_强度": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "CLIP_强度": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+            },
+            "optional": {
+                "模型": ("MODEL",),
+                "CLIP": ("CLIP",),
             }
         }
 
@@ -332,14 +331,15 @@ class ZmlLoraLoader:
     FUNCTION = "zml_load_lora"
     CATEGORY = "图像/ZML_图像/lora加载器"
 
-    def zml_load_lora(self, 模型, CLIP, lora_名称, 模型_强度, CLIP_强度):
-        lora_path = folder_paths.get_full_path("loras", lora_名称)
-        if lora_path:
-            lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
-            model_out, clip_out = comfy.sd.load_lora_for_models(模型, CLIP, lora, 模型_强度, CLIP_强度)
-        else:
-            model_out, clip_out = (模型, CLIP)
+    def zml_load_lora(self, lora_名称, 模型_强度, CLIP_强度, 模型=None, CLIP=None):
+        model_out, clip_out = 模型, CLIP
 
+        if 模型 is not None:
+            lora_path = folder_paths.get_full_path("loras", lora_名称)
+            if lora_path:
+                lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+                model_out, clip_out = comfy.sd.load_lora_for_models(模型, CLIP, lora, 模型_强度, CLIP_强度)
+        
         txt_content = ""
         log_content = ""
         help_content = "你好~\n加载lora的节点是基于ComfyUI-Custom-Scripts里的lora节点进行二次修改的，GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。\n感谢作者的付出~\n在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。\n文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。\n这真是一个伟大的创意，再次感谢原作者的付出。"
@@ -382,6 +382,7 @@ class ZmlLoraLoader:
             preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         
         return (model_out, clip_out, preview_image_tensor, txt_content, log_content, help_content)
+
 
 # --- ZML 原始 LoraLoaderModelOnly 节点（保留） ---
 class ZmlLoraLoaderModelOnly:
@@ -498,183 +499,12 @@ class ZmlLoraLoaderFive:
         final_txt_output = ", ".join(filter(None, all_txt_content))
         return (model_out, clip_out, final_txt_output)
 
-
-# --- 抽象基类，用于处理分层逻辑 (保留) ---
-class _LayeredLoraLoader(LoraLoader): 
-    DEFAULT_WEIGHTS = ""
-    LAYER_DESCRIPTION = "" # 将作为 hidden input 存在，同时用于 help output
-    LAYER_OFFSET = 0 
-
-    def __init__(self):
-        super().__init__()
-
-    @classmethod
-    def INPUT_TYPES(s):
-        inputs = {
-            "required": {}, 
-            "optional": {},
-            "hidden": {}
-        }
-        
-        inputs["optional"]["模型"] = ("MODEL",) 
-        inputs["optional"]["CLIP"] = ("CLIP",)
-        inputs["optional"]["lora_名称"] = (folder_paths.get_filename_list("loras"),)
-        inputs["optional"]["模型_强度"] = ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01})
-        inputs["optional"]["CLIP_强度"] = ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01})
-        inputs["optional"]["层_规格"] = ("STRING", {"default": "", "multiline": False, "placeholder": "指定层，如2,5-7,9"})
-        inputs["optional"]["层_权重"] = ("FLOAT", {"default": 0.0, "min": -5.0, "max": 5.0, "step": 0.1})
-        inputs["optional"]["输入_权重_字符串"] = ("STRING", {"default": "", "multiline": False, "placeholder": "串联输入的权重字符串"})
-        
-        inputs["hidden"]["层_描述"] = ("STRING", {"default": s.LAYER_DESCRIPTION, "multiline": True, "editable": False})
-        
-        return inputs
-
-    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING") 
-    RETURN_NAMES = ("输出_模型", "输出_CLIP", "分层_权重", "help") 
-    FUNCTION = "load_layered_lora"
-    CATEGORY = "图像/ZML_图像/lora加载器" 
-
-    def parse_layers(self, 层_规格: str) -> List[int]:
-        layers = []
-        parts = 层_规格.split(',')
-        for part in parts:
-            part = part.strip()
-            if not part:
-                continue
-            if '-' in part:
-                try:
-                    start, end = map(int, part.split('-'))
-                    layers.extend(range(start, end + 1))
-                except ValueError:
-                    pass
-            else:
-                try:
-                    layers.append(int(part))
-                except ValueError:
-                    pass
-        return layers
-
-    def control_lora_weights_str(self, 层_规格: str, 层_权重: float, 输入_权重_字符串: str = "") -> str:
-        current_weights = 输入_权重_字符串.strip() if 输入_权重_字符串.strip() else self.DEFAULT_WEIGHTS
-        weights_list = current_weights.split(',')
-
-        layers_to_adjust = self.parse_layers(层_规格)
-
-        for layer in layers_to_adjust:
-            index = layer - self.LAYER_OFFSET 
-            
-            if 0 <= index < len(weights_list):
-                weight_str = f"{层_权重:.1f}" if 层_权重 % 1 != 0 else f"{int(层_权重)}"
-                weights_list[index] = weight_str
-        
-        return ','.join(weights_list)
-
-    def load_layered_lora(self, 模型=None, lora_名称=None, 模型_强度=1.0, 层_规格="", 层_权重=0.0, CLIP=None, CLIP_强度=1.0, 输入_权重_字符串=""):
-        
-        calculated_layered_weights_str = self.control_lora_weights_str(层_规格, 层_权重, 输入_权重_字符串)
-        
-        lora_full_path = None
-        lora = None
-
-        if lora_名称:
-            lora_full_path = folder_paths.get_full_path("loras", lora_名称)
-            lora = comfy.utils.load_torch_file(lora_full_path, safe_load=True) if lora_full_path else None
-
-        try:
-            lora_stack_weights = [float(w) for w in calculated_layered_weights_str.split(',')]
-        except ValueError:
-            print(f"警告: 分层权重字符串 '{calculated_layered_weights_str}' 格式不正确，将使用默认权重。")
-            lora_stack_weights = None 
-        
-        model_out = 模型
-        clip_out = CLIP
-        if 模型 is not None and lora is not None:
-            model_out, clip_out = comfy.sd.load_lora_for_models(
-                model=模型, 
-                clip=CLIP, 
-                lora=lora, 
-                strength_model=模型_强度, 
-                strength_clip=CLIP_强度,
-                lora_stack_weights=lora_stack_weights 
-            )
-        else:
-            if 模型 is None:
-                print(f"警告: {self.__class__.__name__} 未提供模型输入，LoRA未加载。")
-            if lora_名称 and lora is None:
-                print(f"警告: {self.__class__.__name__} 找不到LoRA文件 '{lora_名称}'，LoRA未加载。")
-
-        help_info = self.LAYER_DESCRIPTION
-
-        return (model_out, clip_out, calculated_layered_weights_str, help_info)
-
-
-# --- SDXL 分层控制 LoRA 加载器 (保留) ---
-class ZML_SDXLLayeredLoraLoader(_LayeredLoraLoader):
-    DEFAULT_WEIGHTS = "1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1"
-    LAYER_DESCRIPTION = (
-        "SDXL LoRA 分层控制器说明：\n"
-        "层1：BASE(基础层)，数值1代表权重开启，LoRA 权重生效\n"
-        "层2-7：IN(输入层)，共6层，控制服装局部细节、姿态等输入特征\n"
-        "层8：MID(中间层)，控制姿态、细节等中间特征融合\n"
-        "层9-17：OUT(输出层)，共9层，控制背景、色彩、服装细节等输出效果\n"
-        "可指定层（如 2,5-7,9 ）调整权重，范围 -5 到 5 ，支持串联组合控制"
-    )
-    LAYER_OFFSET = 1 
-
-    @classmethod
-    def INPUT_TYPES(s):
-        inputs = super().INPUT_TYPES()
-        
-        inputs["optional"]["模型"] = ("MODEL",) 
-        inputs["optional"]["CLIP"] = ("CLIP",)
-        inputs["optional"]["CLIP_强度"] = ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}) 
-        
-        s.RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING") 
-        s.RETURN_NAMES = ("输出_模型", "输出_CLIP", "分层_权重", "help")
-
-        return inputs
-    
-# --- Flux 分层控制 LoRA 加载器 (保留) ---
-class ZML_FluxLayeredLoraLoader(_LayeredLoraLoader):
-    DEFAULT_WEIGHTS = "1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1" # 58个 '1'
-    
-    LAYER_DESCRIPTION = (
-        "Flux LoRA 分层控制器说明：\n"
-        "层号范围对应模块功能描述\n"
-        "0：CLIP文本编码器\n"
-        "1：T5增强文本编码\n"
-        "2：IN输入层\n"
-        "3-21：D000-D018 (19层) 核心扩散过程\n"
-        "22-59：S000-S037 (38层) 风格控制层\n"
-        "60：OUT输出层\n"
-        "可指定层（如 7,10-12,17 ）调整权重，范围 -5 到 5 ，支持串联组合控制"
-    )
-    LAYER_OFFSET = 3 
-
-    @classmethod
-    def INPUT_TYPES(s):
-        inputs = super().INPUT_TYPES()
-        
-        inputs["optional"]["模型"] = ("MODEL",)
-        
-        if "CLIP" in inputs["optional"]:
-            del inputs["optional"]["CLIP"]
-        if "CLIP_强度" in inputs["optional"]:
-            del inputs["optional"]["CLIP_强度"]
-
-        s.RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING") 
-        s.RETURN_NAMES = ("输出_模型", "输出_CLIP", "分层_权重", "help")
-
-        return inputs
-    
 # 注册节点
 NODE_CLASS_MAPPINGS = {
     "ZmlLoraLoader": ZmlLoraLoader,
     "ZmlLoraLoaderModelOnly": ZmlLoraLoaderModelOnly,
     "ZmlLoraLoaderFive": ZmlLoraLoaderFive,
     "ZmlLoraMetadataParser": ZmlLoraMetadataParser,
-    "ZML_SDXLLayeredLoraLoader": ZML_SDXLLayeredLoraLoader, 
-    "ZML_FluxLayeredLoraLoader": ZML_FluxLayeredLoraLoader,   
 }
 
 # 节点显示名称映射
@@ -683,6 +513,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZmlLoraLoaderModelOnly": "ZML_LoRA加载器（仅模型）",
     "ZmlLoraLoaderFive": "ZML_LoRA加载器_五",
     "ZmlLoraMetadataParser": "ZML_解析LoRA元数据",
-    "ZML_SDXLLayeredLoraLoader": "ZML_SDXL分层控制LoRA", 
-    "ZML_FluxLayeredLoraLoader": "ZML_FLUX分层控制LoRA",   
 }
