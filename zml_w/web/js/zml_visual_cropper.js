@@ -92,10 +92,10 @@ function showVisualEditorModal(node, widgets) {
 }
 
 function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node, modal) {
-    const cropperUrl = '/extensions/zml_w/lib/cropper.min.js'; // <-- 修改这里
+    const cropperUrl = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js';
     const cropperCss = document.createElement('link');
     cropperCss.rel = 'stylesheet';
-    cropperCss.href = '/extensions/zml_w/lib/cropper.min.css'; // <-- 修改这里
+    cropperCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css';
     document.head.appendChild(cropperCss);
 
     mainContainer.innerHTML = `<img id="zml-cropper-image" src="${imageUrl}" style="display: block; max-width: 100%; max-height: 75vh;">`;
@@ -163,7 +163,7 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
 }
 
 function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, modal) {
-    const fabricUrl = '/extensions/zml_w/lib/fabric.min.js'; // <-- 修改这里
+    const fabricUrl = 'https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js';
     mainContainer.innerHTML = `<canvas id="zml-fabric-canvas"></canvas>`;
     
     const cropMode = widgets.mode.value;
@@ -315,7 +315,7 @@ function showMergeModal(node, widget) {
     const modal = createModal(modalHtml);
     const mainContainer = modal.querySelector('#zml-editor-main-container');
 
-    loadScript('/extensions/zml_w/lib/fabric.min.js').then(() => { // <-- 修改这里
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js').then(() => {
         let uiCanvas, uiCanvasScale = 1.0;
         let fabricLayers = [];
         let allLayerParams = [];
@@ -556,7 +556,7 @@ function showPainterModal(node, widget) {
         canvas.renderAll();
     };
 
-    loadScript('/extensions/zml_w/lib/fabric.min.js').then(() => { // <-- 修改这里
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js').then(() => {
         const canvas = new fabric.Canvas(mainContainer.querySelector('#zml-fabric-canvas'));
         let currentBrushColor = colorPicker.value;
         let currentBrushSize = parseInt(brushSizeSlider.value);
