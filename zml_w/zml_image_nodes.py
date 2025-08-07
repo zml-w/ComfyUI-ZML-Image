@@ -448,6 +448,226 @@ class ZML_SaveImage:
             else:
                 return {"result": (output_image, help_output)}
 
+# ============================== 简易保存图像节点 ==============================
+class ZML_SimpleSaveImage:
+    """ZML 简易图像保存节点"""
+
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 与 ZML_SaveImage 共享相同的计数器文件以保持一致性
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "counter.txt")
+        self.total_counter_file = os.path.join(self.counter_dir, "总次数.txt")
+
+        # 确保计数器文件存在并遵循与原节点相同的重置逻辑
+        self.ensure_counter_files()
+
+    def ensure_counter_files(self):
+        """确保计数器文件存在，并重置重启计数器"""
+        try:
+            # 每次启动时将重启计数器重置为0
+            if not os.path.exists(self.counter_file):
+                with open(self.counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+            else:
+                with open(self.counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+            
+            # 确保总次数文件存在
+            if not os.path.exists(self.total_counter_file):
+                with open(self.total_counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+        except Exception:
+            pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE", {}),
+            },
+            "optional": {
+                 "操作模式": (["保存图像", "仅预览图像"], {"default": "保存图像"}),
+                 "保存路径": ("STRING", {"default": "output/ZML/%Y-%m-%d", "placeholder": "相对/绝对路径 (留空使用output)"}),
+                 "文本块存储": ("STRING", {"default": "", "placeholder": "存储到PNG文本块的文本内容"}), # <--- 已修正
+            },
+            "hidden": {
+                "prompt": "PROMPT", 
+                "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    RETURN_TYPES = ()
+    RETURN_NAMES = ()
+    FUNCTION = "save_images"
+    OUTPUT_NODE = True
+    CATEGORY = "image/ZML_图像/图像"
+
+    def format_path(self, path):
+        """格式化用户输入的路径"""
+        if not path:
+            return self.output_dir
+        path = path.strip().strip('"').strip("'")
+        if path.startswith("./"):
+            path = path[2:]
+        if not path:
+            return self.output_dir
+        if os.path.isabs(path):
+            return path
+        comfyui_root = os.path.dirname(self.output_dir)
+        full_path = os.path.join(comfyui_root, path)
+        return full_path
+
+    def ensure_directory(self, path):
+        """确保目录存在"""
+        try:
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
+            return path
+        except Exception:
+            return self.output_dir
+
+    def get_next_counter(self):
+        """获取下一个重启计数器值（每次启动归零）"""
+        try:
+            if os.path.exists(self.counter_file):
+                with open(self.counter_file, "r", encoding="utf-8") as f:
+                    counter = int(f.read().strip()) + 1
+            else:
+                counter = 1
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                f.write(str(counter))
+            return counter
+        except Exception:
+            return int(time.time())
+
+    def increment_total_counter(self):
+        """增加总次数计数器（永久保存）"""
+        try:
+            if os.path.exists(self.total_counter_file):
+                with open(self.total_counter_file, "r", encoding="utf-8") as f:
+                    total_count = int(f.read().strip()) + 1
+            else:
+                total_count = 1
+            with open(self.total_counter_file, "w", encoding="utf-8") as f:
+                f.write(str(total_count))
+            return total_count
+        except Exception:
+            return 0
+
+    def get_unique_filepath(self, filepath):
+        """获取唯一文件名，避免覆盖已有文件"""
+        base, ext = os.path.splitext(filepath)
+        counter = 1
+        new_path = filepath
+        while os.path.exists(new_path):
+            new_path = f"{base} ({counter}){ext}"
+            counter += 1
+        return new_path
+
+    def save_images(self, 图像, 操作模式="保存图像", 保存路径="", 文本块存储="", prompt=None, extra_pnginfo=None, unique_id=None):
+        # 检查并跳过1x1像素或64x64纯黑图像
+        skip_save = False
+        if 图像.shape[1] == 1 and 图像.shape[2] == 1:
+            skip_save = True
+        elif 图像.shape[1] == 64 and 图像.shape[2] == 64:
+            if torch.all(torch.abs(图像 - 0.0) < 1e-6):
+                skip_save = True
+
+        if skip_save:
+            return {"node_id": unique_id} if unique_id is not None else {}
+
+        # 仅在“保存图像”模式下增加总次数计数器
+        if 操作模式 == "保存图像":
+            self.increment_total_counter()
+
+        text_content = 文本块存储.strip()
+        full_save_path_str = datetime.datetime.now().strftime(保存路径)
+
+        # 根据操作模式设置保存路径和UI类型
+        if 操作模式 == "仅预览图像":
+            save_path = folder_paths.get_temp_directory()
+            ui_type = "temp"
+        else:
+            save_path = self.ensure_directory(self.format_path(full_save_path_str))
+            ui_type = "output"
+
+        result_paths = []
+        filename_prefix = "ZML"
+
+        for index, image_tensor in enumerate(图像):
+            # 构建文件名: "ZML#-#<计数器>.png"
+            components = [filename_prefix]
+            if 操作模式 == "保存图像":
+                counter_value = self.get_next_counter()
+                components.append(f"{counter_value:05d}")
+            
+            base_filename = "#-#".join(components)
+
+            # 为批处理中的每个图像添加索引
+            if len(图像) > 1:
+                batch_filename = f"{base_filename}#{index+1:03d}.png"
+            else:
+                batch_filename = f"{base_filename}.png"
+
+            full_path = os.path.join(save_path, batch_filename)
+            final_image_path = self.get_unique_filepath(full_path)
+
+            # 图像处理与保存
+            image_array = 255. * image_tensor.cpu().numpy()
+            pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
+
+            metadata = PngImagePlugin.PngInfo()
+
+            # 添加标准的ComfyUI元数据（工作流等）
+            if prompt is not None:
+                try:
+                    metadata.add_text("prompt", json.dumps(prompt))
+                except Exception: pass
+            if extra_pnginfo is not None:
+                for key, value in extra_pnginfo.items():
+                    try:
+                        metadata.add_text(key, json.dumps(value))
+                    except Exception: pass
+            
+            # 添加自定义文本块
+            if text_content:
+                try:
+                    metadata.add_text("comfy_text_block", text_content, zip=True)
+                except Exception: pass
+
+            try:
+                # 保存图像
+                pil_image.save(final_image_path, pnginfo=metadata, compress_level=4)
+                
+                # 准备用于UI预览的结果
+                file_basename = os.path.basename(final_image_path)
+                file_dir = os.path.dirname(final_image_path)
+                base_dir_for_relpath = self.output_dir if ui_type == "output" else folder_paths.get_temp_directory()
+                abs_file_dir = os.path.abspath(file_dir)
+                abs_base_dir = os.path.abspath(base_dir_for_relpath)
+                rel_dir = os.path.relpath(abs_file_dir, abs_base_dir) if abs_file_dir.startswith(abs_base_dir) else ""
+                rel_dir = rel_dir.replace("\\", "/")
+                if rel_dir == ".": rel_dir = ""
+                
+                result_paths.append({
+                    "filename": file_basename,
+                    "subfolder": rel_dir,
+                    "type": ui_type
+                })
+            except Exception as e:
+                print(f"ZML_SimpleSaveImage Error: Failed to save image {final_image_path}, error: {e}")
+                pass
+        
+        # 为UI预览准备返回数据
+        ui_output = { "images": result_paths }
+        return {"ui": ui_output, "node_id": unique_id} if unique_id is not None else {"ui": ui_output}
+
 # ============================== 加载图像节点 (读取PNG文本块)==============================
 class ZML_LoadImage:
     """
@@ -934,16 +1154,18 @@ class ZML_TagImageLoader:
 # ============================== 节点注册 (更新) ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_SaveImage": ZML_SaveImage,
+    "ZML_SimpleSaveImage": ZML_SimpleSaveImage,
     "ZML_LoadImage": ZML_LoadImage,
     "ZML_LoadImageFromPath": ZML_LoadImageFromPath,
-    "ZML_TextBlockLoader": ZML_TextBlockLoader, # 注册新节点
-    "ZML_TagImageLoader": ZML_TagImageLoader, # <--- 添加这一行
+    "ZML_TextBlockLoader": ZML_TextBlockLoader,
+    "ZML_TagImageLoader": ZML_TagImageLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SaveImage": "ZML_保存图像",
+    "ZML_SimpleSaveImage": "ZML_简易_保存图像",
     "ZML_LoadImage": "ZML_加载图像",
     "ZML_LoadImageFromPath": "ZML_从路径加载图像",
-    "ZML_TextBlockLoader": "ZML_文本块加载器", # 新节点的显示名称
-    "ZML_TagImageLoader": "ZML_标签化图片加载器", # <--- 添加这一行
+    "ZML_TextBlockLoader": "ZML_文本块加载器", 
+    "ZML_TagImageLoader": "ZML_标签化图片加载器", 
 }
