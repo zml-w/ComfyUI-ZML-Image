@@ -96,7 +96,7 @@
 #### 大部分节点都有“help”输出接口，里面写着节点的详细介绍，没写的基本上都是随便试试就知道怎么用的。
 
 <details>
-<summary>部分节点展示</summary>
+<summary>点击展开部分节点截图</summary>
   
 > <img width="1632" height="875" alt="1" src="https://github.com/user-attachments/assets/77ccda88-1851-4948-a45b-2f42b46d7f53" />
 >
@@ -129,6 +129,16 @@
 > <img width="1290" height="760" alt="15" src="https://github.com/user-attachments/assets/5a520228-fe42-49c9-a43d-e545474254f4" />
 
 </details>
+
+## 有一部分节点和功能是借鉴的别人的
+
+### 借鉴的代码：
+
+- **lora加载节点：https://github.com/pythongosssss/ComfyUI-Custom-Scripts**
+
+### 借鉴的灵感：
+
+- **桌宠：https://github.com/11dogzi/Comfyui-ergouzi-kaiguan**
 
 ## 有问题可以提交
 
