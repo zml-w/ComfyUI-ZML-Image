@@ -4,3 +4,4 @@ torchvision
 Pillow
 ultralytics
 opencv-python
+scipy
