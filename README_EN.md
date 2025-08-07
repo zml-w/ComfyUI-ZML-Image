@@ -4,11 +4,15 @@
 
 </div>
 
-## The documentation was translated by AI.
+## Pay attention here
 
-#### I attempted to add English support, but was unsuccessful. Perhaps in the future, as my skills improve, I'll be able to add multi-language support. For now, the node only supports Chinese.
+- ### The documentation was translated by AI.
 
-# Version Update Introduction
+- #### The English introduction will be updated relatively slowly.
+
+- #### I attempted to add English support, but was unsuccessful. Perhaps in the future, as my skills improve, I'll be able to add multi-language support. For now, the node only supports Chinese.
+
+## Version Update Introduction
 > Last updated: 2025-08-06 Another huge update!!
 
 > Added a tag-based image loader node. The UI is inspired by weilin. You can batch load images and read their text blocks by clicking a button. Hovering over the button also previews the image!
@@ -132,4 +136,5 @@
 `My younger sister is so cute. Here's a picture of her.`
 
 <img width="1024" height="540" alt="妹相随\_6" src="https://github.com/user-attachments/assets/bc18deae-6c3c-4e70-a642-1b4210accdc3" />
+
 
