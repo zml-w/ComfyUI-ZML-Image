@@ -1,3 +1,9 @@
+<div align="center">
+  
+### [🇨🇳 简体中文](README.md) | [🇺🇸 English](README_EN.md)
+
+</div>
+
 # 版本更新介绍
 > 最新更新日期：2025.08.06 又一次超级大更新！！
 
