@@ -44,9 +44,9 @@ app.registerExtension({
 			parent: document.body,
 		});
 
-		const displayOptions = { "Tree (subfolders)": 1, "List (normal)": 0 };
+		const displayOptions = { "树状(子文件夹)": 1, "列表(原始)": 0 };
 		const displaySetting = app.ui.settings.addSetting({
-			id: "zml.LoraLoader.DisplayMode", name: "ZML Lora Loader Display Mode", defaultValue: 1, type: "combo",
+			id: "zml.LoraLoader.DisplayMode", name: "LORA文件夹显示样式", defaultValue: 1, type: "combo",
 			options: (value) => Object.entries(displayOptions).map(([k, v]) => ({ value: v, text: k, selected: v === +value })),
 		});
 
