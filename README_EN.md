@@ -1,6 +1,6 @@
 <div align="center">
 
-\### \[🇨🇳 简体中文](README.md) | \[🇺🇸 English](README\_EN.md)
+### [🇨🇳 简体中文](README.md) | [🇺🇸 English](README\_EN.md)
 
 </div>
 
@@ -132,3 +132,4 @@
 `My younger sister is so cute. Here's a picture of her.`
 
 <img width="1024" height="540" alt="妹相随\_6" src="https://github.com/user-attachments/assets/bc18deae-6c3c-4e70-a642-1b4210accdc3" />
+
