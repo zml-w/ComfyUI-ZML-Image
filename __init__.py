@@ -46,6 +46,7 @@ from zml_w import zml_format_nodes
 from zml_w import zml_review_nodes
 from zml_w import zml_resolution_nodes
 from zml_w import zml_lora_nodes
+from zml_w import zml_prompt_nodes # 新增：导入新创建的节点模块
 
 # 核心步骤3：直接合并所有节点的映射字典
 NODE_CLASS_MAPPINGS = {
@@ -55,6 +56,7 @@ NODE_CLASS_MAPPINGS = {
     **zml_review_nodes.NODE_CLASS_MAPPINGS,
     **zml_resolution_nodes.NODE_CLASS_MAPPINGS,
     **zml_lora_nodes.NODE_CLASS_MAPPINGS,
+    **zml_prompt_nodes.NODE_CLASS_MAPPINGS, # 新增：合并新节点的映射
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -63,7 +65,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **zml_format_nodes.NODE_DISPLAY_NAME_MAPPINGS,
     **zml_review_nodes.NODE_DISPLAY_NAME_MAPPINGS,
     **zml_resolution_nodes.NODE_DISPLAY_NAME_MAPPINGS,
-    **zml_lora_nodes.NODE_DISPLAY_NAME_MAPPINGS, 
+    **zml_lora_nodes.NODE_DISPLAY_NAME_MAPPINGS,
+    **zml_prompt_nodes.NODE_DISPLAY_NAME_MAPPINGS, # 新增：合并新节点的显示名称
 }
 
 WEB_DIRECTORY = "zml_w/web"
