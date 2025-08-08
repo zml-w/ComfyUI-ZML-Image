@@ -140,7 +140,7 @@
 
 - **桌宠：https://github.com/11dogzi/Comfyui-ergouzi-kaiguan**
 
-## 有问题可以提交
+## 有问题可以提交，有想法也可以提交
 
 `妹妹好可爱，放个妹妹`
 
