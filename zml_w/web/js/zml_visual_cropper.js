@@ -1,5 +1,3 @@
-// ComfyUI-ZML-Image/web/js/zml_visual_cropper.js
-
 import { app } from "../../../scripts/app.js";
 
 // ======================= 通用函数 =======================
@@ -92,10 +90,10 @@ function showVisualEditorModal(node, widgets) {
 }
 
 function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node, modal) {
-    const cropperUrl = '/extensions/ComfyUI-ZML-Image/lib/cropper.min.js'; // <-- 修改这里
+    const cropperUrl = '/extensions/ComfyUI-ZML-Image/lib/cropper.min.js';
     const cropperCss = document.createElement('link');
     cropperCss.rel = 'stylesheet';
-    cropperCss.href = '/extensions/ComfyUI-ZML-Image/lib/cropper.min.css'; // <-- 修改这里
+    cropperCss.href = '/extensions/ComfyUI-ZML-Image/lib/cropper.min.css';
     document.head.appendChild(cropperCss);
 
     mainContainer.innerHTML = `<img id="zml-cropper-image" src="${imageUrl}" style="display: block; max-width: 100%; max-height: 75vh;">`;
@@ -163,7 +161,7 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
 }
 
 function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, modal) {
-    const fabricUrl = '/extensions/ComfyUI-ZML-Image/lib/fabric.min.js'; // <-- 修改这里
+    const fabricUrl = '/extensions/ComfyUI-ZML-Image/lib/fabric.min.js';
     mainContainer.innerHTML = `<canvas id="zml-fabric-canvas"></canvas>`;
     
     const cropMode = widgets.mode.value;
@@ -188,7 +186,8 @@ function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, 
         img.onload = () => {
             const maxWidth = window.innerWidth * 0.85, maxHeight = window.innerHeight * 0.75;
             const scale = Math.min(1, maxWidth / img.naturalWidth, maxHeight / img.naturalHeight);
-            canvas.setWidth(img.naturalWidth * scale).setHeight(img.naturalHeight * scale);
+            canvas.setWidth(img.naturalWidth * scale);
+            canvas.setHeight(img.naturalHeight * scale);
             fabric.Image.fromURL(imageUrl, (fImg) => {
                 canvas.setBackgroundImage(fImg, canvas.renderAll.bind(canvas), { scaleX: scale, scaleY: scale });
             });
@@ -253,7 +252,6 @@ function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, 
         modal.querySelector('#zml-cancel-btn').onclick = () => closeModal(modal);
     });
 }
-
 // ======================= ZML_MergeImages 节点 (使用旧版逻辑) =======================
 app.registerExtension({
     name: "ZML.MergeImages",
@@ -283,7 +281,6 @@ function showMergeModal(node, widget) {
 
     const bgUrl = bgNode.imgs[0].src;
     const fgSources = [];
-    // 旧版前端逻辑，fgSources数组的顺序就是图层的顺序
     if (fgNode1 && fgNode1.imgs) fgSources.push({ index: 0, name: 1, url: fgNode1.imgs[0].src, image: fgNode1.imgs[0] });
     if (fgNode2 && fgNode2.imgs) fgSources.push({ index: 1, name: 2, url: fgNode2.imgs[0].src, image: fgNode2.imgs[0] });
     if (fgNode3 && fgNode3.imgs) fgSources.push({ index: 2, name: 3, url: fgNode3.imgs[0].src, image: fgNode3.imgs[0] });
@@ -315,7 +312,7 @@ function showMergeModal(node, widget) {
     const modal = createModal(modalHtml);
     const mainContainer = modal.querySelector('#zml-editor-main-container');
 
-    loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => { // <-- 修改这里
+    loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => {
         let uiCanvas, uiCanvasScale = 1.0;
         let fabricLayers = [];
         let allLayerParams = [];
@@ -333,18 +330,11 @@ function showMergeModal(node, widget) {
                 uiCanvas.setBackgroundImage(fBg, uiCanvas.renderAll.bind(uiCanvas), { scaleX: uiCanvasScale, scaleY: uiCanvasScale });
             });
             
-            // [旧版逻辑] 解析时，假设数据是包含参数的数组
             let loadedParams = [];
-            try {
-                loadedParams = JSON.parse(widget.data.value);
-                if (!Array.isArray(loadedParams)) {
-                    loadedParams = [];
-                }
-            } catch (e) { /* 忽略解析错误，使用默认位置 */ }
+            try { loadedParams = JSON.parse(widget.data.value); if (!Array.isArray(loadedParams)) { loadedParams = []; } } catch (e) { /* ignore */ }
             
             fgArray.forEach((fgData, index) => {
                  fabric.Image.fromURL(fgData.url, (fFg) => {
-                    // 旧版逻辑：id就是index
                     fFg.set({ id: index, borderColor: 'yellow', cornerColor: '#f0ad4e', cornerStrokeColor: 'black', cornerStyle: 'circle', transparentCorners: false, borderScaleFactor: 2 });
                     
                     let transformParams = loadedParams[index];
@@ -408,26 +398,12 @@ function showMergeModal(node, widget) {
         const bgImg = new Image();
         bgImg.src = bgUrl;
         bgImg.onload = () => {
-            const fgImageObjects = fgSources.map(s => {
-                const img = new Image();
-                img.src = s.url;
-                return { ...s, image: img };
-            });
-            
-            let loadedCount = 0;
-            const totalToLoad = fgImageObjects.length;
-            if (totalToLoad === 0) {
-                 setupMergeCanvas(bgImg, []);
-                 return;
-            }
+            const fgImageObjects = fgSources.map(s => { const img = new Image(); img.src = s.url; return { ...s, image: img }; });
+            let loadedCount = 0; const totalToLoad = fgImageObjects.length;
+            if (totalToLoad === 0) { setupMergeCanvas(bgImg, []); return; }
             fgImageObjects.forEach(fg => {
-                fg.image.onload = () => {
-                    loadedCount++;
-                    if(loadedCount === totalToLoad) {
-                        setupMergeCanvas(bgImg, fgImageObjects);
-                    }
-                }
-                 if(fg.image.complete) fg.image.onload();
+                fg.image.onload = () => { loadedCount++; if(loadedCount === totalToLoad) { setupMergeCanvas(bgImg, fgImageObjects); } }
+                if(fg.image.complete) fg.image.onload();
             });
         };
         
@@ -438,11 +414,7 @@ function showMergeModal(node, widget) {
                  const originalFgImg = fgSources.find(f => f.index === layerIndex).image;
                  const initialScale = (bgImg.naturalWidth * 0.5) / originalFgImg.naturalWidth;
                  const initialUiScale = initialScale * uiCanvasScale;
-
-                 activeObj.set({
-                    left: uiCanvas.width / 2, top: uiCanvas.height / 2,
-                    scaleX: initialUiScale, scaleY: initialUiScale, angle: 0,
-                 });
+                 activeObj.set({ left: uiCanvas.width / 2, top: uiCanvas.height / 2, scaleX: initialUiScale, scaleY: initialUiScale, angle: 0, });
                  activeObj.setCoords();
                  uiCanvas.renderAll();
                  uiCanvas.fire('object:modified', { target: activeObj });
@@ -450,7 +422,6 @@ function showMergeModal(node, widget) {
         };
 
         modal.querySelector('#zml-confirm-btn').onclick = () => {
-            // 旧版逻辑：直接将参数数组字符串化
             widget.data.value = JSON.stringify(allLayerParams);
             node.onWidgetValue_changed?.(widget.data, widget.data.value);
             closeModal(modal);
@@ -486,16 +457,15 @@ function showPainterModal(node, widget) {
     }
 
     const imageUrl = upstreamNode.imgs[0].src;
-    let originalImageWidth, originalImageHeight;
-    let uiCanvasScale = 1.0;
+    let initialDisplayScale = 1.0;
 
     const modalHtml = `
         <div class="zml-modal">
-            <div class="zml-modal-content">
+            <div class="zml-modal-content" style="width: auto; height: auto;">
                 <style>
                     .zml-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1001; }
                     .zml-modal-content { background: #222; padding: 20px; border-radius: 8px; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; gap: 10px; }
-                    .zml-editor-main { flex-grow: 1; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+                    .zml-editor-main { overflow: hidden; background: #111; position: relative; }
                     .zml-editor-tip { color: #ccc; text-align: center; font-size: 12px; margin: 5px 0; }
                     .zml-editor-controls { display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 10px;}
                     .zml-editor-btn { padding: 8px 12px; color: white; border: none; border-radius: 4px; cursor: pointer; }
@@ -503,13 +473,15 @@ function showPainterModal(node, widget) {
                     #zml-brush-size { width: 80px; }
                 </style>
                 <div class="zml-editor-main" id="zml-editor-main-container">
-                    <canvas id="zml-fabric-canvas"></canvas> </div>
-                <p id="zml-editor-tip" class="zml-editor-tip">画笔模式：按住鼠标左键绘制。</p>
+                    <canvas id="zml-fabric-canvas"></canvas>
+                </div>
+                <p id="zml-editor-tip" class="zml-editor-tip">滚轮缩放, 按住Ctrl+左键拖拽平移。画笔模式：按住鼠标左键绘制。</p>
                 <div id="zml-editor-controls" class="zml-editor-controls">
-                    <label for="zml-color-picker" style="color: white;">画笔颜色:</label>
+                    <label for="zml-color-picker" style="color: white;">颜色:</label>
                     <input type="color" id="zml-color-picker" value="#FF0000">
-                    <label for="zml-brush-size" style="color: white;">画笔大小:</label>
+                    <label for="zml-brush-size" style="color: white;">大小:</label>
                     <input type="range" id="zml-brush-size" min="1" max="50" value="5">
+                    <button id="zml-reset-view-btn" class="zml-editor-btn" style="background-color: #888;">重置视角</button> 
                     <button id="zml-undo-paint-btn" class="zml-editor-btn" style="background-color: #f0ad4e;">撤销</button>
                     <button id="zml-clear-paint-btn" class="zml-editor-btn" style="background-color: #5bc0de;">清空</button>
                     <button id="zml-confirm-paint-btn" class="zml-editor-btn" style="background-color: #4CAF50;">确认</button>
@@ -526,124 +498,149 @@ function showPainterModal(node, widget) {
     
     let drawPaths = [];
 
-    const renderPaths = (canvas, uiCanvasScale) => {
-        canvas.remove(...canvas.getObjects().filter(o => o.type === 'path' || o.type === 'circle'));
-        drawPaths.forEach(path => {
-            if (path.points.length > 1) { // 绘制路径
-                 const scaledPoints = path.points.map(p => ({ x: p[0] * uiCanvasScale, y: p[1] * uiCanvasScale }));
-                 
-                 const fabricPath = new fabric.Path('M ' + scaledPoints.map(p => `${p.x} ${p.y}`).join(' L '), {
-                     stroke: path.color,
-                     strokeWidth: path.width * uiCanvasScale,
-                     fill: null,
-                     selectable: false,
-                     evented: false,
-                 });
-                 canvas.add(fabricPath);
-            } else if (path.points.length === 1) { // 绘制点
-                 const scaledPoint = { x: path.points[0][0] * uiCanvasScale, y: path.points[0][1] * uiCanvasScale };
-                 const dot = new fabric.Circle({
-                     left: scaledPoint.x - (path.width * uiCanvasScale) / 2,
-                     top: scaledPoint.y - (path.width * uiCanvasScale) / 2,
-                     radius: (path.width * uiCanvasScale) / 2,
-                     fill: path.color,
-                     selectable: false,
-                     evented: false,
-                 });
-                 canvas.add(dot);
-            }
-        });
-        canvas.renderAll();
-    };
+    loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => {
+        const canvas = new fabric.Canvas(mainContainer.querySelector('canvas'), { stopContextMenu: true });
+        let isPanning = false, lastPanPoint = null;
 
-    loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => { // <-- 修改这里
-        const canvas = new fabric.Canvas(mainContainer.querySelector('#zml-fabric-canvas'));
-        let currentBrushColor = colorPicker.value;
-        let currentBrushSize = parseInt(brushSizeSlider.value);
-
-        fabric.Image.fromURL(imageUrl, (fImg) => {
-            const maxWidth = window.innerWidth * 0.85;
-            const maxHeight = window.innerHeight * 0.75;
-            originalImageWidth = fImg.width;
-            originalImageHeight = fImg.height;
-
-            uiCanvasScale = Math.min(1, maxWidth / originalImageWidth, maxHeight / originalImageHeight);
+        const img = new Image();
+        img.src = imageUrl;
+        img.onload = () => {
+            const V_PADDING = 150; const H_PADDING = 80;
+            const maxWidth = window.innerWidth - H_PADDING;
+            const maxHeight = window.innerHeight - V_PADDING;
             
-            canvas.setWidth(originalImageWidth * uiCanvasScale);
-            canvas.setHeight(originalImageHeight * uiCanvasScale);
+            initialDisplayScale = Math.min(1, maxWidth / img.naturalWidth, maxHeight / img.naturalHeight);
 
-            canvas.setBackgroundImage(fImg, canvas.renderAll.bind(canvas), {
-                scaleX: uiCanvasScale,
-                scaleY: uiCanvasScale
+            const displayWidth = img.naturalWidth * initialDisplayScale;
+            const displayHeight = img.naturalHeight * initialDisplayScale;
+            
+            mainContainer.style.width = `${displayWidth}px`;
+            mainContainer.style.height = `${displayHeight}px`;
+
+            canvas.setWidth(img.naturalWidth);
+            canvas.setHeight(img.naturalHeight);
+
+            fabric.Image.fromURL(imageUrl, (fImg) => {
+                canvas.setBackgroundImage(fImg, canvas.renderAll.bind(canvas));
             });
-            canvas.isDrawingMode = true;
-            canvas.freeDrawingBrush.color = currentBrushColor;
-            canvas.freeDrawingBrush.width = currentBrushSize;
+
+            const resetView = () => {
+                canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+                canvas.setZoom(initialDisplayScale);
+                const vpt = canvas.viewportTransform;
+                vpt[4] = (displayWidth - img.naturalWidth * initialDisplayScale) / 2;
+                vpt[5] = (displayHeight - img.naturalHeight * initialDisplayScale) / 2;
+                canvas.requestRenderAll();
+            };
+            resetView();
 
             try {
                 const existingPaintData = JSON.parse(widget.data.value);
                 if (existingPaintData && existingPaintData.draw_paths) {
                     drawPaths = existingPaintData.draw_paths;
-                    renderPaths(canvas, uiCanvasScale);
+                    renderExistingPaths();
                 }
-            } catch (e) {
-                console.error("Failed to parse existing paint data:", e);
-            }
-        });
+            } catch (e) { /* ignore */ }
+
+            modal.querySelector('#zml-reset-view-btn').onclick = resetView;
+        };
+        
+        const renderExistingPaths = () => {
+             canvas.remove(...canvas.getObjects().filter(o => o.isNotBackground));
+             drawPaths.forEach(pathData => {
+                if (pathData.points.length > 1) {
+                     const pathString = "M " + pathData.points.map(p => `${p[0]},${p[1]}`).join(" L ");
+                     const fabricPath = new fabric.Path(pathString, { stroke: pathData.color, strokeWidth: pathData.width, fill: null, selectable: false, evented: false, objectCaching: false, strokeLineJoin: 'round', strokeLineCap: 'round', isNotBackground: true });
+                     canvas.add(fabricPath);
+                } else if(pathData.points.length === 1 ) {
+                     const dot = new fabric.Circle({ left: pathData.points[0][0], top: pathData.points[0][1], radius: pathData.width / 2, fill: pathData.color, selectable: false, evented: false, objectCaching: false, originX: 'center', originY: 'center', isNotBackground: true });
+                     canvas.add(dot);
+                }
+            });
+            canvas.requestRenderAll();
+        };
+
+        canvas.isDrawingMode = true;
+        canvas.freeDrawingBrush.color = colorPicker.value;
+        canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
+        canvas.freeDrawingBrush.decimate = 5;
 
         canvas.on('path:created', (e) => {
             const path = e.path;
-            
-            const originalPoints = path.path.map(p => {
-                const x_offset = p[1];
-                const y_offset = p[2];
-                return [x_offset / uiCanvasScale, y_offset / uiCanvasScale];
-            });
-            
-            const pathData = {
-                points: originalPoints,
-                color: path.stroke,
-                width: path.strokeWidth / uiCanvasScale,
-            };
+            canvas.remove(path);
+            const pathData = { points: path.path.map(p => [p[1], p[2]]), color: path.stroke, width: path.strokeWidth};
             drawPaths.push(pathData);
+            renderExistingPaths();
         });
         
-        modal.querySelector('#zml-undo-paint-btn').onclick = () => {
-            if(drawPaths.length > 0) {
-                drawPaths.pop();
-                renderPaths(canvas, uiCanvasScale);
+        canvas.on('mouse:wheel', function(opt) {
+            const delta = opt.e.deltaY;
+            let zoom = canvas.getZoom();
+            zoom *= 0.999 ** delta;
+            
+            if (zoom > 20) zoom = 20;
+
+            // ** FIXED ** 限制最小缩放为初始的完整显示比例，不能再无限缩小
+            if (zoom < initialDisplayScale) {
+                zoom = initialDisplayScale;
             }
+
+            canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+            opt.e.preventDefault();
+            opt.e.stopPropagation();
+        });
+        
+        canvas.on('mouse:down', function(opt) {
+            if (opt.e.ctrlKey) {
+                isPanning = true;
+                canvas.isDrawingMode = false;
+                lastPanPoint = new fabric.Point(opt.e.clientX, opt.e.clientY);
+                this.defaultCursor = 'grab';
+            }
+        });
+
+        canvas.on('mouse:move', function(opt) {
+            if (isPanning) {
+                this.defaultCursor = 'grabbing';
+                const currentPoint = new fabric.Point(opt.e.clientX, opt.e.clientY);
+                const delta = currentPoint.subtract(lastPanPoint);
+                this.relativePan(delta);
+                lastPanPoint = currentPoint;
+            }
+        });
+
+        canvas.on('mouse:up', function() {
+            if (isPanning) {
+                isPanning = false;
+                canvas.isDrawingMode = true;
+                this.defaultCursor = 'crosshair';
+            }
+        });
+
+        modal.querySelector('#zml-undo-paint-btn').onclick = () => { 
+            if(drawPaths.length > 0) { 
+                drawPaths.pop();
+                renderExistingPaths();
+            } 
         };
 
-        modal.querySelector('#zml-clear-paint-btn').onclick = () => {
-            drawPaths = [];
-            renderPaths(canvas, uiCanvasScale);
+        modal.querySelector('#zml-clear-paint-btn').onclick = () => { 
+            drawPaths = []; 
+            renderExistingPaths();
         };
 
-        colorPicker.onchange = (e) => {
-            currentBrushColor = e.target.value;
-            canvas.freeDrawingBrush.color = currentBrushColor;
-        };
-
-        brushSizeSlider.oninput = (e) => {
-            currentBrushSize = parseInt(e.target.value);
-            canvas.freeDrawingBrush.width = currentBrushSize;
-        };
+        colorPicker.onchange = (e) => { canvas.freeDrawingBrush.color = e.target.value; };
+        brushSizeSlider.oninput = (e) => { canvas.freeDrawingBrush.width = parseInt(e.target.value); };
         
         modal.querySelector('#zml-confirm-paint-btn').onclick = () => {
-            const payload = {
-                draw_paths: drawPaths,
-            };
-            widget.data.value = JSON.stringify(payload);
+            widget.data.value = JSON.stringify({ draw_paths: drawPaths });
             node.onWidgetValue_changed?.(widget.data, widget.data.value);
             closeModal(modal);
         };
-
-        modal.querySelector('#zml-cancel-paint-btn').onclick = () => {
-            closeModal(modal);
-        };
+        modal.querySelector('#zml-cancel-paint-btn').onclick = () => closeModal(modal);
     });
 }
+
 
 // ======================= ZML_ColorPicker 节点 (已修正) =======================
 app.registerExtension({
@@ -709,27 +706,16 @@ function showColorPickerModal(node, widget) {
                 const selectedColor = result.sRGBHex.toUpperCase();
                 colorInput.value = selectedColor;
                 outputPreview.textContent = selectedColor;
-            } catch (e) {
-                console.log("吸管工具已取消。");
-            } finally {
-                modal.style.display = 'flex';
-            }
+            } catch (e) { console.log("吸管工具已取消。"); } 
+            finally { modal.style.display = 'flex'; }
         };
     }
 
-    colorInput.oninput = (e) => {
-        outputPreview.textContent = e.target.value.toUpperCase();
-    };
-
+    colorInput.oninput = (e) => { outputPreview.textContent = e.target.value.toUpperCase(); };
     confirmBtn.onclick = () => {
         widget.data.value = colorInput.value.toUpperCase();
-        if (node.onWidgetValue_changed) {
-            node.onWidgetValue_changed(widget.data.name, widget.data.value);
-        }
+        if (node.onWidgetValue_changed) { node.onWidgetValue_changed(widget.data.name, widget.data.value); }
         closeModal(modal);
     };
-
-    cancelBtn.onclick = () => {
-        closeModal(modal);
-    };
+    cancelBtn.onclick = () => { closeModal(modal); };
 }
