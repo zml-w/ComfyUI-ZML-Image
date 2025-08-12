@@ -49,7 +49,7 @@ class ZML_PromptUINode:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("正向提示词",)
     FUNCTION = "get_prompt"
-    CATEGORY = "image/ZML/图像/工具"
+    CATEGORY = "image/ZML_图像/工具"
     
     def get_prompt(self, positive_prompt):
         return (positive_prompt,)
@@ -64,4 +64,5 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_PromptUINode": "ZML_标签化提示词加载器",
+
 }
