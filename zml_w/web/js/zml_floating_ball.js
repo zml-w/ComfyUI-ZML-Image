@@ -3,7 +3,7 @@ import { api } from "/scripts/api.js";
 import { $el } from "/scripts/ui.js";
 
 app.registerExtension({
-	name: "ZML.FunFloatingBall.V20_Final",
+	name: "ZML.FunFloatingBall.V20_Final_RememberPos", // 建议更新一下名称以作区分
 	async setup(app) {
 		// --- 设置项 ---
 		const visibilitySetting = app.ui.settings.addSetting({
@@ -12,6 +12,15 @@ app.registerExtension({
 			type: "boolean",
 			defaultValue: true,
 		});
+
+        // ================= 新增代码开始 =================
+		const rememberPositionSetting = app.ui.settings.addSetting({
+			id: "zml.floatingBall.rememberPosition",
+			name: "悬浮球 - 记住上次位置",
+			type: "boolean",
+			defaultValue: true, // 默认开启此功能
+		});
+        // ================= 新增代码结束 =================
 
 		const idleSizeSetting = app.ui.settings.addSetting({
 			id: "zml.floatingBall.idleSize",
@@ -28,7 +37,7 @@ app.registerExtension({
 			attrs: { min: 20, max: 500, step: 1 },
 			defaultValue: 200,
 		});
-        
+
         const dblClickAudioSetting = app.ui.settings.addSetting({
 			id: "zml.floatingBall.dblClickAudio",
 			name: "悬浮球 - 启用双击音频",
@@ -115,7 +124,7 @@ app.registerExtension({
 				pointerEvents: "none",
 			}
 		});
-		
+
 		const floatingBall = $el("div.zml-floating-ball", {
 			style: {
 				position: "fixed", bottom: "20px", left: "20px",
@@ -126,8 +135,8 @@ app.registerExtension({
 				filter: "drop-shadow(0px 2px 5px rgba(0,0,0,0.5))"
 			}
 		}, [floatingImage]);
-        
-		$el("style", { 
+
+		$el("style", {
 			textContent: `
 				.zml-floating-ball.hidden { display: none; }
 				.zml-floating-ball.breathing-effect {
@@ -145,13 +154,40 @@ app.registerExtension({
                 .zml-animation-pulse { animation: zml-pulse 0.7s ease-in-out; }
 				@keyframes zml-fade-in { from { opacity: 0; } to { opacity: 1; } }
 				@keyframes zml-pop-in { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-                @keyframes zml-slide-up { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                @keyframes zml-slide-up { from { transform: translateY(50px); opacity: 0; } to { translateY(0); opacity: 1; } }
                 @keyframes zml-shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
                 @keyframes zml-pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-			`, 
-			parent: document.body 
+			`,
+			parent: document.body
 		});
 		document.body.appendChild(floatingBall);
+
+        // ================= 新增代码开始 =================
+        const loadPosition = () => {
+            if (rememberPositionSetting.value) {
+                const savedLeft = localStorage.getItem("zml.floatingBall.position.left");
+                const savedTop = localStorage.getItem("zml.floatingBall.position.top");
+
+                if (savedLeft && savedTop) {
+                    floatingBall.style.left = savedLeft;
+                    floatingBall.style.top = savedTop;
+                    floatingBall.style.bottom = 'auto'; // 必须重置，否则可能冲突
+                    floatingBall.style.right = 'auto'; // 必须重置
+                }
+            }
+        };
+
+		const savePosition = () => {
+			if (rememberPositionSetting.value) {
+				localStorage.setItem("zml.floatingBall.position.left", floatingBall.style.left);
+				localStorage.setItem("zml.floatingBall.position.top", floatingBall.style.top);
+			}
+		};
+
+		// 页面加载时，尝试加载保存的位置
+		loadPosition();
+        // ================= 新增代码结束 =================
+
 
 		const applySize = (isIdle) => {
 			const size = isIdle ? idleSizeSetting.value : runningSizeSetting.value;
@@ -161,7 +197,7 @@ app.registerExtension({
 			floatingImage.style.maxWidth = s;
 			floatingImage.style.maxHeight = s;
 		};
-		
+
 		const createContextMenu = (e) => {
 			const oldMenu = document.querySelector('.zml-ball-context-menu');
 			if (oldMenu) oldMenu.remove();
@@ -218,7 +254,7 @@ app.registerExtension({
 
         if (!visibilitySetting.value) floatingBall.classList.add("hidden");
 		applySize(true);
-        
+
 		floatingBall.addEventListener("mouseover", () => {
             if (hoverEffectSetting.value && floatingImage.src.includes("ZML.png")) {
                 floatingBall.classList.add("breathing-effect");
@@ -236,7 +272,7 @@ app.registerExtension({
 		api.addEventListener("execution_start", () => {
 			if(animationTimeout) { clearTimeout(animationTimeout); animationTimeout = null; }
 			floatingBall.classList.remove("breathing-effect");
-			
+
             if (runtimeAudioSetting.value === "start") { audio.currentTime = 0; audio.play().catch(err => console.error("运行时音频播放失败:", err)); }
 
 			const delay = gifDelaySetting.value * 1000;
@@ -268,8 +304,8 @@ app.registerExtension({
 			if (detail?.exec_info.queue_remaining === 0) {
 				setTimeout(() => {
 					if (app.ui.lastQueueSize === 0) {
-						if(!animationTimeout) { 
-							floatingImage.src = idleImagePath; 
+						if(!animationTimeout) {
+							floatingImage.src = idleImagePath;
 						}
 						applySize(true);
                         if (runtimeAudioSetting.value === "end") { audio.currentTime = 0; audio.play().catch(err => console.error("运行时音频播放失败:", err)); }
@@ -296,6 +332,8 @@ app.registerExtension({
                 document.removeEventListener('mouseup', onMouseUp);
 				document.body.style.userSelect = '';
                 floatingBall.style.transition = 'transform 0.2s ease-out, max-width 0.3s ease-out, max-height 0.3s ease-out, filter 0.3s ease-out';
+                // ================= 新增代码: 拖拽结束时保存位置 =================
+                savePosition();
             }
 			document.addEventListener('mousemove', onMouseMove);
 			document.addEventListener('mouseup', onMouseUp);

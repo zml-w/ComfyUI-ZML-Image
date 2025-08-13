@@ -77,11 +77,11 @@ function showVisualEditorModal(node, widgets) {
             </div>
         </div>
     `;
-    
+
     const modal = createModal(modalHtml);
     const mainContainer = modal.querySelector('#zml-editor-main-container');
     const controlsContainer = modal.querySelector('#zml-editor-controls');
-    
+
     if (cropMode === '矩形' || cropMode === '圆形') {
         setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node, modal);
     } else if (cropMode === '路径选择' || cropMode === '画笔') {
@@ -97,7 +97,7 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
     document.head.appendChild(cropperCss);
 
     mainContainer.innerHTML = `<img id="zml-cropper-image" src="${imageUrl}" style="display: block; max-width: 100%; max-height: 75vh;">`;
-    
+
     const cropMode = widgets.mode.value;
     controlsContainer.innerHTML = `
         ${cropMode === '圆形' ? `<button id="zml-toggle-aspect-btn" class="zml-editor-btn" style="background-color: #f0ad4e;">解锁宽高比</button>` : ''}
@@ -112,10 +112,10 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
 
         image.onload = () => {
             const cropperOptions = { viewMode: 1, autoCropArea: 0.8, background: false, cropBoxResizable: true, dragMode: 'crop' };
-            
+
             cropperOptions.ready = function () {
                 cropper = this.cropper;
-                
+
                 if (cropMode === '圆形') {
                     const cropBox = this.cropper.cropper.querySelector('.cropper-crop-box');
                     const viewBox = this.cropper.cropper.querySelector('.cropper-view-box');
@@ -144,7 +144,7 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
                         cropper.setData({ width: width.value, height: height.value });
                     }
                 }
-                
+
                 modal.querySelector('#zml-confirm-btn').onclick = () => {
                     widgets.data.value = JSON.stringify(cropper.getData(true));
                     node.onWidgetValue_changed?.(widgets.data, widgets.data.value);
@@ -155,7 +155,7 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
             cropper = new Cropper(image, cropperOptions);
         };
         if(image.complete) image.onload();
-        
+
         modal.querySelector('#zml-cancel-btn').onclick = () => closeModal(modal, cropperCss);
     });
 }
@@ -163,17 +163,17 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
 function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, modal) {
     const fabricUrl = '/extensions/ComfyUI-ZML-Image/lib/fabric.min.js';
     mainContainer.innerHTML = `<canvas id="zml-fabric-canvas"></canvas>`;
-    
+
     const cropMode = widgets.mode.value;
     const isPathMode = cropMode === '路径选择';
-    
+
     controlsContainer.innerHTML = `
         ${isPathMode ? `<button id="zml-undo-btn" class="zml-editor-btn" style="background-color: #f0ad4e;">撤回</button>` : ''}
         <button id="zml-reset-btn" class="zml-editor-btn" style="background-color: #5bc0de;">重置</button>
         <button id="zml-confirm-btn" class="zml-editor-btn" style="background-color: #4CAF50;">确认</button>
         <button id="zml-cancel-btn" class="zml-editor-btn" style="background-color: #f44336;">取消</button>
     `;
-    
+
     const tipElement = modal.querySelector('#zml-editor-tip');
     tipElement.textContent = isPathMode ? "路径选择模式：单击左键添加锚点。" : "画笔模式：按住鼠标左键绘制选区。";
 
@@ -244,7 +244,7 @@ function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, 
             const originalPoints = finalPoints.map(p => ({ x: p.x / scale, y: p.y / scale }));
             const xs = originalPoints.map(p => p.x), ys = originalPoints.map(p => p.y);
             const bbox = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
-            
+
             widgets.data.value = JSON.stringify({ points: originalPoints, bbox: bbox });
             node.onWidgetValue_changed?.(widgets.data, widgets.data.value);
             closeModal(modal);
@@ -285,6 +285,7 @@ function showMergeModal(node, widget) {
     if (fgNode2 && fgNode2.imgs) fgSources.push({ index: 1, name: 2, url: fgNode2.imgs[0].src, image: fgNode2.imgs[0] });
     if (fgNode3 && fgNode3.imgs) fgSources.push({ index: 2, name: 3, url: fgNode3.imgs[0].src, image: fgNode3.imgs[0] });
 
+    // MODIFICATION START: Add opacity slider to the modal HTML
     const modalHtml = `
         <div class="zml-modal">
             <div class="zml-modal-content">
@@ -302,15 +303,22 @@ function showMergeModal(node, widget) {
                  <div id="zml-layer-controls"></div>
                  <p class="zml-editor-tip">自由移动、缩放、旋转前景图层。</p>
                  <div class="zml-editor-controls" id="zml-merge-controls">
+                    <label for="zml-opacity-slider" style="color: white; display: flex; align-items: center; gap: 5px;">
+                        不透明度: <input type="range" id="zml-opacity-slider" min="0" max="1" step="0.01" value="1" disabled>
+                    </label>
                     <button id="zml-reset-btn" class="zml-editor-btn" style="background-color: #5bc0de;">重置当前层</button>
                     <button id="zml-confirm-btn" class="zml-editor-btn" style="background-color: #4CAF50;">确认</button>
                     <button id="zml-cancel-btn" class="zml-editor-btn" style="background-color: #f44336;">取消</button>
                  </div>
             </div>
         </div>`;
-    
+    // MODIFICATION END
+
     const modal = createModal(modalHtml);
     const mainContainer = modal.querySelector('#zml-editor-main-container');
+    // MODIFICATION START: Get the opacity slider element
+    const opacitySlider = modal.querySelector('#zml-opacity-slider');
+    // MODIFICATION END
 
     loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => {
         let uiCanvas, uiCanvasScale = 1.0;
@@ -318,58 +326,101 @@ function showMergeModal(node, widget) {
         let allLayerParams = [];
         let layerButtons = [];
 
+        // MODIFICATION START: Helper function to sync slider with active layer
+        function syncUIWithActiveLayer() {
+            const activeObj = uiCanvas.getActiveObject();
+            if (activeObj) {
+                opacitySlider.value = activeObj.opacity;
+                opacitySlider.disabled = false;
+            } else {
+                opacitySlider.value = 1;
+                opacitySlider.disabled = true;
+            }
+        }
+        // MODIFICATION END
+
         const setupMergeCanvas = (bgImg, fgArray) => {
             mainContainer.innerHTML = `<canvas id="zml-merge-canvas-ui"></canvas>`;
             uiCanvas = new fabric.Canvas(mainContainer.querySelector('canvas'));
             const maxWidth = window.innerWidth * 0.85, maxHeight = window.innerHeight * 0.7;
             uiCanvasScale = Math.min(1, maxWidth / bgImg.naturalWidth, maxHeight / bgImg.naturalHeight);
-            
+
             uiCanvas.setWidth(bgImg.naturalWidth * uiCanvasScale).setHeight(bgImg.naturalHeight * uiCanvasScale);
 
             fabric.Image.fromURL(bgImg.src, (fBg) => {
                 uiCanvas.setBackgroundImage(fBg, uiCanvas.renderAll.bind(uiCanvas), { scaleX: uiCanvasScale, scaleY: uiCanvasScale });
             });
-            
+
             let loadedParams = [];
             try { loadedParams = JSON.parse(widget.data.value); if (!Array.isArray(loadedParams)) { loadedParams = []; } } catch (e) { /* ignore */ }
-            
+
             fgArray.forEach((fgData, index) => {
                  fabric.Image.fromURL(fgData.url, (fFg) => {
                     fFg.set({ id: index, borderColor: 'yellow', cornerColor: '#f0ad4e', cornerStrokeColor: 'black', cornerStyle: 'circle', transparentCorners: false, borderScaleFactor: 2 });
-                    
+
+                    // MODIFICATION START: Load parameters including opacity, with defaults
                     let transformParams = loadedParams[index];
                     if (!transformParams || transformParams.left === undefined) {
                         const fgImg = fgData.image;
                         const initialScale = (bgImg.naturalWidth * (0.3 + index*0.1)) / fgImg.naturalWidth;
-                        transformParams = { left: bgImg.naturalWidth / 2, top: bgImg.naturalHeight / 2, scaleX: initialScale, scaleY: initialScale, angle: 0, originX: 'center', originY: 'center' };
+                        transformParams = { 
+                            left: bgImg.naturalWidth / 2, 
+                            top: bgImg.naturalHeight / 2, 
+                            scaleX: initialScale, 
+                            scaleY: initialScale, 
+                            angle: 0, 
+                            opacity: 1.0,  // Add default opacity
+                            originX: 'center', 
+                            originY: 'center' 
+                        };
+                    }
+                    if (transformParams.opacity === undefined) {
+                        transformParams.opacity = 1.0; // Ensure older data gets opacity
                     }
                     allLayerParams[index] = transformParams;
+                    // MODIFICATION END
                     
                     const displayParams = { ...transformParams };
                     displayParams.left *= uiCanvasScale;
                     displayParams.top *= uiCanvasScale;
                     displayParams.scaleX *= uiCanvasScale;
                     displayParams.scaleY *= uiCanvasScale;
+                    // Opacity is not scaled, so it's applied directly from transformParams
                     fFg.set(displayParams);
-                    
+
                     uiCanvas.add(fFg);
                     fabricLayers[index] = fFg;
 
-                    if(index === 0) uiCanvas.setActiveObject(fFg);
+                    if(index === 0) {
+                        uiCanvas.setActiveObject(fFg);
+                    }
                     uiCanvas.renderAll();
-                });
+                 }, { crossOrigin: 'anonymous' }); // Added crossOrigin for safety
             });
 
+            // MODIFICATION START: Update param storage on modification to include opacity
             uiCanvas.on('object:modified', (e) => {
                 if(!e.target) return;
                 const obj = e.target;
                 const layerIndex = obj.id;
                 allLayerParams[layerIndex] = {
-                    left: obj.left / uiCanvasScale, top: obj.top / uiCanvasScale,
-                    scaleX: obj.scaleX / uiCanvasScale, scaleY: obj.scaleY / uiCanvasScale,
-                    angle: obj.angle, originX: 'center', originY: 'center',
+                    left: obj.left / uiCanvasScale, 
+                    top: obj.top / uiCanvasScale,
+                    scaleX: obj.scaleX / uiCanvasScale, 
+                    scaleY: obj.scaleY / uiCanvasScale,
+                    angle: obj.angle, 
+                    originX: 'center', 
+                    originY: 'center',
+                    opacity: obj.opacity, // Save the current opacity
                 };
             });
+            // MODIFICATION END
+            
+            // MODIFICATION START: Sync UI when selection changes
+            uiCanvas.on('selection:created', syncUIWithActiveLayer);
+            uiCanvas.on('selection:updated', syncUIWithActiveLayer);
+            uiCanvas.on('selection:cleared', syncUIWithActiveLayer);
+            // MODIFICATION END
              
             if (fgSources.length > 1) {
                 const layerControls = modal.querySelector('#zml-layer-controls');
@@ -386,6 +437,7 @@ function showMergeModal(node, widget) {
                            uiCanvas.renderAll();
                            layerButtons.forEach(b => b.classList.remove('active'));
                            btn.classList.add('active');
+                           syncUIWithActiveLayer(); // Sync slider on button click
                         }
                     };
                     layerControls.appendChild(btn);
@@ -393,20 +445,47 @@ function showMergeModal(node, widget) {
                 });
                 if(layerButtons.length > 0) layerButtons[0].classList.add('active');
             }
+            
+            // MODIFICATION START: Sync UI for the first time after a short delay
+            // to ensure the first object is properly set as active.
+            setTimeout(() => {
+                syncUIWithActiveLayer();
+            }, 100);
+            // MODIFICATION END
         };
 
         const bgImg = new Image();
+        bgImg.crossOrigin = "anonymous"; // Handle potential CORS issues
         bgImg.src = bgUrl;
         bgImg.onload = () => {
-            const fgImageObjects = fgSources.map(s => { const img = new Image(); img.src = s.url; return { ...s, image: img }; });
+            const fgImageObjects = fgSources.map(s => { const img = new Image(); img.crossOrigin="anonymous"; img.src = s.url; return { ...s, image: img }; });
             let loadedCount = 0; const totalToLoad = fgImageObjects.length;
             if (totalToLoad === 0) { setupMergeCanvas(bgImg, []); return; }
             fgImageObjects.forEach(fg => {
                 fg.image.onload = () => { loadedCount++; if(loadedCount === totalToLoad) { setupMergeCanvas(bgImg, fgImageObjects); } }
                 if(fg.image.complete) fg.image.onload();
+                fg.image.onerror = () => { loadedCount++; if(loadedCount === totalToLoad) { setupMergeCanvas(bgImg, fgImageObjects); } alert(`Failed to load foreground image ${fg.name}.`) }
             });
         };
+        bgImg.onerror = () => alert("Failed to load background image.");
         
+        // MODIFICATION START: Add event listener for the opacity slider
+        opacitySlider.oninput = () => {
+            const activeObj = uiCanvas.getActiveObject();
+            if (activeObj) {
+                const newOpacity = parseFloat(opacitySlider.value);
+                activeObj.set({ opacity: newOpacity });
+                uiCanvas.renderAll();
+                
+                // Update the stored parameters immediately
+                const layerIndex = activeObj.id;
+                if (allLayerParams[layerIndex]) {
+                    allLayerParams[layerIndex].opacity = newOpacity;
+                }
+            }
+        };
+        // MODIFICATION END
+
         modal.querySelector('#zml-reset-btn').onclick = () => {
             const activeObj = uiCanvas.getActiveObject();
             if (activeObj && bgImg.naturalWidth > 0) {
@@ -414,14 +493,17 @@ function showMergeModal(node, widget) {
                  const originalFgImg = fgSources.find(f => f.index === layerIndex).image;
                  const initialScale = (bgImg.naturalWidth * 0.5) / originalFgImg.naturalWidth;
                  const initialUiScale = initialScale * uiCanvasScale;
-                 activeObj.set({ left: uiCanvas.width / 2, top: uiCanvas.height / 2, scaleX: initialUiScale, scaleY: initialUiScale, angle: 0, });
+                 // Also reset opacity
+                 activeObj.set({ left: uiCanvas.width / 2, top: uiCanvas.height / 2, scaleX: initialUiScale, scaleY: initialUiScale, angle: 0, opacity: 1.0 });
                  activeObj.setCoords();
                  uiCanvas.renderAll();
+                 syncUIWithActiveLayer(); // Sync slider after reset
                  uiCanvas.fire('object:modified', { target: activeObj });
             }
         };
 
         modal.querySelector('#zml-confirm-btn').onclick = () => {
+            // No changes needed here, allLayerParams now includes opacity
             widget.data.value = JSON.stringify(allLayerParams);
             node.onWidgetValue_changed?.(widget.data, widget.data.value);
             closeModal(modal);
@@ -430,7 +512,6 @@ function showMergeModal(node, widget) {
         modal.querySelector('#zml-cancel-btn').onclick = () => closeModal(modal);
     });
 }
-
 // ======================= ZML_ImagePainter 节点 =======================
 app.registerExtension({
     name: "ZML.ImagePainter",
@@ -490,12 +571,12 @@ function showPainterModal(node, widget) {
             </div>
         </div>
     `;
-    
+
     const modal = createModal(modalHtml);
     const mainContainer = modal.querySelector('#zml-editor-main-container');
     const colorPicker = modal.querySelector('#zml-color-picker');
     const brushSizeSlider = modal.querySelector('#zml-brush-size');
-    
+
     let drawPaths = [];
 
     loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => {
@@ -508,12 +589,12 @@ function showPainterModal(node, widget) {
             const V_PADDING = 150; const H_PADDING = 80;
             const maxWidth = window.innerWidth - H_PADDING;
             const maxHeight = window.innerHeight - V_PADDING;
-            
+
             initialDisplayScale = Math.min(1, maxWidth / img.naturalWidth, maxHeight / img.naturalHeight);
 
             const displayWidth = img.naturalWidth * initialDisplayScale;
             const displayHeight = img.naturalHeight * initialDisplayScale;
-            
+
             mainContainer.style.width = `${displayWidth}px`;
             mainContainer.style.height = `${displayHeight}px`;
 
@@ -544,7 +625,7 @@ function showPainterModal(node, widget) {
 
             modal.querySelector('#zml-reset-view-btn').onclick = resetView;
         };
-        
+
         const renderExistingPaths = () => {
              canvas.remove(...canvas.getObjects().filter(o => o.isNotBackground));
              drawPaths.forEach(pathData => {
@@ -572,15 +653,14 @@ function showPainterModal(node, widget) {
             drawPaths.push(pathData);
             renderExistingPaths();
         });
-        
+
         canvas.on('mouse:wheel', function(opt) {
             const delta = opt.e.deltaY;
             let zoom = canvas.getZoom();
             zoom *= 0.999 ** delta;
-            
+
             if (zoom > 20) zoom = 20;
 
-            // ** FIXED ** 限制最小缩放为初始的完整显示比例，不能再无限缩小
             if (zoom < initialDisplayScale) {
                 zoom = initialDisplayScale;
             }
@@ -589,7 +669,7 @@ function showPainterModal(node, widget) {
             opt.e.preventDefault();
             opt.e.stopPropagation();
         });
-        
+
         canvas.on('mouse:down', function(opt) {
             if (opt.e.ctrlKey) {
                 isPanning = true;
@@ -631,7 +711,7 @@ function showPainterModal(node, widget) {
 
         colorPicker.onchange = (e) => { canvas.freeDrawingBrush.color = e.target.value; };
         brushSizeSlider.oninput = (e) => { canvas.freeDrawingBrush.width = parseInt(e.target.value); };
-        
+
         modal.querySelector('#zml-confirm-paint-btn').onclick = () => {
             widget.data.value = JSON.stringify({ draw_paths: drawPaths });
             node.onWidgetValue_changed?.(widget.data, widget.data.value);
