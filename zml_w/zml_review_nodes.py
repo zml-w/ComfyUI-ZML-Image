@@ -1,5 +1,4 @@
 # zml_w/zml_review_nodes.py
-# FINAL & COMPLETE VERSION
 
 import torch
 import numpy as np
@@ -7,6 +6,7 @@ from PIL import Image, ImageDraw
 import os
 import time
 import uuid
+import json # New import for UI image data
 
 try:
     from ultralytics import YOLO
@@ -68,7 +68,7 @@ class ZML_AutoCensorNode:
         try: model_list = folder_paths.get_filename_list("ultralytics") or []
         except KeyError: model_list = []
         return {"required": {"原始图像": ("IMAGE",), "YOLO模型": (model_list,), "置信度阈值": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}), "覆盖模式": (["图像", "马赛克"],), "拉伸图像": (["关闭", "启用"], {"default": "关闭"}), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256, "step": 1}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),}, "optional": { "覆盖图": ("IMAGE",), }}
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING"); RETURN_NAMES = ("处理后图像", "检测遮罩", "Help"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/图像"
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING"); RETURN_NAMES = ("处理后图像", "检测遮罩", "Help"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/其它"
     def process(self, 原始图像, YOLO模型, 置信度阈值, 覆盖模式, 拉伸图像, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
         help_text = self.increment_and_get_help_text()
         if not YOLO模型: _, h, w, _ = 原始图像.shape; return (原始图像, torch.zeros((1, h, w), dtype=torch.float32), help_text)
@@ -77,7 +77,7 @@ class ZML_AutoCensorNode:
         if not model_path: raise FileNotFoundError(f"模型文件 '{YOLO模型}' 未找到。")
         with force_compatibility_mode(): model = YOLO(model_path)
         source_pil = self.tensor_to_pil(原始图像); source_cv2 = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR); h, w = source_cv2.shape[:2]
-        results = model(source_pil, conf=置信度阈值, verbose=False)
+        results = model(source_pil, conf= 置信度阈值, verbose=False)
         final_combined_mask = Image.new('L', (w, h), 0)
         if len(results[0]) > 0:
             for result in results[0]:
@@ -136,7 +136,7 @@ class ZML_CustomCensorNode(ZML_AutoCensorNode):
 class ZML_MaskSplitNode:
     @classmethod
     def INPUT_TYPES(cls): return { "required": { "宽度": ("INT", {"default": 1024}), "高度": ("INT", {"default": 1024}), "分割比例": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0}), "分割方向": (["竖", "横"],) } }
-    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK"); RETURN_NAMES = ("遮罩A", "遮罩B", "单独遮罩A", "单独遮罩B", "完整遮罩"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/图像"
+    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK"); RETURN_NAMES = ("遮罩A", "遮罩B", "单独遮罩A", "单独遮罩B", "完整遮罩"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/其它"
     def process(self, 宽度, 高度, 分割比例, 分割方向):
         a = np.zeros((高度, 宽度), dtype=np.float32); b = np.zeros((高度, 宽度), dtype=np.float32)
         if 分割方向 == "竖": w_split = int(宽度 * 分割比例); a[:, :w_split] = 1.0; b[:, w_split:] = 1.0; sa = np.ones((高度, w_split)); sb = np.ones((高度, 宽度 - w_split))
@@ -148,7 +148,7 @@ class ZML_MaskSplitNode:
 class ZML_MaskSplitNode_Five:
     @classmethod
     def INPUT_TYPES(cls): return {"required": { "宽度": ("INT", {"default": 1024}), "高度": ("INT", {"default": 1024}), "分割数量": ("INT", {"default": 5, "min": 1, "max": 5}) } }
-    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK"); RETURN_NAMES = ("遮罩1", "遮罩2", "遮罩3", "遮罩4", "遮罩5"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/图像"
+    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK"); RETURN_NAMES = ("遮罩1", "遮罩2", "遮罩3", "遮罩4", "遮罩5"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/其它"
     def process(self, 宽度, 高度, 分割数量):
         masks = []; pos = [int(i * 宽度 / 分割数量) for i in range(分割数量 + 1)]; pos[-1] = 宽度
         for i in range(5):
@@ -156,6 +156,42 @@ class ZML_MaskSplitNode_Five:
             if i < 分割数量: m[:, pos[i]:pos[i+1]] = 1.0
             masks.append(torch.from_numpy(m).unsqueeze(0))
         return tuple(masks)
+
+# ============================== 图像旋转节点==============================
+class ZML_ImageRotate:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE",),
+                "旋转方向": (["顺时针", "逆时针"],),
+                "旋转角度": ("INT", {"default": 90, "min": 0, "max": 360, "step": 1, "display": "number"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("旋转后图像",)
+    FUNCTION = "rotate_image"
+    CATEGORY = "image/ZML_图像/图像"
+
+    def _tensor_to_pil(self, tensor: torch.Tensor) -> Image.Image:
+        """将 torch Tensor 转换为 PIL Image"""
+        return Image.fromarray(np.clip(255. * tensor.cpu().numpy().squeeze(0), 0, 255).astype(np.uint8))
+
+    def _pil_to_tensor(self, pil_image: Image.Image) -> torch.Tensor:
+        """将 PIL Image 转换为 torch Tensor"""
+        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def rotate_image(self, 图像: torch.Tensor, 旋转方向: str, 旋转角度: int):
+        pil_image = self._tensor_to_pil(图像)
+        
+        angle_to_rotate = -旋转角度 if 旋转方向 == "顺时针" else 旋转角度
+
+        rotated_pil_image = pil_image.rotate(angle_to_rotate, resample=Image.BICUBIC, expand=True)
+        
+        output_tensor = self._pil_to_tensor(rotated_pil_image)
+        
+        return (output_tensor,)
 
 class ZML_PauseNode:
     @classmethod
@@ -317,24 +353,98 @@ class ZML_AudioPlayerNode:
         # 后端什么也不做，返回一个空的 UI 结果即可
         return {"ui": {"text": ["played audio"]}}
 
-# ============================== MAPPINGS ==============================
 
-# 更新 NODE_CLASS_MAPPINGS
+# ============================== 桥接预览节点 ==============================
+class ZML_ImageMemory:
+    # 启用OUTPUT_NODE，使其能在UI中预览图像。
+    OUTPUT_NODE = True 
+
+    # self.stored_image 将在同一个 ComfyUI 会话中，即不关闭 ComfyUI 程序的情况下保持其值。
+    # 当 ComfyUI 关闭或加载新工作流时，此值将被重置。
+    def __init__(self):
+        self.stored_image = None
+        # 定义一个用于存储ComfyUI临时预览图像的子目录
+        self.temp_subfolder = "zml_image_memory_previews" 
+        self.temp_output_dir = folder_paths.get_temp_directory()
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "关闭输入": ("BOOLEAN", {"default": False}), # 新增布尔开关
+            },
+            "optional": {
+                "输入图像": ("IMAGE",), # 可选输入
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",) 
+    RETURN_NAMES = ("图像",) 
+    FUNCTION = "store_and_retrieve_image"
+    CATEGORY = "image/ZML_图像/图像" 
+
+    def store_and_retrieve_image(self, 关闭输入, 输入图像=None):
+
+        image_to_output = None
+
+        if 关闭输入:
+            image_to_output = self.stored_image
+        elif 输入图像 is not None:
+            self.stored_image = 输入图像
+            image_to_output = self.stored_image
+        else:
+            image_to_output = self.stored_image
+
+        if image_to_output is None:
+            default_size = 1 # 默认尺寸改为 1x1
+            image_to_output = torch.zeros((1, default_size, default_size, 3), dtype=torch.float32, device="cpu")
+
+        # ====== 处理UI预览图像 ======
+        subfolder_path = os.path.join(self.temp_output_dir, self.temp_subfolder)
+        os.makedirs(subfolder_path, exist_ok=True)
+
+        # 将 tensor 转换为 PIL Image
+        # 确保尺寸正确，如果 tensor 是 (1, 1, 1, 3)，PIL无法处理，需要先转换为 (1, 3) 假图
+        if image_to_output.shape[1] == 1 and image_to_output.shape[2] == 1:
+            # 对于1x1的黑图，创建一个可见的小图用于预览，例如 32x32，并保存
+            preview_image_tensor = torch.zeros((1, 32, 32, 3), dtype=torch.float32, device=image_to_output.device)
+            pil_image = Image.fromarray((preview_image_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
+        else:
+            # 正常图像处理
+            pil_image = Image.fromarray((image_to_output.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
+
+        # 生成唯一文件名
+        filename = f"zml_image_memory_{uuid.uuid4()}.png"
+        file_path = os.path.join(subfolder_path, filename)
+        
+        pil_image.save(file_path, "PNG")
+
+        # 准备UI所需的数据
+        ui_image_data = [{"filename": filename, "subfolder": self.temp_subfolder, "type": "temp"}]
+
+        # 返回结果：(图像,), 同时返回UI信息
+        return {"ui": {"images": ui_image_data}, "result": (image_to_output,)}
+    
+# ============================== MAPPINGS ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_AutoCensorNode": ZML_AutoCensorNode,
     "ZML_CustomCensorNode": ZML_CustomCensorNode,
     "ZML_MaskSplitNode": ZML_MaskSplitNode,
     "ZML_MaskSplitNode_Five": ZML_MaskSplitNode_Five,
+    "ZML_ImageRotate": ZML_ImageRotate,
     "ZML_PauseNode": ZML_PauseNode,
     "ZML_AudioPlayerNode": ZML_AudioPlayerNode,
+    "ZML_ImageMemory": ZML_ImageMemory,
 }
 
-# 更新 NODE_DISPLAY_NAME_MAPPINGS
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_AutoCensorNode": "ZML_自动打码",
     "ZML_CustomCensorNode": "ZML_自定义打码",
     "ZML_MaskSplitNode": "ZML_遮罩分割",
     "ZML_MaskSplitNode_Five": "ZML_遮罩分割-五",
+    "ZML_ImageRotate": "ZML_图像旋转",
     "ZML_PauseNode": "ZML_图像暂停",
     "ZML_AudioPlayerNode": "ZML_音频播放器",
+    "ZML_ImageMemory": "ZML_桥接预览图像",
 }
+

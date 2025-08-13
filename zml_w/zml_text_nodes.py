@@ -695,7 +695,7 @@ class ZML_GIFLoader:
             print(f"加载GIF失败: {str(e)}")
             return (torch.zeros(0), 0, help_output)
 
-# ============================== 双整数节点 (New) ==============================
+# ============================== 双整数节点 ==============================
 class ZML_DualInteger:
     """
     ZML 双整数节点
@@ -718,7 +718,7 @@ class ZML_DualInteger:
     def get_simple_dimensions(self, A, B):
         return (A, B)
 
-# ============================== 双整数V2节点 (MODIFIED) ==============================
+# ============================== 双整数V2节点 ==============================
 class ZML_DualIntegerV2:
     """
     ZML 双整数V2节点
@@ -806,7 +806,7 @@ class ZML_DualIntegerV2:
             
         return (preset_width, preset_height, help_text)
 
-# ============================== 双整数V3（判断）节点 (MODIFIED) ==============================
+# ============================== 双整数V3（判断） ==============================
 class ZML_DualIntegerV3:
     """
     ZML 双整数V3（判断）节点
@@ -876,7 +876,7 @@ class ZML_DualIntegerV3:
             
         return (out_w, out_h, out_int, out_float, out_bool)
 
-# ============================== 顺序加载整数节点 (新增) ==============================
+# ============================== 顺序加载整数节点 ==============================
 class ZML_SequentialIntegerLoader:
     """
     ZML 顺序加载整数节点
@@ -978,7 +978,7 @@ class ZML_DualFloat:
     def get_floats(self, A, B):
         return (A, B)
 
-# ============================== 预设分辨率节点 (新增) ==============================
+# ============================== 预设分辨率节点==============================
 # 定义预设分辨率文件的路径
 PRESET_RESOLUTION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset integer", "Preset integer.txt")
 

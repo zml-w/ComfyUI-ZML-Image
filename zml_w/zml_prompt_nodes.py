@@ -64,5 +64,4 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_PromptUINode": "ZML_标签化提示词加载器",
-
 }
