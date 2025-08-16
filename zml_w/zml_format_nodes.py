@@ -434,6 +434,7 @@ class ZML_TextLine:
                 "文件选择": (file_list,),
                 "模式": (["索引", "顺序", "随机"],),
                 "索引": ("INT", {"default": 0, "min": 0, "step": 1}),
+                "随机行数": ("INT", {"default": 1, "min": 1, "step": 1}), # 新增随机行数选项
             },
             "optional": {
                 "文本": ("STRING", {
@@ -457,7 +458,7 @@ class ZML_TextLine:
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
 
-    def get_line(self, 文件选择, 模式, 索引, unique_id, prompt, 文本=None):
+    def get_line(self, 文件选择, 模式, 索引, 随机行数, unique_id, prompt, 文本=None): # 添加随机行数参数
         lines = []
         
         # 检查是否选择了文件（而不是"禁用"选项）
@@ -492,7 +493,14 @@ class ZML_TextLine:
             self.increment_sequential_count(unique_id)
 
         elif 模式 == "随机":
-            output_line = random.choice(lines)
+            # 根据随机行数选择多行
+            if 随机行数 > 0:
+                # 确保选择的行数不超过总行数
+                count_to_select = min(随机行数, num_lines)
+                selected_lines = random.sample(lines, count_to_select)
+                output_line = ", ".join(selected_lines) # 用逗号连接多行
+            else:
+                output_line = random.choice(lines) # 默认选择一行
 
         return (output_line, self.help_text)
 
@@ -808,6 +816,49 @@ class ZML_SelectTextV2:
 
         return (combined,)
 
+# ============================== 选择文本V3节点 (动态UI版) - 新增节点 ==============================
+class ZML_SelectTextV3:
+    """ZML 选择文本V3节点：具有动态UI，可以自由添加、删除、启用/禁用文本行。"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "separator": ("STRING", {"multiline": False, "default": ","}), # 分隔符输入
+            },
+            "hidden": {
+                "selectTextV3_data": ("STRING", {"default": "{}"}), # 隐藏的控件，用于接收JS前端数据
+                "unique_id": "UNIQUE_ID",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    CATEGORY = "image/ZML_图像/文本"  # 统一分类
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "execute"
+
+    def execute(self, separator, selectTextV3_data, unique_id=None, extra_pnginfo=None):
+        import json
+
+        try:
+            data = json.loads(selectTextV3_data)
+        except json.JSONDecodeError:
+            data = {"entries": []} # 简化的数据结构
+
+        entries = data.get("entries", [])
+        
+        final_parts = []
+
+        for entry in entries:
+            if entry.get("enabled", False):
+                content = entry.get("content", "")
+                if content.strip():
+                    final_parts.append(content)
+        
+        output_text = separator.join(final_parts)
+        
+        return (output_text,)
 
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
@@ -820,6 +871,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MultiTextInput3": ZML_MultiTextInput3,
     "ZML_SelectText": ZML_SelectText,
     "ZML_SelectTextV2": ZML_SelectTextV2,
+    "ZML_SelectTextV3": ZML_SelectTextV3,  # 添加新节点到映射
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -832,4 +884,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MultiTextInput3": "ZML_多文本输入_三",
     "ZML_SelectText": "ZML_选择文本",
     "ZML_SelectTextV2": "ZML_选择文本V2",
+    "ZML_SelectTextV3": "ZML_选择文本V3",  # 添加新节点的显示名称
 }

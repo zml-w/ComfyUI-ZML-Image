@@ -1,3 +1,4 @@
+# 文件路径: ComfyUI-ZML-Image\zml_w\zml_lora_nodes.py
 import os
 import shutil
 import server
@@ -505,6 +506,108 @@ class ZmlLoraLoaderFive:
         final_txt_output = ", ".join(filter(None, all_txt_content))
         return (model_out, clip_out, final_txt_output)
 
+#——————————————————————————
+# 强力 Lora 加载器节点
+class ZmlPowerLoraLoader:
+    """
+    ZML 强力LoRA加载器节点。
+    允许用户通过自定义UI动态添加、删除和配置多个LoRA。
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        lora_list = ["None"] + folder_paths.get_filename_list("loras")
+        
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "clip": ("CLIP",),
+            },
+            "hidden": {
+                "lora_loader_data": ("STRING", {"default": "{}"}),
+                "lora_names_hidden": (lora_list, ),
+            },
+        }
+
+    OUTPUT_IS_LIST = (False, False, True, False, False)
+    
+    RETURN_TYPES = ("MODEL", "CLIP", "IMAGE", "STRING", "STRING")
+    RETURN_NAMES = ("MODEL", "CLIP", "预览_图", "触发词", "自定义文本") # 【 ZML 新增 】: 新增 "自定义文本" 输出
+    FUNCTION = "load_loras"
+    CATEGORY = "图像/ZML_图像/lora加载器"
+
+    def load_loras(self, model, clip, lora_loader_data, lora_names_hidden=None):
+        try:
+            data = json.loads(lora_loader_data)
+            entries = data.get("entries", [])
+        except (json.JSONDecodeError, TypeError):
+            print("ZML_PowerLoraLoader: JSON解析失败或数据为空，跳过LoRA加载。")
+            return (model, clip, [], "", "") 
+
+        current_model = model
+        current_clip = clip
+        
+        output_images = []
+        temp_txts = [] 
+        output_custom_texts = [] 
+
+        for entry in entries:
+            is_enabled = entry.get("enabled", False)
+            lora_name = entry.get("lora_name")
+            
+            # 收集当前条目的custom_text，无论是否启用LoRA，只要是启用的文本内容就收集
+            custom_text_content = entry.get("custom_text", "").strip()
+            if is_enabled and custom_text_content: 
+                output_custom_texts.append(custom_text_content)
+
+            if is_enabled and lora_name and lora_name != "None":
+                weight = float(entry.get("weight", 1.0))
+                print(f"ZML_PowerLoraLoader: 正在加载 LoRA '{lora_name}'，权重 {weight}")
+                
+                try:
+                    lora_path = folder_paths.get_full_path("loras", lora_name)
+                    if lora_path:
+                        lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+                        current_model, current_clip = comfy.sd.load_lora_for_models(current_model, current_clip, lora, weight, weight)
+                        
+                        lora_basename_no_ext = os.path.splitext(os.path.basename(lora_name))[0]
+                        lora_dir = os.path.dirname(lora_path)
+                        zml_dir = os.path.join(lora_dir, "zml")
+                        
+                        found_image_tensor = None
+                        for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                            preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
+                            if os.path.isfile(preview_path):
+                                try:
+                                    img = Image.open(preview_path).convert("RGB")
+                                    img_array = np.array(img).astype(np.float32) / 255.0
+                                    found_image_tensor = torch.from_numpy(img_array).unsqueeze(0)
+                                    break
+                                except Exception as e:
+                                    print(f"ZML_PowerLoraLoader: 读取预览图时出错 {preview_path}: {e}")
+                        
+                        if found_image_tensor is None:
+                           found_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+                        output_images.append(found_image_tensor)
+                        
+                        txt_filepath = os.path.join(zml_dir, f"{lora_basename_no_ext}.txt")
+                        if os.path.isfile(txt_filepath):
+                            try:
+                                with open(txt_filepath, 'r', encoding='utf-8') as f:
+                                    content = f.read().strip()
+                                    if content: 
+                                        temp_txts.append(content)
+                            except Exception as e:
+                                print(f"ZML_PowerLoraLoader: 读取txt文件时出错 {txt_filepath}: {e}")
+                
+                except Exception as e:
+                    print(f"ZML_PowerLoraLoader: 加载 LoRA '{lora_name}' 时出错: {e}")
+        
+        final_txt_output = ", ".join(temp_txts)
+        final_custom_text_output = ", ".join(output_custom_texts) 
+
+        # 返回所有输出
+        return (current_model, current_clip, output_images, final_txt_output, final_custom_text_output)
 
 # 注册节点
 NODE_CLASS_MAPPINGS = {
@@ -512,6 +615,7 @@ NODE_CLASS_MAPPINGS = {
     "ZmlLoraLoaderModelOnly": ZmlLoraLoaderModelOnly,
     "ZmlLoraLoaderFive": ZmlLoraLoaderFive,
     "ZmlLoraMetadataParser": ZmlLoraMetadataParser,
+    "ZmlPowerLoraLoader": ZmlPowerLoraLoader,
 }
 
 # 节点显示名称映射
@@ -520,4 +624,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZmlLoraLoaderModelOnly": "ZML_LoRA加载器（仅模型）",
     "ZmlLoraLoaderFive": "ZML_LoRA加载器_五",
     "ZmlLoraMetadataParser": "ZML_解析LoRA元数据",
+    "ZmlPowerLoraLoader": "ZML_强力lora加载器",
 }

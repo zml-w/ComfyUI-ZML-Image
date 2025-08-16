@@ -1093,8 +1093,10 @@ class ZML_ImagePainter:
                 "paint_data": ("STRING", {"multiline": True, "default": "{}", "widget": "hidden"}),
             }
         }
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("图像",)
+    # 添加 MASK 类型的输出
+    RETURN_TYPES = ("IMAGE", "MASK")
+    # 添加对应的输出名称
+    RETURN_NAMES = ("图像", "遮罩")
     FUNCTION = "paint_image"
     CATEGORY = "image/ZML_图像/图像"
 
@@ -1105,21 +1107,41 @@ class ZML_ImagePainter:
         return Image.fromarray(img_np, 'RGBA')
 
     def pil_to_tensor(self, pil_image):
-        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+        if pil_image.mode == 'L': # For mask, it's a single channel (L = Luminance)
+            # Unsqueeze to (1, H, W) for MASK output
+            return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+        else: # For RGB/RGBA images
+            return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
     def paint_image(self, 图像, paint_data="{}"):
+        processed_images = []
+        mask_tensors = []
+
         try:
             data = json.loads(paint_data)
             draw_paths = data.get('draw_paths', [])
             
+            # If no draw data, return original image and an empty (black) mask batch
             if not draw_paths:
-                print("ZML_ImagePainter: 未收到绘制数据。返回原始图像。")
-                return (图像,)
+                print("ZML_ImagePainter: 未收到绘制数据。返回原始图像和全黑蒙版。")
+                # Create a black mask for each image in the batch
+                for img_tensor in 图像:
+                    h, w = img_tensor.shape[1:3] # Get H and W from tensor
+                    black_mask = Image.new('L', (w, h), 0) # L mode = (8-bit pixels, black and white)
+                    mask_tensors.append(self.pil_to_tensor(black_mask))
+                
+                return (图像, torch.cat(mask_tensors, dim=0))
 
-            processed_images = []
             for img_tensor in 图像:
                 pil_image = self.tensor_to_pil(img_tensor).convert("RGBA")
-                draw = ImageDraw.Draw(pil_image)
+                original_width, original_height = pil_image.size
+                
+                # Create a blank mask for the current image
+                # 'L' mode is for single-channel (grayscale) images (0-255, where 255 is white/visible, 0 is black/transparent)
+                mask_image = Image.new('L', (original_width, original_height), 0) # Start with a black mask
+                
+                draw_img = ImageDraw.Draw(pil_image)
+                draw_mask = ImageDraw.Draw(mask_image) # Use different draw object for the mask
 
                 for path in draw_paths:
                     points = path.get('points', [])
@@ -1129,25 +1151,41 @@ class ZML_ImagePainter:
                     if len(points) >= 2:
                         pts_int = [(int(p[0]), int(p[1])) for p in points]
                         fill_color_rgb = tuple(int(color_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-                        fill_color = fill_color_rgb + (255,)
+                        fill_color = fill_color_rgb + (255,) # Add full alpha for image blend
                         
-                        draw.line(pts_int, fill=fill_color, width=int(width), joint='curve')
+                        draw_img.line(pts_int, fill=fill_color, width=int(width), joint='curve')
+                        # Draw on mask in white (255)
+                        draw_mask.line(pts_int, fill=255, width=int(width), joint='curve') 
                     elif len(points) == 1:
                         x, y = int(points[0][0]), int(points[0][1])
                         fill_color_rgb = tuple(int(color_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-                        fill_color = fill_color_rgb + (255,)
-                        draw.ellipse([x-width, y-width, x+width, y+width], fill=fill_color)
+                        fill_color = fill_color_rgb + (255,) # Add full alpha for image blend
+                        draw_img.ellipse([x-width, y-width, x+width, y+width], fill=fill_color)
+                        # Draw on mask in white (255)
+                        draw_mask.ellipse([x-width, y-width, x+width, y+width], fill=255)
 
                 processed_images.append(self.pil_to_tensor(pil_image))
+                mask_tensors.append(self.pil_to_tensor(mask_image))
         
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
-            print(f"ZML_ImagePainter: 处理绘制数据时出错: {e}. 返回原始图像。")
-            return (图像,)
+            print(f"ZML_ImagePainter: 处理绘制数据时出错: {e}. 返回原始图像和全黑蒙版。")
+            mask_tensors = [] # Clear any partial masks
+            for img_tensor in 图像:
+                h, w = img_tensor.shape[1:3]
+                black_mask = Image.new('L', (w, h), 0)
+                mask_tensors.append(self.pil_to_tensor(black_mask))
+            return (图像, torch.cat(mask_tensors, dim=0))
         except Exception as e:
-            print(f"ZML_ImagePainter: 发生未知错误: {e}. 返回原始图像。")
-            return (图像,)
+            print(f"ZML_ImagePainter: 发生未知错误: {e}. 返回原始图像和全黑蒙版。")
+            mask_tensors = [] # Clear any partial masks
+            for img_tensor in 图像:
+                h, w = img_tensor.shape[1:3]
+                black_mask = Image.new('L', (w, h), 0)
+                mask_tensors.append(self.pil_to_tensor(black_mask))
+            return (图像, torch.cat(mask_tensors, dim=0))
 
-        return (torch.cat(processed_images, dim=0),)
+        # Concatenate images and masks from the batch
+        return (torch.cat(processed_images, dim=0), torch.cat(mask_tensors, dim=0))
 
 # ============================== 取色器节点 ==============================
 class ZML_ColorPicker:
