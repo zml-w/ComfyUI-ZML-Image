@@ -186,6 +186,8 @@
 
 - **桥接预览图像：https://github.com/ltdrdata/ComfyUI-Impact-Pack**
 
+- **强力lora加载器：https://github.com/rgthree/rgthree-comfy**
+
 ## 有问题可以提交，有想法也可以提交
 
 `妹妹好可爱，放个妹妹`
