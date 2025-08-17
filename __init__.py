@@ -1,4 +1,4 @@
-# custom_nodes/ComfyUI-ZML-Image/__init__.py
+# ComfyUI-ZML-Image/__init__.py
 
 import os
 import sys
@@ -72,7 +72,7 @@ for filename in os.listdir(nodes_dir):
             if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
                 NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
                 
-            print(f"✅ [ZML-Image] Loaded nodes from: {filename}")
+            # print(f"✅ [ZML-Image] Loaded nodes from: {filename}") # 打印导入的py文件
 
         except Exception as e:
             print(f"❌ [ZML-Image] Failed to load nodes from {filename}: {e}")
@@ -84,4 +84,3 @@ WEB_DIRECTORY = "zml_w/web"
 # 3. 导出给 ComfyUI
 # --------------------------------------------------------------------
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']
-
