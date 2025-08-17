@@ -662,11 +662,16 @@ class ZML_MergeImages:
     FUNCTION = "merge_images"
     CATEGORY = "image/ZML_图像/图像"
 
-    def _tensor_to_pil(self, tensor_slice): # Renamed to avoid conflict
+    def _tensor_to_pil(self, tensor_slice): 
+        # Convert tensor to PIL Image, ensuring it has an alpha channel if needed
         img_np = np.clip(255. * tensor_slice.cpu().numpy(), 0, 255).astype(np.uint8)
-        return Image.fromarray(img_np)
+        if img_np.shape[-1] == 4: # Already RGBA
+            return Image.fromarray(img_np, 'RGBA')
+        elif img_np.shape[-1] == 3: # RGB, convert to RGBA
+            return Image.fromarray(img_np, 'RGB').convert('RGBA')
+        return Image.fromarray(img_np) # Fallback, should not happen with standard IMAGE type
 
-    def _pil_to_tensor(self, pil_image): # Renamed to avoid conflict
+    def _pil_to_tensor(self, pil_image):
         return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
     def merge_images(self, 底图, 前景图_1, transform_data, 前景图_2=None, 前景图_3=None):
@@ -674,9 +679,11 @@ class ZML_MergeImages:
             data = json.loads(transform_data)
             # 旧版逻辑：直接将数据作为参数数组
             if not isinstance(data, list):
+                print("ZML_MergeImages: transform_data格式不正确，预计为列表。")
                 return (底图,)
             layer_params = data
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"ZML_MergeImages: 解析transform_data失败: {e}。返回原始底图。")
             return (底图,)
 
         fg_images = [前景图_1, 前景图_2, 前景图_3]
@@ -685,34 +692,54 @@ class ZML_MergeImages:
         batch_size = 底图.shape[0]
 
         for i in range(batch_size):
+            # 将底图转换为RGBA模式，以便支持透明度合并
             bg_pil = self._tensor_to_pil(底图[i]).convert("RGBA")
 
             for layer_idx, fg_tensor_batch in enumerate(fg_images):
                 if fg_tensor_batch is not None and i < fg_tensor_batch.shape[0]:
-                    if layer_idx >= len(layer_params): continue
+                    if layer_idx >= len(layer_params): continue # 没有该图层的参数，跳过
                     
                     params = layer_params[layer_idx]
-                    if not params: continue
+                    if not params: continue # 参数为空，跳过
 
+                    # 将前景图转换为RGBA模式
                     fg_pil = self._tensor_to_pil(fg_tensor_batch[i]).convert("RGBA")
 
                     new_width = int(fg_pil.width * params.get('scaleX', 1.0))
                     new_height = int(fg_pil.height * params.get('scaleY', 1.0))
-                    if new_width <= 0 or new_height <= 0: continue
+                    if new_width <= 0 or new_height <= 0: continue # 尺寸无效，跳过
+                    
+                    # 调整大小，使用高质量的插值方法
                     fg_pil_resized = fg_pil.resize((new_width, new_height), Image.Resampling.LANCZOS)
                     
+                    # 旋转前景图
                     fg_pil_rotated = fg_pil_resized.rotate(-params.get('angle', 0), expand=True, resample=Image.Resampling.BICUBIC)
                     
+                    # MODIFICATION START: Apply opacity
+                    opacity = float(params.get('opacity', 1.0)) # 从参数中获取不透明度，默认为1.0（完全不透明）
+                    if opacity < 1.0:
+                        # 分离RGB和Alpha通道
+                        r, g, b, a = fg_pil_rotated.split()
+                        # 根据不透明度调整Alpha通道
+                        a = a.point(lambda p: p * opacity)
+                        fg_pil_rotated = Image.merge('RGBA', (r, g, b, a))
+                    # MODIFICATION END
+
+                    # 计算粘贴位置
+                    # Fabricjs的left/top是中心点，PIL paste是左上角
                     paste_x = int(params.get('left', 0) - fg_pil_rotated.width / 2)
                     paste_y = int(params.get('top', 0) - fg_pil_rotated.height / 2)
 
+                    # 将前景图粘贴到底图上，使用前景图的Alpha通道作为蒙版
                     bg_pil.paste(fg_pil_rotated, (paste_x, paste_y), fg_pil_rotated)
 
-            final_pil = bg_pil.convert("RGB")
+            # 最终输出为RGB模式，如果不需要透明背景的话
+            # 如果需要保留透明度，则改为 "RGBA"
+            final_pil = bg_pil.convert("RGB") 
             output_images.append(self._pil_to_tensor(final_pil))
 
         if not output_images:
-            return (底图,)
+            return (底图,) # 如果没有处理任何图像，返回原始底图
 
         return (torch.cat(output_images, dim=0),)
 
