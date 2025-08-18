@@ -280,22 +280,25 @@ class ZML_AddTextWatermark:
                         pil_image.paste(rot_img, (x, y), rot_img)
                     row_idx += 1
             else:
-                draw = ImageDraw.Draw(pil_image)
-                # Max dimension needs to account for stroke width
+                # 创建一个临时的透明层来绘制文本
+                text_layer = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(text_layer)
+
                 max_dim = (img_width - (水平边距 * 2) - (stroke_width_for_draw * 2)) if 书写方向 == "横排" else (img_height - (垂直边距 * 2) - (stroke_width_for_draw * 2))
-                max_dim = max(1, max_dim) # Ensure it's at least 1
+                max_dim = max(1, max_dim)
 
                 lines = self._prepare_lines(文本, font, max_dim, 字符间距, 书写方向)
                 tw, th = self._get_text_block_size(lines, font, 字符间距, 行间距, 书写方向)
                 
-                # Position calculation needs to account for stroke offset as well
                 x = 水平边距 if "左" in 位置 else (img_width - tw - 水平边距 if "右" in 位置 else (img_width - tw) // 2)
                 y = 垂直边距 if "上" in 位置 else (img_height - th - 垂直边距 if "下" in 位置 else (img_height - th) // 2)
                 
-                # Call drawing function with new stroke parameters
                 self._draw_text_manually(draw, lines, x, y, font, 
                                         fill_color_for_draw, stroke_width_for_draw, stroke_fill_color_for_draw, 
                                         不透明度, 字符间距, 行间距, 书写方向)
+                
+                # 将绘制好的文本层合成到原始图像上
+                pil_image = Image.alpha_composite(pil_image, text_layer)
             
             processed_images.append(self.pil_to_tensor(pil_image))
         return (torch.cat(processed_images, dim=0), help_text)
