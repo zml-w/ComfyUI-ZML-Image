@@ -519,9 +519,10 @@ class ZmlPowerLoraLoader:
         lora_list = ["None"] + folder_paths.get_filename_list("loras")
         
         return {
-            "required": {
+            "required": {},
+            "optional": {
                 "model": ("MODEL",),
-                "clip": ("CLIP",),
+                "clip": ("CLIP",), 
             },
             "hidden": {
                 "lora_loader_data": ("STRING", {"default": "{}"}),
