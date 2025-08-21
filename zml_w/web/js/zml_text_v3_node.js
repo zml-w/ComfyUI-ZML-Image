@@ -1,5 +1,9 @@
 import { app } from "../../../scripts/app.js";
 
+// 新增：定义节点推荐的最小尺寸常量
+const SELECT_TEXT_V3_MIN_WIDTH = 300; // 适当增加宽度以容纳顶部所有控件
+const SELECT_TEXT_V3_MIN_HEIGHT_EMPTY_LIST = 185; // 在文本列表为空时，为UI元素和底部按钮预留足够高度
+
 function createEl(tag, className = "", properties = {}, text = "") {
     const el = document.createElement(tag);
     if (className) el.className = className;
@@ -7,6 +11,22 @@ function createEl(tag, className = "", properties = {}, text = "") {
     if (text) el.textContent = text;
     return el;
 }
+
+// === Helper function to adjust color brightness (从LoRA loader中复制过来，确保一致性) ===
+const adjustBrightness = (hex, percent) => {
+    hex = hex.replace(/^#/, '');
+    let r = parseInt(hex.substring(0, 2), 16);
+    let g = parseInt(hex.substring(2, 4), 16);
+    let b = parseInt(hex.substring(4, 6), 16);
+
+    r = Math.min(255, Math.max(0, r + Math.floor(percent / 100 * 255)));
+    g = Math.min(255, Math.max(0, g + Math.floor(percent / 100 * 255)));
+    b = Math.min(255, Math.max(0, b + Math.floor(percent / 100 * 255)));
+
+    const toHex = (c) => ('0' + c.toString(16)).slice(-2);
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+// ===============================================
 
 app.registerExtension({
     name: "ZML.SelectTextV3.Extension",
@@ -157,7 +177,6 @@ app.registerExtension({
                         this.selectTextV3_data = {
                             entries: [
                                 { id: "entry1", item_type: "text", title: "", content: "", enabled: true, parent_id: null },
-                                { id: "entry2", item_type: "text", title: "", content: "", enabled: true, parent_id: null },
                             ]
                         };
                     } else {
@@ -308,22 +327,6 @@ app.registerExtension({
                         newTextBoxBtn.style.padding = s.newButtonPadding;
                         this.renderSelectTextV3Entries();
                     };
-
-                    // === Helper function to adjust color brightness ===
-                    const adjustBrightness = (hex, percent) => {
-                        hex = hex.replace(/^#/, '');
-                        let r = parseInt(hex.substring(0, 2), 16);
-                        let g = parseInt(hex.substring(2, 4), 16);
-                        let b = parseInt(hex.substring(4, 6), 16);
-
-                        r = Math.min(255, Math.max(0, r + Math.floor(percent / 100 * 255)));
-                        g = Math.min(255, Math.max(0, g + Math.floor(percent / 100 * 255)));
-                        b = Math.min(255, Math.max(0, b + Math.floor(percent / 100 * 255)));
-
-                        const toHex = (c) => ('0' + c.toString(16)).slice(-2);
-                        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-                    };
-                    // ===============================================
 
 
                     this.createTextEntryDOM = (entry) => {
@@ -555,7 +558,7 @@ app.registerExtension({
                         this.updateOutputPreview(); // Assuming this is handled by a separate function
                         app.graph.setDirtyCanvas(true, true); // Mark canvas dirty to force redraw
                     };
-
+                    
                     this.updateOutputPreview = () => {
                         // This part needs to be updated if the output behavior changes with folders
                         // For now, let's assume it concatenates all selected top-level texts.
@@ -575,26 +578,36 @@ app.registerExtension({
                         const outputWidget = this.widgets.find(w=>w.name === "text");
                         if(outputWidget) {
                             // Trim leading/trailing separators if they resulted from empty inputs
-                            outputWidget.value = combinedContent.replace(new RegExp(`^${separator}+|${separator}+$`, 'g'), '');
+                            // 使用更安全的正则表达式构建方式，避免特殊字符问题
+                            const escapedSeparator = separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            outputWidget.value = combinedContent.replace(new RegExp(`^${escapedSeparator}+|${escapedSeparator}+$`, 'g'), '');
                         }
                     };
 
                     this.addDOMWidget("selecttextv3_ui", "div", container, { serialize: false });
-                    this.size = [Math.max(this.size[0] || 0, 300), Math.max(this.size[1] || 0, 220)]; // Initial size hints
+                    
+                    // 修改：调整初始最小高度和宽度
+                    const initialHeightFromWidgets = (this.widgets_always_on_top?.[0]?.last_y || 0) + SELECT_TEXT_V3_MIN_HEIGHT_EMPTY_LIST; // 确保顶部插槽下方有足够的空间
+                    this.size = [
+                        Math.max(this.size[0] || 0, SELECT_TEXT_V3_MIN_WIDTH),
+                        Math.max(this.size[1] || 0, initialHeightFromWidgets)
+                    ];
+                    
                     const origOnResize = this.onResize;
                     this.onResize = function(size) {
-                        size[0] = Math.max(size[0], 300);
+                        size[0] = Math.max(size[0], SELECT_TEXT_V3_MIN_WIDTH); // 确保宽度不小于最小宽度
 
-                        let currentContentHeight = controlsRow.offsetHeight + newTextBoxBtn.offsetHeight + 12;
-                        if (entriesList.scrollHeight > entriesList.clientHeight) {
-                            currentContentHeight += entriesList.scrollHeight;
-                        } else {
-                            currentContentHeight += entriesList.clientHeight;
-                        }
-
-                        if (this.selectTextV3_data.entries.length === 0) {
-                             currentContentHeight = Math.max(currentContentHeight, (this.widgets_always_on_top?.[0]?.last_y || 0) + 150);
+                        let currentContentHeight = controlsRow.offsetHeight + newTextBoxBtn.offsetHeight + 12; // Controls + padding
+                        
+                        // 如果没有文本条目，为entriesList区域预留一部分高度
+                        if (entriesList.scrollHeight > entriesList.clientHeight) { 
+                             currentContentHeight += entriesList.scrollHeight;
+                         } else { 
+                             currentContentHeight += entriesList.clientHeight; 
                          }
+
+                        // 确保总高度不小于初始布局所需的高度，同时兼顾列表为空时的最小高度
+                        currentContentHeight = Math.max(currentContentHeight, initialHeightFromWidgets);
 
                         size[1] = Math.max(size[1], currentContentHeight);
                         this.size = size;
@@ -616,10 +629,17 @@ app.registerExtension({
                     this.triggerSlotChanged = () => {
                         dataWidget.value = JSON.stringify(this.selectTextV3_data);
                         this.updateOutputPreview(); // Ensure the widget output is updated
+                        // 触发大小调整以适应内容变化
+                        this.onResize(this.size); 
                         this.setDirtyCanvas(true, true);
                     };
 
-                    this.applySizeMode(); // Initial render and size adjustment
+                    // 在初始化时异步调用一次 onResize 和 applySizeMode，确保 DOM 已渲染
+                    setTimeout(() => {
+                        this.applySizeMode(); // Initial render and size adjustment
+                        this.onResize(this.size); // Force an immediate resize after initial render
+                    }, 0);
+
 
                 } catch (error) { console.error("ZML_SelectTextV3: Error during initialization:", error); }
                 return r;
@@ -627,7 +647,10 @@ app.registerExtension({
 
             const origOnSerialize = nodeType.prototype.onSerialize;
             nodeType.prototype.onSerialize = function(obj) {
-                origOnSerialize ? origOnSerialize.apply(this, arguments) : undefined;
+                // IMPORTANT: Ensure the original onSerialize is called first
+                // Use the correct ternary operator for calling if it exists.
+                origOnSerialize?.apply(this, arguments); 
+                
                 if (this.selectTextV3_data) obj.selectTextV3_data = this.selectTextV3_data;
                 obj.compactView = this.compactView;
                 obj.isLocked = this.isLocked;
@@ -637,7 +660,10 @@ app.registerExtension({
 
             const origOnConfigure = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function(obj) {
-                origOnConfigure ? origOnConfigure.apply(this, arguments) : undefined;
+                // IMPORTANT: Ensure the original onConfigure is called first
+                // Use the correct ternary operator for calling if it exists.
+                origOnConfigure?.apply(this, arguments); 
+
                 if (obj.selectTextV3_data) {
                     this.selectTextV3_data = obj.selectTextV3_data;
                     // Compatibility for old workflows: add item_type and parent_id for existing entries
@@ -674,6 +700,7 @@ app.registerExtension({
                         }
 
                         this.applySizeMode(); // This will re-render entries
+                        this.onResize(this.size); // 再次调用 onResize 确保重新配置后高度正确
                     }, 10);
                 }
             };

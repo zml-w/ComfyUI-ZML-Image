@@ -8,6 +8,12 @@ const TARGET_LORA_LOADERS = ["ZmlLoraLoader", "ZmlLoraLoaderModelOnly", "ZmlLora
 const ZML_API_PREFIX = "/zml/lora";
 const IMAGE_WIDTH = 384;
 const IMAGE_HEIGHT = 384;
+// 定义强力LORA加载器推荐的最小宽度
+const POWER_LORA_LOADER_MIN_WIDTH = 460; 
+
+// 新增：定义强力LORA加载器推荐的最小高度（仅当lora列表为空时使用）
+const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 280; // 根据实际测试调整，确保底部按钮不被裁切
+
 
 function encodeRFC3986URIComponent(str) {
 	return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -887,36 +893,41 @@ app.registerExtension({
                      container.append(topControls, entriesList, bottomControls);
                      this.addDOMWidget("power_lora_loader_ui", "div", container, { serialize: false });
 
-                     const initialMinHeight = (this.widgets_always_on_top?.[0]?.last_y || 0) + 150;
-                     this.size = [Math.max(this.size[0] || 0, 350), Math.max(this.size[1] || 0, initialMinHeight)];
+                     // 修改：调整初始最小高度的计算
+                     // 确保至少有足够的空间容纳顶部的输入/输出插槽以及顶部控制区域
+                     // (this.widgets_always_on_top?.[0]?.last_y || 0): 这是顶部输入连接点（model）的y坐标，基本上是节点最上方的内部Y值。
+                     // 加上 POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST（例如 100或150）是为了给该点以下的内容预留初步空间。
+                     const initialHeightFromWidgets = (this.widgets_always_on_top?.[0]?.last_y || 0) + POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST; 
+                     this.size = [
+                         Math.max(this.size[0] || 0, POWER_LORA_LOADER_MIN_WIDTH), 
+                         Math.max(this.size[1] || 0, initialHeightFromWidgets) // 使用新的计算方式
+                     ];
+                     
 
                      const origOnResize = this.onResize;
                      this.onResize = function(size) {
-                         size[0] = Math.max(size[0], 350);
+                         size[0] = Math.max(size[0], POWER_LORA_LOADER_MIN_WIDTH);
                          // Dynamic height adjustment based on content height
                          let currentContentHeight = topControls.offsetHeight + bottomControls.offsetHeight + 12; // Controls + padding
-                         // Sum up heights of all displayed items directly
-                         let itemsHeight = 0;
-                         // This is a rough estimation. For precise height, it's better to calculate the actual rendered height.
-                         // But for now, let's use scrollHeight as an upper bound if content overflows.
-                         if (entriesList.scrollHeight > entriesList.clientHeight) { 
-                             itemsHeight = entriesList.scrollHeight;
-                         } else { 
-                             itemsHeight = entriesList.clientHeight; // Fallback to clientHeight if no overflow
-                         }
-                         currentContentHeight += itemsHeight;
-
-                         // Add extra padding for the bottom of the list if there's no actual content
-                         if (this.powerLoraLoader_data.entries.length === 0) {
-                             currentContentHeight = Math.max(currentContentHeight, (this.widgets_always_on_top?.[0]?.last_y || 0) + 150); // Minimum height if empty
-                         }
                          
-                         size[1] = Math.max(size[1], currentContentHeight);
+                         // 如果没有LoRA条目（包括文件夹），确保entriesList区域有一个最小高度
+                         if (this.powerLoraLoader_data.entries.length === 0) {
+                             currentContentHeight += 50; // 为空的LoRA列表预留一部分高度，避免过度压缩
+                         } else {
+                             // 否则使用实际的滚动高度或者客户端高度
+                             currentContentHeight += Math.max(entriesList.scrollHeight, entriesList.clientHeight);
+                         }
+
+                         // 确保总高度不小于初始布局所需的高度，防止在内容很少时高度过小
+                         currentContentHeight = Math.max(currentContentHeight, initialHeightFromWidgets);
+                         
+                         size[1] = Math.max(size[1], currentContentHeight); // 使用计算出的高度和当前用户拖动的高度中较大的值
 
                          this.size = size;
 
                          const domElement = this.domElement;
                          if (domElement) {
+                            // 当节点大小不足以显示全部内容时，允许滚动
                             if (size[1] < domElement.scrollHeight || size[0] < domElement.scrollWidth) {
                                 domElement.style.overflow = "auto";
                                 entriesList.style.overflowY = "auto"; // Also ensure internal list scrolls
@@ -932,7 +943,45 @@ app.registerExtension({
 
                      this.triggerSlotChanged = () => { dataWidget.value = JSON.stringify(this.powerLoraLoader_data); this.setDirtyCanvas(true, true); };
 
-                     this.applySizeMode();
+                     // 确保在初始化时就调用一次 onResize 来设置正确的大小
+                     // 使用 next tick 确保 DOM 完全渲染后再计算尺寸
+                     setTimeout(() => {
+                        this.onResize(this.size); 
+                        this.applySizeMode(); 
+                     }, 0);
+
+                     // 确保 onConfigure 也会触发正确的大小调整
+                     const originalOnConfigure = nodeType.prototype.onConfigure;
+                     nodeType.prototype.onConfigure = function(obj) {
+                         originalOnConfigure?.apply(this, arguments);
+                         // ... (现有 onConfigure 逻辑) ...
+                         if (this.powerLoraLoader_initialized && this.applySizeMode) {
+                             setTimeout(() => {
+                                 const topControls = this.domElement.querySelector(".zml-pll-controls-top");
+                                 if (topControls) {
+                                      const lockButton = topControls.querySelector("button[title='锁定/解锁 LoRA 排序']");
+                                      if (lockButton) {
+                                          lockButton.textContent = this.isLocked ? "🔒" : "🔓";
+                                          lockButton.style.background = this.isLocked ? '#644' : '#333';
+                                      }
+                                      const numberInputs = topControls.querySelectorAll("input[type='number']");
+                                      if(numberInputs[0]) numberInputs[0].value = this.loraNameWidth;
+                                      if(numberInputs[1]) numberInputs[1].value = this.customTextWidth;
+                                      
+                                      // Update color input value
+                                      const folderColorInput = topControls.querySelector("input[type='color']");
+                                      if (folderColorInput) {
+                                          folderColorInput.value = this.folderColor;
+                                      }
+                                 }
+
+                                 this.applySizeMode(); // This will call renderLoraEntries
+                                 // 再次调用 onResize 确保重新配置后高度正确
+                                 this.onResize(this.size); 
+                             }, 10);
+                         }
+                     };
+
 
                  } catch (error) { console.error("ZML_PowerLoraLoader: UI初始化错误:", error); }
                  return r;
@@ -1021,29 +1070,6 @@ app.registerExtension({
                 this.customTextWidth = Math.max(10, Math.min(300, obj.customTextWidth ?? 80));
                 this.folderColor = obj.folderColor ?? "#30353c"; // Load folder color, or use default
 
-                if (this.powerLoraLoader_initialized && this.applySizeMode) {
-                    setTimeout(() => {
-                        const topControls = this.domElement.querySelector(".zml-pll-controls-top");
-                        if (topControls) {
-                             const lockButton = topControls.querySelector("button[title='锁定/解锁 LoRA 排序']");
-                             if (lockButton) {
-                                 lockButton.textContent = this.isLocked ? "🔒" : "🔓";
-                                 lockButton.style.background = this.isLocked ? '#644' : '#333';
-                             }
-                             const numberInputs = topControls.querySelectorAll("input[type='number']");
-                             if(numberInputs[0]) numberInputs[0].value = this.loraNameWidth;
-                             if(numberInputs[1]) numberInputs[1].value = this.customTextWidth;
-                             
-                             // Update color input value
-                             const folderColorInput = topControls.querySelector("input[type='color']");
-                             if (folderColorInput) {
-                                 folderColorInput.value = this.folderColor;
-                             }
-                        }
-
-                        this.applySizeMode(); // This will call renderLoraEntries
-                    }, 10);
-                }
             };
         }
 	},
