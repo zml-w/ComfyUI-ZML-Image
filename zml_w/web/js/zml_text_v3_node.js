@@ -1,8 +1,8 @@
 import { app } from "../../../scripts/app.js";
 
-// 新增：定义节点推荐的最小尺寸常量
-const SELECT_TEXT_V3_MIN_WIDTH = 300; // 适当增加宽度以容纳顶部所有控件
-const SELECT_TEXT_V3_MIN_HEIGHT_EMPTY_LIST = 185; // 在文本列表为空时，为UI元素和底部按钮预留足够高度
+// 新增：定义 SelectTextV3 节点推荐的最小宽度和高度
+const ZML_SELECT_TEXT_V3_MIN_WIDTH = 280; // 适配控件数量
+const ZML_SELECT_TEXT_V3_MIN_HEIGHT_EMPTY_LIST = 185; // 空列表时列表区域的最小高度
 
 function createEl(tag, className = "", properties = {}, text = "") {
     const el = document.createElement(tag);
@@ -12,8 +12,9 @@ function createEl(tag, className = "", properties = {}, text = "") {
     return el;
 }
 
-// === Helper function to adjust color brightness (从LoRA loader中复制过来，确保一致性) ===
-const adjustBrightness = (hex, percent) => {
+// === Helper function to adjust color brightness ===
+// 将这个辅助函数提到全局范围或在需要的地方定义一次，避免重复定义
+function adjustBrightness(hex, percent) {
     hex = hex.replace(/^#/, '');
     let r = parseInt(hex.substring(0, 2), 16);
     let g = parseInt(hex.substring(2, 4), 16);
@@ -25,7 +26,7 @@ const adjustBrightness = (hex, percent) => {
 
     const toHex = (c) => ('0' + c.toString(16)).slice(-2);
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-};
+}
 // ===============================================
 
 app.registerExtension({
@@ -215,23 +216,29 @@ app.registerExtension({
                     header.style.cssText = `display: flex; align-items: center; margin-top: -32px; margin-bottom: 8px; padding-bottom: 0px; border-bottom: 1px solid #444;`;
 
                     const controlsRow = createEl("div");
-                    controlsRow.style.cssText = `margin-bottom: 10px; display: flex; align-items: center; gap: 8px;`;
+                    controlsRow.style.cssText = `margin-bottom: 8px; display: flex; align-items: center; gap: 4px;`;
 
                     // --- 分隔符控件组 ---
                     const separatorGroup = createEl("div", "zml-control-group");
-                    const separatorLabel = createEl("span", "zml-control-label", this.getText("separator"));
-                    separatorLabel.style.cssText += `margin-left: 2px;`;
-                    const separatorInput = createEl("input", "zml-control-input");
+                    // 移除原始的分割符标签：
+                    // const separatorLabel = createEl("span", "zml-control-label", { textContent: this.getText("separator") });
+                    // separatorLabel.style.cssText += `margin-left: 2px;`;
+                    const separatorInput = createEl("input", "zml-control-input", {
+                         placeholder: this.getText("separator"), // 新增：使用placeholder替代标签
+                         title: this.getText("separator"), // 保持title属性
+                    });
                     separatorInput.type = "text";
                     separatorInput.value = this.widgets.find(w => w.name === "separator")?.value || ",";
-                    separatorInput.style.cssText += `width: 40px; text-align: left; flex-shrink: 0;`;
+                    separatorInput.style.cssText += `width: 60px; text-align: left; flex-shrink: 0;`;
                     separatorInput.oninput = (e) => { this.widgets.find(w => w.name === "separator").value = e.target.value; this.triggerSlotChanged(); };
-                    separatorGroup.append(separatorLabel, separatorInput);
+                    // 调整append，只添加输入框
+                    separatorGroup.append(separatorInput);
                     controlsRow.appendChild(separatorGroup);
 
                     // --- 名称宽度控件组 ---
                     const titleWidthGroup = createEl("div", "zml-control-group");
-                    const titleWidthLabel = createEl("span", "zml-control-label", this.getText("titleWidth"));
+                    // 移除原始的名称宽度标签：
+                    // const titleWidthLabel = createEl("span", "zml-control-label", { textContent: this.getText("titleWidth") });
                     const titleWidthInput = createEl("input", "zml-control-input");
                     titleWidthInput.type = "number";
                     titleWidthInput.min = "20";
@@ -249,7 +256,8 @@ app.registerExtension({
                         this.renderSelectTextV3Entries();
                         this.triggerSlotChanged();
                     };
-                    titleWidthGroup.append(titleWidthLabel, titleWidthInput);
+                    // 调整append，只添加输入框
+                    titleWidthGroup.append(titleWidthInput);
                     controlsRow.appendChild(titleWidthGroup);
 
                     // === 新建文件夹按钮 ===
@@ -285,7 +293,10 @@ app.registerExtension({
                     // --- 锁定按钮 ---
                     const lockToggleButton = createEl("button", "zml-control-btn", { textContent: this.isLocked ? "🔒" : "🔓" });
                     lockToggleButton.title = this.getText("lockDrag");
+                    // 修正样式，使用 background 替代 background-color
                     lockToggleButton.style.cssText += `width: 26px; height: 26px; ${this.isLocked ? 'background: #644;' : 'background: #333;'}`;
+                    lockToggleButton.onmouseenter = () => lockToggleButton.style.background = '#555';
+                    lockToggleButton.onmouseleave = () => lockToggleButton.style.background = this.isLocked ? '#644' : '#333';
                     lockToggleButton.onclick = () => {
                         this.isLocked = !this.isLocked;
                         lockToggleButton.textContent = this.isLocked ? "🔒" : "🔓";
@@ -299,6 +310,8 @@ app.registerExtension({
                     const sizeToggleButton = createEl("button", "zml-control-btn", { textContent: "↕" });
                     sizeToggleButton.title = "切换紧凑/普通视图";
                     sizeToggleButton.style.cssText += `width: 26px; height: 26px;`;
+                    sizeToggleButton.onmouseenter = () => sizeToggleButton.style.background = '#555';
+                    sizeToggleButton.onmouseleave = () => sizeToggleButton.style.background = '#333'; // 默认是 #333
                     sizeToggleButton.onclick = () => {
                         this.compactView = !this.compactView;
                         this.applySizeMode();
@@ -309,7 +322,7 @@ app.registerExtension({
                     const entriesList = createEl("div");
                     entriesList.style.cssText = `margin-bottom: 6px; flex: 1; min-height: 50px; overflow-y: auto; border: 1px solid #444; border-radius: 2px; padding: 4px; background: #333;`;
 
-                    const newTextBoxBtn = createEl("button", "", { textContent: this.getText("newTextBox") });
+                    const newTextBoxBtn = createEl("button", "", { textContent: "＋ " + this.getText("newTextBox") }); // 添加加号图标
                     newTextBoxBtn.style.cssText = `background: #444; color: #ccc; border: 1px solid #666; border-radius: 2px; cursor: pointer; font-size: 12px; font-weight: 500; margin-top: auto; width: 100%;`;
                     newTextBoxBtn.onmouseenter = () => newTextBoxBtn.style.background = '#555';
                     newTextBoxBtn.onmouseleave = () => newTextBoxBtn.style.background = '#444';
@@ -327,8 +340,7 @@ app.registerExtension({
                         newTextBoxBtn.style.padding = s.newButtonPadding;
                         this.renderSelectTextV3Entries();
                     };
-
-
+                    
                     this.createTextEntryDOM = (entry) => {
                         const s = this.compactView ? this.styles.compact : this.styles.normal;
                         const entryCard = createEl("div", "zml-st3-entry-card", {
@@ -558,55 +570,66 @@ app.registerExtension({
                         this.updateOutputPreview(); // Assuming this is handled by a separate function
                         app.graph.setDirtyCanvas(true, true); // Mark canvas dirty to force redraw
                     };
-                    
+
                     this.updateOutputPreview = () => {
-                        // This part needs to be updated if the output behavior changes with folders
-                        // For now, let's assume it concatenates all selected top-level texts.
-                        // Or, if text is in a folder (enabled and not collapsed), its content should be included.
-                        // A more complex implementation would involve walking the folder structure.
-                        // For simplicity, let's just collect all enabled text entries, regardless of folder.
                         const separatorWidget = this.widgets.find(w => w.name === "separator");
                         const separator = separatorWidget ? separatorWidget.value : ",";
                         
                         let combinedContent = "";
-                        this.selectTextV3_data.entries.forEach(entry => {
-                            if (entry.item_type === 'text' && entry.enabled) {
-                                combinedContent += (combinedContent ? separator : "") + entry.content;
-                            }
-                        });
+                        // 更智能的遍历方式：只遍历顶层，如果是文件夹且未折叠，则递归获取内容
+                        const collectContentRecursive = (items) => {
+                            items.forEach(entry => {
+                                if (entry.item_type === 'text' && entry.enabled) {
+                                    combinedContent += (combinedContent ? separator : "") + entry.content;
+                                } else if (entry.item_type === 'folder' && !entry.is_collapsed) {
+                                    const children = this.selectTextV3_data.entries.filter(e => e.parent_id === entry.id);
+                                    const sortedChildren = children.sort((a, b) => 
+                                        this.selectTextV3_data.entries.indexOf(a) - this.selectTextV3_data.entries.indexOf(b)
+                                    );
+                                    collectContentRecursive(sortedChildren);
+                                }
+                            });
+                        };
+                        
+                        const topLevelItems = this.selectTextV3_data.entries.filter(e => !e.parent_id);
+                        collectContentRecursive(topLevelItems.sort((a, b) => this.selectTextV3_data.entries.indexOf(a) - this.selectTextV3_data.entries.indexOf(b)));
+
 
                         const outputWidget = this.widgets.find(w=>w.name === "text");
                         if(outputWidget) {
                             // Trim leading/trailing separators if they resulted from empty inputs
-                            // 使用更安全的正则表达式构建方式，避免特殊字符问题
-                            const escapedSeparator = separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            outputWidget.value = combinedContent.replace(new RegExp(`^${escapedSeparator}+|${escapedSeparator}+$`, 'g'), '');
+                            // 确保正则转义，防止分隔符中包含正则特殊字符
+                            outputWidget.value = combinedContent.replace(new RegExp(`^${(separator).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}+|${(separator).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}+$`, 'g'), '');
                         }
                     };
 
                     this.addDOMWidget("selecttextv3_ui", "div", container, { serialize: false });
                     
-                    // 修改：调整初始最小高度和宽度
-                    const initialHeightFromWidgets = (this.widgets_always_on_top?.[0]?.last_y || 0) + SELECT_TEXT_V3_MIN_HEIGHT_EMPTY_LIST; // 确保顶部插槽下方有足够的空间
+                    // 修改：使用新的常量来设置初始最小宽度
+                    const initialHeightFromWidgets = (this.widgets_always_on_top?.[0]?.last_y || 0) + ZML_SELECT_TEXT_V3_MIN_HEIGHT_EMPTY_LIST; // 假设第一个widget在节点顶部插槽下方
                     this.size = [
-                        Math.max(this.size[0] || 0, SELECT_TEXT_V3_MIN_WIDTH),
+                        Math.max(this.size[0] || 0, ZML_SELECT_TEXT_V3_MIN_WIDTH), 
                         Math.max(this.size[1] || 0, initialHeightFromWidgets)
                     ];
                     
                     const origOnResize = this.onResize;
                     this.onResize = function(size) {
-                        size[0] = Math.max(size[0], SELECT_TEXT_V3_MIN_WIDTH); // 确保宽度不小于最小宽度
+                        // 确保宽度不小于定义值
+                        size[0] = Math.max(size[0], ZML_SELECT_TEXT_V3_MIN_WIDTH);
 
-                        let currentContentHeight = controlsRow.offsetHeight + newTextBoxBtn.offsetHeight + 12; // Controls + padding
+                        // 动态计算高度
+                        let currentContentHeight = controlsRow.offsetHeight + newTextBoxBtn.offsetHeight + 12; // 顶部控制行、底部按钮和一些间距
                         
-                        // 如果没有文本条目，为entriesList区域预留一部分高度
-                        if (entriesList.scrollHeight > entriesList.clientHeight) { 
-                             currentContentHeight += entriesList.scrollHeight;
-                         } else { 
-                             currentContentHeight += entriesList.clientHeight; 
+                        // 基于entriesList内容调整高度
+                        // 如果没有条目，添加一个固定高度作为最小显示区域
+                        if (this.selectTextV3_data.entries.length === 0) {
+                             currentContentHeight += 50; // 为空的列表区域预留一部分高度
+                         } else {
+                            // 否则使用实际的滚动高度或客户端高度
+                            currentContentHeight += Math.max(entriesList.scrollHeight, entriesList.clientHeight);
                          }
 
-                        // 确保总高度不小于初始布局所需的高度，同时兼顾列表为空时的最小高度
+                        // 确保总高度不小于布局所需的基础高度
                         currentContentHeight = Math.max(currentContentHeight, initialHeightFromWidgets);
 
                         size[1] = Math.max(size[1], currentContentHeight);
@@ -629,15 +652,13 @@ app.registerExtension({
                     this.triggerSlotChanged = () => {
                         dataWidget.value = JSON.stringify(this.selectTextV3_data);
                         this.updateOutputPreview(); // Ensure the widget output is updated
-                        // 触发大小调整以适应内容变化
-                        this.onResize(this.size); 
                         this.setDirtyCanvas(true, true);
                     };
 
-                    // 在初始化时异步调用一次 onResize 和 applySizeMode，确保 DOM 已渲染
+                    // 通过 setTimeout 确保 DOM 元素完全渲染后才能正确计算尺寸并调用 resize
                     setTimeout(() => {
-                        this.applySizeMode(); // Initial render and size adjustment
-                        this.onResize(this.size); // Force an immediate resize after initial render
+                        this.onResize(this.size); // 初始调整节点大小
+                        this.applySizeMode(); // initial render and size adjustment
                     }, 0);
 
 
@@ -647,10 +668,7 @@ app.registerExtension({
 
             const origOnSerialize = nodeType.prototype.onSerialize;
             nodeType.prototype.onSerialize = function(obj) {
-                // IMPORTANT: Ensure the original onSerialize is called first
-                // Use the correct ternary operator for calling if it exists.
-                origOnSerialize?.apply(this, arguments); 
-                
+                origOnSerialize ? origOnSerialize.apply(this, arguments) : undefined;
                 if (this.selectTextV3_data) obj.selectTextV3_data = this.selectTextV3_data;
                 obj.compactView = this.compactView;
                 obj.isLocked = this.isLocked;
@@ -660,16 +678,16 @@ app.registerExtension({
 
             const origOnConfigure = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function(obj) {
-                // IMPORTANT: Ensure the original onConfigure is called first
-                // Use the correct ternary operator for calling if it exists.
-                origOnConfigure?.apply(this, arguments); 
-
+                origOnConfigure ? origOnConfigure.apply(this, arguments) : undefined;
                 if (obj.selectTextV3_data) {
                     this.selectTextV3_data = obj.selectTextV3_data;
                     // Compatibility for old workflows: add item_type and parent_id for existing entries
                     this.selectTextV3_data.entries.forEach(e => {
                         if (!e.item_type) e.item_type = 'text';
                         if (e.parent_id === undefined) e.parent_id = null;
+                        // 确保加载旧工作流时存在 is_collapsed, name 字段
+                        if (e.item_type === 'folder' && e.is_collapsed === undefined) e.is_collapsed = false;
+                        if (e.item_type === 'folder' && e.name === undefined) e.name = "新建文件夹";
                     });
                 }
                 if (obj.compactView !== undefined) this.compactView = obj.compactView;
@@ -684,6 +702,12 @@ app.registerExtension({
                         // Refresh widget data and UI elements' state
                         const dataWidget = this.widgets.find(w => w.name === "selectTextV3_data");
                         if (dataWidget) dataWidget.value = JSON.stringify(this.selectTextV3_data);
+
+                        // 更新分隔符输入框的 placeholder
+                        const separatorInput = this.domElement.querySelector("input[placeholder='" + this.getText("separator") + "']");
+                        if (separatorInput) {
+                            separatorInput.placeholder = this.getText("separator");
+                        }
 
                         const lockButton = this.domElement.querySelector("button.zml-control-btn[title='锁定/解锁文本框排序']");
                         if (lockButton) {
@@ -700,7 +724,7 @@ app.registerExtension({
                         }
 
                         this.applySizeMode(); // This will re-render entries
-                        this.onResize(this.size); // 再次调用 onResize 确保重新配置后高度正确
+                        this.onResize(this.size); // 重新调整节点大小以适应可能的变化
                     }, 10);
                 }
             };
