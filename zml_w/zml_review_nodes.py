@@ -135,27 +135,72 @@ class ZML_CustomCensorNode(ZML_AutoCensorNode):
 
 class ZML_MaskSplitNode:
     @classmethod
-    def INPUT_TYPES(cls): return { "required": { "宽度": ("INT", {"default": 1024}), "高度": ("INT", {"default": 1024}), "分割比例": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0}), "分割方向": (["竖", "横"],) } }
+    def INPUT_TYPES(cls): 
+        return { 
+            "required": { 
+                "宽度": ("INT", {"default": 1024}), 
+                "高度": ("INT", {"default": 1024}), 
+                "分割比例": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
+                "分割方向": (["竖", "横"],) 
+            } 
+        }
     RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK"); RETURN_NAMES = ("遮罩A", "遮罩B", "单独遮罩A", "单独遮罩B", "完整遮罩"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/其它"
     def process(self, 宽度, 高度, 分割比例, 分割方向):
         a = np.zeros((高度, 宽度), dtype=np.float32); b = np.zeros((高度, 宽度), dtype=np.float32)
-        if 分割方向 == "竖": w_split = int(宽度 * 分割比例); a[:, :w_split] = 1.0; b[:, w_split:] = 1.0; sa = np.ones((高度, w_split)); sb = np.ones((高度, 宽度 - w_split))
-        else: h_split = int(高度 * 分割比例); a[:h_split, :] = 1.0; b[h_split:, :] = 1.0; sa = np.ones((h_split, 宽度)); sb = np.ones((高度 - h_split, 宽度))
+        if 分割方向 == "竖": 
+            w_split = int(宽度 * 分割比例); a[:, :w_split] = 1.0; b[:, w_split:] = 1.0; 
+            sa = np.ones((高度, w_split)); sb = np.ones((高度, 宽度 - w_split))
+        else: 
+            h_split = int(高度 * 分割比例); a[:h_split, :] = 1.0; b[h_split:, :] = 1.0; 
+            sa = np.ones((h_split, 宽度)); sb = np.ones((高度 - h_split, 宽度))
         if sa.size == 0: sa = np.zeros((1,1));
         if sb.size == 0: sb = np.zeros((1,1));
         return tuple(torch.from_numpy(x).unsqueeze(0) for x in [a, b, sa, sb, np.ones((高度, 宽度))])
 
 class ZML_MaskSplitNode_Five:
     @classmethod
-    def INPUT_TYPES(cls): return {"required": { "宽度": ("INT", {"default": 1024}), "高度": ("INT", {"default": 1024}), "分割数量": ("INT", {"default": 5, "min": 1, "max": 5}) } }
-    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK"); RETURN_NAMES = ("遮罩1", "遮罩2", "遮罩3", "遮罩4", "遮罩5"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/其它"
+    def INPUT_TYPES(cls): 
+        return {
+            "required": { 
+                "宽度": ("INT", {"default": 1024}), 
+                "高度": ("INT", {"default": 1024}), 
+                "分割数量": ("INT", {"default": 5, "min": 1, "max": 5}) 
+            } 
+        }
+    RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK", "MASK", "MASK")
+    RETURN_NAMES = ("遮罩1", "遮罩2", "遮罩3", "遮罩4", "遮罩5", "单独遮罩", "完整遮罩")
+    FUNCTION = "process"
+    CATEGORY = "image/ZML_图像/其它"
+    
     def process(self, 宽度, 高度, 分割数量):
-        masks = []; pos = [int(i * 宽度 / 分割数量) for i in range(分割数量 + 1)]; pos[-1] = 宽度
+        masks = []
+        pos = [int(i * 宽度 / 分割数量) for i in range(分割数量 + 1)]
+        pos[-1] = 宽度
+        
+        # Generate the 5 full-size masks
         for i in range(5):
             m = np.zeros((高度, 宽度), dtype=np.float32)
-            if i < 分割数量: m[:, pos[i]:pos[i+1]] = 1.0
+            if i < 分割数量: 
+                m[:, pos[i]:pos[i+1]] = 1.0
             masks.append(torch.from_numpy(m).unsqueeze(0))
-        return tuple(masks)
+        
+        # CORRECTED LOGIC:
+        # Calculate the width of a single segment for the "单独遮罩".
+        # This will be the width of the first segment.
+        segment_width = pos[1] - pos[0] if 分割数量 > 0 else 0
+        
+        if segment_width > 0 and 高度 > 0:
+            sa = np.ones((高度, segment_width), dtype=np.float32)
+        else:
+            sa = np.zeros((1, 1), dtype=np.float32) # Handle edge case
+            
+        # Generate the "完整遮罩" (full white mask)
+        full_mask = np.ones((高度, 宽度), dtype=np.float32)
+        
+        # Combine all masks for the return tuple
+        final_outputs = masks + [torch.from_numpy(sa).unsqueeze(0), torch.from_numpy(full_mask).unsqueeze(0)]
+        
+        return tuple(final_outputs)
 
 # ============================== 图像旋转节点==============================
 class ZML_ImageRotate:
@@ -447,4 +492,3 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_AudioPlayerNode": "ZML_音频播放器",
     "ZML_ImageMemory": "ZML_桥接预览图像",
 }
-
