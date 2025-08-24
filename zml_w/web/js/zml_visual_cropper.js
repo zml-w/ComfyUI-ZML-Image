@@ -537,12 +537,22 @@ function showPainterModal(node, widget) {
         return;
     }
 
+    // 检查画笔图像输入
+    const brushInput = node.inputs.find(i => i.name === "画笔图像");
+    let hasBrushImage = false;
+    if (brushInput && brushInput.link) {
+        const upstreamBrushNode = node.getInputNode(node.inputs.indexOf(brushInput));
+        if (upstreamBrushNode && upstreamBrushNode.imgs && upstreamBrushNode.imgs.length > 0) {
+            hasBrushImage = true;
+        }
+    }
+
     const imageUrl = upstreamNode.imgs[0].src;
     let initialDisplayScale = 1.0;
 
     const modalHtml = `
         <div class="zml-modal">
-            <div class="zml-modal-content" style="width: auto; height: auto;">
+            <div class="zml-modal-content" style="width: auto; height: auto; position: relative;">
                 <style>
                     .zml-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1001; }
                     .zml-modal-content { background: #222; padding: 20px; border-radius: 8px; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; gap: 10px; }
@@ -552,7 +562,56 @@ function showPainterModal(node, widget) {
                     .zml-editor-btn { padding: 8px 12px; color: white; border: none; border-radius: 4px; cursor: pointer; }
                     #zml-color-picker { width: 40px; height: 30px; border: none; padding: 0; cursor: pointer; }
                     #zml-brush-size { width: 80px; }
+                    
+                    /* Toolbar Styles */
+                    .zml-painter-toolbar { position: absolute; top: 25px; right: 5px; display: flex; flex-direction: column; gap: 5px; z-index: 10; }
+                    .zml-tool-btn { width: 32px; height: 32px; padding: 4px; background-color: #444; border: 1px solid #666; border-radius: 4px; cursor: pointer; display: flex; justify-content: center; align-items: center; color: white; }
+                    .zml-tool-btn:hover { background-color: #555; }
+                    .zml-tool-btn:disabled { background-color: #333; cursor: not-allowed; opacity: 0.5; }
+                    .zml-tool-btn.active { background-color: #f0ad4e; border-color: #d58512; }
+                    .zml-tool-btn svg { width: 100%; height: 100%; fill: white; }
+                    .zml-tool-btn#zml-move-tool:active { cursor: grabbing; }
                 </style>
+
+                <div id="zml-painter-toolbar" class="zml-painter-toolbar">
+                    <button id="zml-move-tool" class="zml-tool-btn" title="长按拖拽窗口">
+                        <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+                    </button>
+                    <button id="zml-brush-tool" class="zml-tool-btn active" title="画笔">
+                        <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    </button>
+                    <button id="zml-rect-tool" class="zml-tool-btn" title="绘制矩形">
+                         <svg viewBox="0 0 24 24"><path d="M3 3v18h18V3H3zm16 16H5V5h14v14z"/></svg>
+                    </button>
+                    <button id="zml-triangle-tool" class="zml-tool-btn" title="绘制三角形(垂直)">
+                         <svg viewBox="0 0 24 24"><path d="m12 7.77 6.39 11.23H5.61L12 7.77M12 2 1 21h22L12 2z"/></svg>
+                    </button>
+                    <button id="zml-htriangle-tool" class="zml-tool-btn" title="绘制三角形(水平)">
+                        <svg viewBox="0 0 24 24" style="transform: rotate(90deg);"><path d="m12 7.77 6.39 11.23H5.61L12 7.77M12 2 1 21h22L12 2z"></path></svg>
+                    </button>
+                    <button id="zml-circle-tool" class="zml-tool-btn" title="绘制圆形">
+                         <svg viewBox="0 0 24 24"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+                    </button>
+                    <button id="zml-star-tool" class="zml-tool-btn" title="绘制五角星">
+                        <svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"></path></svg>
+                    </button>
+                    <button id="zml-heart-tool" class="zml-tool-btn" title="绘制爱心">
+                        <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+                    </button>
+                     <button id="zml-mosaic-tool" class="zml-tool-btn" title="马赛克">
+                        <svg viewBox="0 0 24 24" fill="white"><path d="M2 2h6v6H2z m8 0h6v6h-6z m8 0h6v6h-6z M2 10h6v6H2z m8 0h6v6h-6z m8 0h6v6h-6z M2 18h6v6H2z m8 0h6v6h-6z m8 0h6v6h-6z" /></svg>
+                    </button>
+                    <button id="zml-image-stamp-tool" class="zml-tool-btn" title="图像笔刷 (需连接画笔图像)" ${!hasBrushImage ? 'disabled' : ''}>
+                        <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                    </button>
+                    <button id="zml-arrow-tool" class="zml-tool-btn" title="绘制箭头">
+                        <svg viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"></path></svg>
+                    </button>
+                    <button id="zml-fill-tool" class="zml-tool-btn" title="填充形状 (切换)">
+                         <svg viewBox="0 0 24 24"><path d="M19 12H5v-2h14v2zm-7 6.72L5.72 12H11v6.72zm1-6.72h5.28L13 18.72V12z" transform="rotate(45 12 12)"></path><path d="M22 2H2v20h20V2zm-2 18H4V4h16v16z"></path></svg>
+                    </button>
+                </div>
+
                 <div class="zml-editor-main" id="zml-editor-main-container">
                     <canvas id="zml-fabric-canvas"></canvas>
                 </div>
@@ -561,7 +620,7 @@ function showPainterModal(node, widget) {
                     <label for="zml-color-picker" style="color: white;">颜色:</label>
                     <input type="color" id="zml-color-picker" value="#FF0000">
                     <label for="zml-brush-size" style="color: white;">大小:</label>
-                    <input type="range" id="zml-brush-size" min="1" max="50" value="5">
+                    <input type="range" id="zml-brush-size" min="1" max="100" value="10">
                     <button id="zml-reset-view-btn" class="zml-editor-btn" style="background-color: #888;">重置视角</button> 
                     <button id="zml-undo-paint-btn" class="zml-editor-btn" style="background-color: #f0ad4e;">撤销</button>
                     <button id="zml-clear-paint-btn" class="zml-editor-btn" style="background-color: #5bc0de;">清空</button>
@@ -577,69 +636,132 @@ function showPainterModal(node, widget) {
     const colorPicker = modal.querySelector('#zml-color-picker');
     const brushSizeSlider = modal.querySelector('#zml-brush-size');
 
-    let drawPaths = [];
-
     loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => {
         const canvas = new fabric.Canvas(mainContainer.querySelector('canvas'), { stopContextMenu: true });
         let isPanning = false, lastPanPoint = null;
+        
+        // --- State Management ---
+        let undoStack = [];
+        let drawPaths = [];
+        let mosaicRects = [];
+        let imageStamps = [];
+        let isFillMode = false;
+
+        // --- Toolbar and Shape Drawing Logic ---
+        let drawingMode = 'brush'; 
+        let isDrawingShape = false;
+        let shapeStartPoint = null;
+        let currentShape = null;
+
+        const moveBtn = modal.querySelector('#zml-move-tool');
+        const brushBtn = modal.querySelector('#zml-brush-tool');
+        const rectBtn = modal.querySelector('#zml-rect-tool');
+        const triangleBtn = modal.querySelector('#zml-triangle-tool');
+        const htriangleBtn = modal.querySelector('#zml-htriangle-tool');
+        const circleBtn = modal.querySelector('#zml-circle-tool');
+        const starBtn = modal.querySelector('#zml-star-tool');
+        const heartBtn = modal.querySelector('#zml-heart-tool');
+        const mosaicBtn = modal.querySelector('#zml-mosaic-tool');
+        const imageStampBtn = modal.querySelector('#zml-image-stamp-tool');
+        const arrowBtn = modal.querySelector('#zml-arrow-tool');
+        const fillBtn = modal.querySelector('#zml-fill-tool');
+        const toolBtns = [brushBtn, rectBtn, triangleBtn, htriangleBtn, circleBtn, starBtn, heartBtn, mosaicBtn, imageStampBtn, arrowBtn];
+
+        // --- Window Dragging Logic ---
+        const modalContent = modal.querySelector('.zml-modal-content');
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let currentTranslate = { x: 0, y: 0 };
+        moveBtn.addEventListener('mousedown', (e) => { isDragging = true; dragStart.x = e.clientX; dragStart.y = e.clientY; moveBtn.style.cursor = 'grabbing'; e.preventDefault(); });
+        window.addEventListener('mousemove', (e) => { if (!isDragging) return; const dx = e.clientX - dragStart.x; const dy = e.clientY - dragStart.y; modalContent.style.transform = `translate(${currentTranslate.x + dx}px, ${currentTranslate.y + dy}px)`; });
+        window.addEventListener('mouseup', (e) => { if (!isDragging) return; isDragging = false; moveBtn.style.cursor = 'pointer'; const dx = e.clientX - dragStart.x; const dy = e.clientY - dragStart.y; currentTranslate.x += dx; currentTranslate.y += dy; });
+
+        // --- Tool Selection Logic ---
+        function setActiveTool(activeBtn) {
+            toolBtns.forEach(btn => btn.classList.remove('active'));
+            if(activeBtn) activeBtn.classList.add('active');
+            const tipElement = modal.querySelector('#zml-editor-tip');
+            const modeMap = {
+                'zml-brush-tool': 'brush', 'zml-rect-tool': 'rect', 'zml-triangle-tool': 'triangle',
+                'zml-htriangle-tool': 'htriangle', 'zml-circle-tool': 'circle', 'zml-star-tool': 'star',
+                'zml-heart-tool': 'heart', 'zml-arrow-tool': 'arrow', 'zml-mosaic-tool': 'mosaic', 'zml-image-stamp-tool': 'imageStamp'
+            };
+            drawingMode = modeMap[activeBtn.id] || 'brush';
+            canvas.isDrawingMode = (drawingMode === 'brush');
+            let tipText = `滚轮缩放, 按住Ctrl+左键拖拽平移。当前模式：${activeBtn.title}。`;
+            if (drawingMode === 'imageStamp') tipText += " “大小”滑块可控制图章缩放。";
+            if (drawingMode === 'mosaic') tipText += " “大小”滑块可控制像素颗粒度。";
+            tipElement.textContent = tipText;
+        }
+        toolBtns.forEach(btn => btn.onclick = () => setActiveTool(btn));
+        fillBtn.onclick = () => { isFillMode = !isFillMode; fillBtn.classList.toggle('active', isFillMode); };
+
+        // --- Undo/Redo and Data Management ---
+        function saveStateForUndo() {
+            undoStack.push({
+                paths: JSON.parse(JSON.stringify(drawPaths)),
+                mosaics: JSON.parse(JSON.stringify(mosaicRects)),
+                stamps: JSON.parse(JSON.stringify(imageStamps))
+            });
+        }
+        function restoreState(state) {
+            drawPaths = state.paths;
+            mosaicRects = state.mosaics;
+            imageStamps = state.stamps;
+            renderAllDrawings();
+        }
 
         const img = new Image();
         img.src = imageUrl;
         img.onload = () => {
             const V_PADDING = 150; const H_PADDING = 80;
-            const maxWidth = window.innerWidth - H_PADDING;
-            const maxHeight = window.innerHeight - V_PADDING;
-
+            const maxWidth = window.innerWidth - H_PADDING; const maxHeight = window.innerHeight - V_PADDING;
             initialDisplayScale = Math.min(1, maxWidth / img.naturalWidth, maxHeight / img.naturalHeight);
-
-            const displayWidth = img.naturalWidth * initialDisplayScale;
-            const displayHeight = img.naturalHeight * initialDisplayScale;
-
-            mainContainer.style.width = `${displayWidth}px`;
-            mainContainer.style.height = `${displayHeight}px`;
-
-            canvas.setWidth(img.naturalWidth);
-            canvas.setHeight(img.naturalHeight);
-
-            fabric.Image.fromURL(imageUrl, (fImg) => {
-                canvas.setBackgroundImage(fImg, canvas.renderAll.bind(canvas));
-            });
+            const displayWidth = img.naturalWidth * initialDisplayScale; const displayHeight = img.naturalHeight * initialDisplayScale;
+            mainContainer.style.width = `${displayWidth}px`; mainContainer.style.height = `${displayHeight}px`;
+            canvas.setWidth(img.naturalWidth); canvas.setHeight(img.naturalHeight);
+            fabric.Image.fromURL(imageUrl, (fImg) => { canvas.setBackgroundImage(fImg, canvas.renderAll.bind(canvas)); });
 
             const resetView = () => {
-                canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-                canvas.setZoom(initialDisplayScale);
-                const vpt = canvas.viewportTransform;
-                vpt[4] = (displayWidth - img.naturalWidth * initialDisplayScale) / 2;
-                vpt[5] = (displayHeight - img.naturalHeight * initialDisplayScale) / 2;
+                canvas.setViewportTransform([1, 0, 0, 1, 0, 0]); canvas.setZoom(initialDisplayScale);
+                const vpt = canvas.viewportTransform; vpt[4] = (displayWidth - img.naturalWidth * initialDisplayScale) / 2; vpt[5] = (displayHeight - img.naturalHeight * initialDisplayScale) / 2;
                 canvas.requestRenderAll();
             };
             resetView();
+            modal.querySelector('#zml-reset-view-btn').onclick = resetView;
 
             try {
-                const existingPaintData = JSON.parse(widget.data.value);
-                if (existingPaintData && existingPaintData.draw_paths) {
-                    drawPaths = existingPaintData.draw_paths;
-                    renderExistingPaths();
-                }
+                const existingData = JSON.parse(widget.data.value);
+                drawPaths = existingData.draw_paths || [];
+                mosaicRects = existingData.mosaic_rects || [];
+                imageStamps = existingData.image_stamps || [];
             } catch (e) { /* ignore */ }
-
-            modal.querySelector('#zml-reset-view-btn').onclick = resetView;
+            saveStateForUndo(); // Save initial state
+            renderAllDrawings();
         };
 
-        const renderExistingPaths = () => {
+        function renderAllDrawings() {
              canvas.remove(...canvas.getObjects().filter(o => o.isNotBackground));
+             // Render Mosaics (as semi-transparent placeholders)
+             mosaicRects.forEach(rect => {
+                const fabricRect = new fabric.Rect({ left: rect.x, top: rect.y, width: rect.w, height: rect.h, fill: 'rgba(128,128,128,0.5)', stroke: '#888', strokeWidth: 1, selectable: false, evented: false, isNotBackground: true });
+                canvas.add(fabricRect);
+             });
+             // Render Stamps (as placeholder circles)
+             imageStamps.forEach(stamp => {
+                const radius = (brushSizeSlider.max / 2) * stamp.scale; // Approximate size
+                const placeholder = new fabric.Circle({ left: stamp.x, top: stamp.y, radius: radius, fill: 'rgba(128,0,128,0.5)', stroke: '#800080', strokeWidth: 1, originX: 'center', originY: 'center', selectable: false, evented: false, isNotBackground: true });
+                canvas.add(placeholder);
+             });
+             // Render Paths
              drawPaths.forEach(pathData => {
-                if (pathData.points.length > 1) {
-                     const pathString = "M " + pathData.points.map(p => `${p[0]},${p[1]}`).join(" L ");
-                     const fabricPath = new fabric.Path(pathString, { stroke: pathData.color, strokeWidth: pathData.width, fill: null, selectable: false, evented: false, objectCaching: false, strokeLineJoin: 'round', strokeLineCap: 'round', isNotBackground: true });
-                     canvas.add(fabricPath);
-                } else if(pathData.points.length === 1 ) {
-                     const dot = new fabric.Circle({ left: pathData.points[0][0], top: pathData.points[0][1], radius: pathData.width / 2, fill: pathData.color, selectable: false, evented: false, objectCaching: false, originX: 'center', originY: 'center', isNotBackground: true });
-                     canvas.add(dot);
-                }
+                const isFill = pathData.isFill || false;
+                const pathString = "M " + pathData.points.map(p => `${p[0]},${p[1]}`).join(" L ");
+                const fabricPath = new fabric.Path(pathString, { stroke: pathData.color, strokeWidth: pathData.width, fill: isFill ? pathData.color : null, selectable: false, evented: false, objectCaching: false, strokeLineJoin: 'round', strokeLineCap: 'round', isNotBackground: true });
+                canvas.add(fabricPath);
             });
             canvas.requestRenderAll();
-        };
+        }
 
         canvas.isDrawingMode = true;
         canvas.freeDrawingBrush.color = colorPicker.value;
@@ -647,73 +769,92 @@ function showPainterModal(node, widget) {
         canvas.freeDrawingBrush.decimate = 5;
 
         canvas.on('path:created', (e) => {
+            saveStateForUndo();
             const path = e.path;
             canvas.remove(path);
-            const pathData = { points: path.path.map(p => [p[1], p[2]]), color: path.stroke, width: path.strokeWidth};
+            const pathData = { points: path.path.map(p => [p[1], p[2]]), color: path.stroke, width: path.strokeWidth, isFill: false};
             drawPaths.push(pathData);
-            renderExistingPaths();
+            renderAllDrawings();
         });
-
-        canvas.on('mouse:wheel', function(opt) {
-            const delta = opt.e.deltaY;
-            let zoom = canvas.getZoom();
-            zoom *= 0.999 ** delta;
-
-            if (zoom > 20) zoom = 20;
-
-            if (zoom < initialDisplayScale) {
-                zoom = initialDisplayScale;
-            }
-
-            canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
-            opt.e.preventDefault();
-            opt.e.stopPropagation();
-        });
+        canvas.on('mouse:wheel', function(opt) { const delta = opt.e.deltaY; let zoom = canvas.getZoom(); zoom *= 0.999 ** delta; if (zoom > 20) zoom = 20; if (zoom < initialDisplayScale) zoom = initialDisplayScale; canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom); opt.e.preventDefault(); opt.e.stopPropagation(); });
 
         canvas.on('mouse:down', function(opt) {
-            if (opt.e.ctrlKey) {
-                isPanning = true;
-                canvas.isDrawingMode = false;
-                lastPanPoint = new fabric.Point(opt.e.clientX, opt.e.clientY);
-                this.defaultCursor = 'grab';
+            if (opt.e.ctrlKey) { isPanning = true; canvas.isDrawingMode = false; lastPanPoint = new fabric.Point(opt.e.clientX, opt.e.clientY); this.defaultCursor = 'grab'; return; }
+            if (drawingMode === 'imageStamp') {
+                saveStateForUndo();
+                const pointer = canvas.getPointer(opt.e);
+                const scale = (parseInt(brushSizeSlider.value) / 50.0); // Scale from 0.02 to 2.0 based on slider
+                imageStamps.push({ x: pointer.x, y: pointer.y, scale: scale });
+                renderAllDrawings();
+                return;
+            }
+            if (drawingMode !== 'brush') {
+                isDrawingShape = true;
+                shapeStartPoint = canvas.getPointer(opt.e);
+                if (currentShape) canvas.remove(currentShape);
+                const commonProps = { left: shapeStartPoint.x, top: shapeStartPoint.y, originX: 'left', originY: 'top', fill: isFillMode ? colorPicker.value : 'transparent', stroke: colorPicker.value, strokeWidth: parseInt(brushSizeSlider.value), selectable: false, evented: false, objectCaching: false, };
+                const points = [{x: shapeStartPoint.x, y: shapeStartPoint.y}, {x: shapeStartPoint.x, y: shapeStartPoint.y}, {x: shapeStartPoint.x, y: shapeStartPoint.y}];
+                
+                if (drawingMode === 'rect' || drawingMode === 'mosaic') currentShape = new fabric.Rect({ ...commonProps, width: 0, height: 0, fill: drawingMode === 'mosaic' ? 'rgba(128,128,128,0.5)' : commonProps.fill });
+                else if (drawingMode === 'circle') currentShape = new fabric.Ellipse({ ...commonProps, rx: 0, ry: 0 });
+                else if (['triangle', 'htriangle', 'arrow', 'star', 'heart'].includes(drawingMode)) currentShape = new fabric.Polygon(points, { ...commonProps });
+                
+                if (currentShape) canvas.add(currentShape);
             }
         });
-
         canvas.on('mouse:move', function(opt) {
-            if (isPanning) {
-                this.defaultCursor = 'grabbing';
-                const currentPoint = new fabric.Point(opt.e.clientX, opt.e.clientY);
-                const delta = currentPoint.subtract(lastPanPoint);
-                this.relativePan(delta);
-                lastPanPoint = currentPoint;
+            if (isPanning) { this.defaultCursor = 'grabbing'; const currentPoint = new fabric.Point(opt.e.clientX, opt.e.clientY); const delta = currentPoint.subtract(lastPanPoint); this.relativePan(delta); lastPanPoint = currentPoint; return; }
+            if (!isDrawingShape || !currentShape) return;
+            const pointer = canvas.getPointer(opt.e);
+            switch(drawingMode) {
+                case 'rect': case 'mosaic': currentShape.set({ width: pointer.x - shapeStartPoint.x, height: pointer.y - shapeStartPoint.y }); break;
+                case 'circle': currentShape.set({ rx: Math.abs(pointer.x - shapeStartPoint.x) / 2, ry: Math.abs(pointer.y - shapeStartPoint.y) / 2, originX: 'center', originY: 'center', left: shapeStartPoint.x + (pointer.x - shapeStartPoint.x) / 2, top: shapeStartPoint.y + (pointer.y - shapeStartPoint.y) / 2 }); break;
+                case 'triangle': currentShape.points[1].x = pointer.x; currentShape.points[1].y = pointer.y; currentShape.points[2].x = shapeStartPoint.x - (pointer.x - shapeStartPoint.x); currentShape.points[2].y = pointer.y; break;
+                case 'htriangle': currentShape.points[1].x = pointer.x; currentShape.points[1].y = pointer.y; currentShape.points[2].x = pointer.x; currentShape.points[2].y = shapeStartPoint.y - (pointer.y - shapeStartPoint.y); break;
+                case 'arrow':
+                    const x1 = shapeStartPoint.x, y1 = shapeStartPoint.y, x2 = pointer.x, y2 = pointer.y; const dx = x2 - x1, dy = y2 - y1; const angle = Math.atan2(dy, dx); const length = Math.sqrt(dx*dx + dy*dy); if (length < 5) break;
+                    const headLength = Math.min(length * 0.2, 20); const headAngle = Math.PI / 6;
+                    const p_head_base_x = x2 - headLength * Math.cos(angle); const p_head_base_y = y2 - headLength * Math.sin(angle); const p_wing1 = { x: x2 - headLength * Math.cos(angle - headAngle), y: y2 - headLength * Math.sin(angle - headAngle) }; const p_wing2 = { x: x2 - headLength * Math.cos(angle + headAngle), y: y2 - headLength * Math.sin(angle + headAngle) };
+                    currentShape.points = [ {x:x1, y:y1}, {x: p_head_base_x, y: p_head_base_y}, p_wing1, {x:x2, y:y2}, p_wing2, {x: p_head_base_x, y: p_head_base_y} ];
+                    break;
+                case 'star': case 'heart':
+                    const w = Math.abs(pointer.x - shapeStartPoint.x); const h = Math.abs(pointer.y - shapeStartPoint.y); if (w < 2 || h < 2) break;
+                    const cx = shapeStartPoint.x + w / 2 * Math.sign(pointer.x - shapeStartPoint.x); const cy = shapeStartPoint.y + h / 2 * Math.sign(pointer.y - shapeStartPoint.y); let points = [];
+                    if (drawingMode === 'star') {
+                        const outerRadius = Math.min(w, h) / 2; const innerRadius = outerRadius * 0.4;
+                        for (let i = 0; i < 10; i++) { const radius = (i % 2 === 0) ? outerRadius : innerRadius; const ang = i * Math.PI / 5; points.push({ x: cx + radius * Math.sin(ang), y: cy - radius * Math.cos(ang) }); }
+                    } else { const numPoints = 30; for (let i = 0; i < numPoints; i++) { const t = (i / (numPoints - 1)) * 2 * Math.PI; const hx = 0.5 * w * 1.1 * Math.pow(Math.sin(t), 3); const hy = -h * ( (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) / 22 ); points.push({ x: cx + hx, y: cy + hy }); } }
+                    currentShape.points = points;
+                    break;
             }
+            canvas.requestRenderAll();
         });
-
         canvas.on('mouse:up', function() {
-            if (isPanning) {
-                isPanning = false;
-                canvas.isDrawingMode = true;
-                this.defaultCursor = 'crosshair';
+            if (isPanning) { isPanning = false; canvas.isDrawingMode = (drawingMode === 'brush'); this.defaultCursor = 'crosshair'; return; }
+            if (isDrawingShape && currentShape) {
+                isDrawingShape = false;
+                saveStateForUndo();
+                if (drawingMode === 'mosaic') {
+                    mosaicRects.push({ x: currentShape.left, y: currentShape.top, w: currentShape.width, h: currentShape.height, pixelSize: parseInt(brushSizeSlider.value) });
+                } else {
+                    let pathData = { points: [], color: currentShape.stroke, width: currentShape.strokeWidth, isFill: isFillMode };
+                    if (drawingMode === 'rect') { pathData.points = [ [currentShape.left, currentShape.top], [currentShape.left + currentShape.width, currentShape.top], [currentShape.left + currentShape.width, currentShape.top + currentShape.height], [currentShape.left, currentShape.top + currentShape.height], [currentShape.left, currentShape.top]]; }
+                    else if (['triangle', 'htriangle', 'arrow', 'star', 'heart'].includes(drawingMode)) { pathData.points = currentShape.points.map(p => [p.x, p.y]); if (drawingMode !== 'arrow') pathData.points.push([currentShape.points[0].x, currentShape.points[0].y]); } 
+                    else if (drawingMode === 'circle') { const { rx, ry, left: cx, top: cy } = currentShape; const numPoints = 36; for (let i = 0; i < numPoints; i++) { const angle = (i / numPoints) * 2 * Math.PI; pathData.points.push([cx + rx * Math.cos(angle), cy + ry * Math.sin(angle)]); } pathData.points.push(pathData.points[0]); }
+                    if (pathData.points.length > 1) drawPaths.push(pathData);
+                }
+                canvas.remove(currentShape); currentShape = null;
+                renderAllDrawings();
             }
         });
 
-        modal.querySelector('#zml-undo-paint-btn').onclick = () => { 
-            if(drawPaths.length > 0) { 
-                drawPaths.pop();
-                renderExistingPaths();
-            } 
-        };
-
-        modal.querySelector('#zml-clear-paint-btn').onclick = () => { 
-            drawPaths = []; 
-            renderExistingPaths();
-        };
-
+        modal.querySelector('#zml-undo-paint-btn').onclick = () => { if (undoStack.length > 1) { undoStack.pop(); restoreState(undoStack[undoStack.length - 1]); } };
+        modal.querySelector('#zml-clear-paint-btn').onclick = () => { saveStateForUndo(); drawPaths = []; mosaicRects = []; imageStamps = []; renderAllDrawings(); };
         colorPicker.onchange = (e) => { canvas.freeDrawingBrush.color = e.target.value; };
         brushSizeSlider.oninput = (e) => { canvas.freeDrawingBrush.width = parseInt(e.target.value); };
 
         modal.querySelector('#zml-confirm-paint-btn').onclick = () => {
-            widget.data.value = JSON.stringify({ draw_paths: drawPaths });
+            widget.data.value = JSON.stringify({ draw_paths: drawPaths, mosaic_rects: mosaicRects, image_stamps: imageStamps });
             node.onWidgetValue_changed?.(widget.data, widget.data.value);
             closeModal(modal);
         };
