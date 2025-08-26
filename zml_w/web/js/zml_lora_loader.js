@@ -9,7 +9,7 @@ const ZML_API_PREFIX = "/zml/lora";
 const IMAGE_WIDTH = 384;
 const IMAGE_HEIGHT = 384;
 // 定义强力LORA加载器推荐的最小宽度
-const POWER_LORA_LOADER_MIN_WIDTH = 460; 
+const POWER_LORA_LOADER_MIN_WIDTH = 460;
 
 // 新增：定义强力LORA加载器推荐的最小高度（仅当lora列表为空时使用）
 const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 280; // 根据实际测试调整，确保底部按钮不被裁切
@@ -290,6 +290,207 @@ app.registerExtension({
 		}
 
         if (nodeData.name === "ZmlPowerLoraLoader") {
+            // --- 修复：重新添加 createEl 函数以确保局部作用域可见性 ---
+            // 注意：这个 createEl 只有两个参数（tag, properties），与文件顶部全局的 createEl 不同
+            // 但这符合 ZmlPowerLoraLoader 内部原有的使用方式。
+            function createEl(tag, properties = {}, text = "") {
+                const el = document.createElement(tag);
+                Object.assign(el, properties);
+                if (text) el.textContent = text;
+                return el;
+            }
+            // --- 修复结束 ---
+
+            let zmlPllModalOverlay = null;
+            let zmlPllModalTextarea = null;
+            let zmlPllModalTitle = null;
+            let zmlPllCurrentEditingEntry = null; // 存储当前正在编辑的LoRA条目对象引用
+            let zmlPllCurrentNodeInstance = null; // 存储当前正在编辑的节点实例引用
+
+            function createPllEditContentModal() {
+                if (zmlPllModalOverlay) return; // 确保只创建一次
+
+                zmlPllModalOverlay = createEl("div", {
+                    className: "zml-st3-modal-overlay", // 使用与文本节点相同的类名，保持样式一致
+                    style: `
+                        position: fixed;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        background-color: rgba(0, 0, 0, 0.75);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        z-index: 10000;
+                        display: none; /* 默认隐藏 */
+                        backdrop-filter: blur(3px);
+                    `
+                });
+
+                const modalContainer = createEl("div", {
+                    className: "zml-st3-modal-container", // 使用与文本节点相同的类名
+                    style: `
+                        background-color: #31353a;
+                        border: 1px solid #4a515a;
+                        border-radius: 8px;
+                        padding: 20px;
+                        min-width: 550px;
+                        max-width: 80vw;
+                        max-height: 80vh;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+                        position: relative;
+                    `
+                });
+
+                zmlPllModalTitle = createEl("h3", {
+                    className: "zml-st3-modal-title", // 使用与文本节点相同的类名
+                    style: `
+                        color: #e0e0e0;
+                        margin: 0;
+                        font-size: 1.3em;
+                        border-bottom: 2px solid #4a515a;
+                        padding-bottom: 15px;
+                        text-align: center;
+                        font-weight: 600;
+                    `,
+                    textContent: "LoRA 自定义文本" // 默认标题，将在 showPllEditContentModal 中更新
+                });
+
+                zmlPllModalTextarea = createEl("textarea", {
+                    className: "zml-st3-modal-textarea", // 使用与文本节点相同的类名
+                    style: `
+                        width: 100%;
+                        height: 350px;
+                        resize: vertical;
+                        background-color: #1a1a1a;
+                        border: 1px solid #4a4a4a;
+                        color: #f0f0f0;
+                        padding: 12px;
+                        font-family: 'Segoe UI Mono', 'Consolas', monospace;
+                        font-size: 14px;
+                        border-radius: 4px;
+                        box-sizing: border-box;
+                        outline: none;
+                        transition: border-color 0.2s, box-shadow 0.2s;
+                    `
+                });
+                zmlPllModalTextarea.onfocus = (e) => {
+                    e.target.style.borderColor = '#5d99f2';
+                    e.target.style.boxShadow = '0 0 8px rgba(93, 153, 242, 0.4)';
+                };
+                zmlPllModalTextarea.onblur = (e) => {
+                    e.target.style.borderColor = '#4a4a4a';
+                    e.target.style.boxShadow = 'none';
+                };
+
+                const buttonGroup = createEl("div", {
+                    className: "zml-st3-modal-buttons", // 使用与文本节点相同的类名
+                    style: `
+                        display: flex;
+                        justify-content: flex-end;
+                        gap: 12px;
+                        padding-top: 10px;
+                    `
+                });
+
+                const baseButtonStyle = `
+                    height: 38px;
+                    padding: 0 25px;
+                    text-align: center;
+                    text-decoration: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 15px;
+                    font-weight: 500;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+                    white-space: nowrap;
+                `;
+
+                const saveButton = createEl("button", {
+                    className: "zml-control-btn zml-st3-modal-save",
+                    textContent: "保存",
+                    style: `
+                        ${baseButtonStyle}
+                        background-color: #4CAF50;
+                        border: 1px solid #3e8e41;
+                        color: white;
+                    `
+                });
+                saveButton.onmouseenter = (e) => { e.target.style.backgroundColor = '#45a049'; e.target.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.4)'; };
+                saveButton.onmouseleave = (e) => { e.target.style.backgroundColor = '#4CAF50'; e.target.style.boxShadow = 'none'; };
+                saveButton.onmousedown = (e) => { e.target.style.transform = 'translateY(1px) scale(0.99)'; };
+                saveButton.onmouseup = (e) => { e.target.style.transform = 'translateY(0) scale(1)'; };
+
+                const cancelButton = createEl("button", {
+                    className: "zml-control-btn zml-st3-modal-cancel",
+                    textContent: "取消",
+                    style: `
+                        ${baseButtonStyle}
+                        background-color: #f44336;
+                        border: 1px solid #da190b;
+                        color: white;
+                    `
+                });
+                cancelButton.onmouseenter = (e) => { e.target.style.backgroundColor = '#da190b'; e.target.style.boxShadow = '0 2px 8px rgba(244, 67, 54, 0.4)'; };
+                cancelButton.onmouseleave = (e) => { e.target.style.backgroundColor = '#f44336'; e.target.style.boxShadow = 'none'; };
+                cancelButton.onmousedown = (e) => { e.target.style.transform = 'translateY(1px) scale(0.99)'; };
+                cancelButton.onmouseup = (e) => { e.target.style.transform = 'translateY(0) scale(1)'; };
+
+                buttonGroup.append(cancelButton, saveButton);
+                modalContainer.append(zmlPllModalTitle, zmlPllModalTextarea, buttonGroup);
+                zmlPllModalOverlay.appendChild(modalContainer);
+                document.body.appendChild(zmlPllModalOverlay);
+
+                // 绑定事件
+                saveButton.onclick = () => {
+                    if (zmlPllCurrentEditingEntry && zmlPllCurrentNodeInstance) {
+                        zmlPllCurrentEditingEntry.custom_text = zmlPllModalTextarea.value; // 保存到 custom_text
+                        zmlPllCurrentNodeInstance.triggerSlotChanged(); // 触发当前节点的更新
+                    }
+                    hidePllEditContentModal();
+                };
+
+                cancelButton.onclick = () => {
+                    hidePllEditContentModal();
+                };
+                
+                // 点击背景关闭
+                zmlPllModalOverlay.onclick = (e) => {
+                    if (e.target === zmlPllModalOverlay) {
+                        hidePllEditContentModal();
+                    }
+                };
+            }
+
+            function showPllEditContentModal(entry, nodeInstance) {
+                if (!zmlPllModalOverlay) createPllEditContentModal();
+                
+                zmlPllCurrentEditingEntry = entry;
+                // 确保我们引用的是 LoRA 条目本身，而不是整个 Entries 数组
+                zmlPllCurrentNodeInstance = nodeInstance;
+                zmlPllModalTextarea.value = entry.custom_text; // 加载 custom_text
+                // 标题显示 LoRA 名称 (display_name 或者 lora_name)
+                // 确保 lora_name 在切割路径前是字符串
+                const loraNameForTitle = entry.lora_name === "None" ? "" : (entry.lora_name || "").split(/[/\\]/).pop();
+                zmlPllModalTitle.textContent = `LoRA 自定义文本: ${entry.display_name || loraNameForTitle || "(未命名 LoRA)"}`;
+                zmlPllModalOverlay.style.display = 'flex';
+                zmlPllModalTextarea.focus();
+            }
+
+            function hidePllEditContentModal() {
+                if (zmlPllModalOverlay) {
+                    zmlPllModalOverlay.style.display = 'none';
+                    zmlPllCurrentEditingEntry = null;
+                    zmlPllCurrentNodeInstance = null;
+                }
+            }
+            // --- 结束：新增独立弹窗变量和函数 ---
+
+
             if (!document.getElementById("zml-power-lora-loader-style")) {
                 $el("style", {
                     id: "zml-power-lora-loader-style",
@@ -301,14 +502,12 @@ app.registerExtension({
                         .zml-lora-tree-menu .zml-lora-folder-content { display: none; padding-left: 15px; }
 
                         .zml-pll-entry-card.zml-pll-dragging, .zml-pll-folder-card.zml-pll-dragging { opacity: 0.5; background: #555; }
-                        /* .zml-pll-entry-card.zml-pll-drag-over, .zml-pll-folder-card.zml-pll-drag-over { border-top: 2px solid #5d99f2 !important; } */
                         .zml-pll-drag-over-line { border-top: 2px solid #5d99f2 !important; }
                         .zml-pll-drag-handle.locked { cursor: not-allowed !important; color: #666 !important; }
                         
-                        /* Removed hardcoded background and border from .zml-pll-folder-card */
                         .zml-pll-folder-card { border-radius: 4px; margin-bottom: 4px; }
                         .zml-pll-folder-header { display: flex; align-items: center; padding: 4px; cursor: pointer; }
-                        .zml-pll-folder-header.zml-pll-drag-over-folder { background-color: rgba(93, 153, 242, 0.3) !important; } /* Drop into folder highlight */
+                        .zml-pll-folder-header.zml-pll-drag-over-folder { background-color: rgba(93, 153, 242, 0.3) !important; }
 
                         .zml-pll-folder-toggle { width: 20px; text-align: center; font-size: 14px; user-select: none; }
                         .zml-pll-folder-name-input { background: #2b2b2b; border: 1px solid #444; color: #ccc; border-radius: 2px; flex-grow: 1; padding: 4px; margin: 0 4px; }
@@ -427,10 +626,17 @@ app.registerExtension({
                             margin-right: 4px;
                             box-sizing: border-box;
                             resize: none;
-                            overflow: auto;
+                            overflow: hidden; /* 防止原生滚动条出现 */
                             min-height: 26px;
                             flex-shrink: 0;
+                            cursor: pointer; /* 表示可点击 */
                         }
+                        /* 新增：customTextInput 悬停效果 */
+                        .zml-lora-custom-text-input:hover {
+                            border-color: #5d99f2 !important;
+                            box-shadow: 0 0 5px rgba(93, 153, 242, 0.4);
+                        }
+
 
                         .zml-pll-entries-list {
                             overflow: auto;
@@ -440,6 +646,16 @@ app.registerExtension({
                             gap: 4px;
                             padding: 0;
                         }
+
+                        /* 复用 SelectTextV3 的弹窗样式 */
+                        .zml-st3-modal-overlay { /* 可以在此覆盖或补充样式 */ }
+                        .zml-st3-modal-container { /* 可以在此覆盖或补充样式 */ }
+                        .zml-st3-modal-title { /* 可以在此覆盖或补充样式 */ }
+                        .zml-st3-modal-textarea { /* 可以在此覆盖或补充样式 */ }
+                        .zml-st3-modal-buttons { /* 可以在此覆盖或补充样式 */ }
+                        .zml-st3-modal-save {} /* 可以在此覆盖或补充样式 */
+                        .zml-st3-modal-cancel {} /* 可以在此覆盖或补充样式 */
+
                     `,
                     parent: document.body,
                 });
@@ -457,7 +673,6 @@ app.registerExtension({
                 }
                 currentLevel.files.push({ name: parts[parts.length - 1], fullpath: name });
             });
-            function createEl(tag, properties = {}, text = "") { const el = document.createElement(tag); Object.assign(el, properties); if (text) el.textContent = text; return el; }
             let activeLoraMenu = null;
             const origOnNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function() {
@@ -483,19 +698,22 @@ app.registerExtension({
                      // Ensure old data has item_type
                      this.powerLoraLoader_data.entries.forEach(e => {
                          if (!e.item_type) e.item_type = 'lora';
+                         // 兼容旧数据添加 display_name 和 custom_text
+                         if (e.display_name === undefined) e.display_name = "";
+                         if (e.custom_text === undefined) e.custom_text = "";
                      });
 
                      const dataWidget = this.addWidget("text", "lora_loader_data", JSON.stringify(this.powerLoraLoader_data), (v) => { try { if(v) this.powerLoraLoader_data = JSON.parse(v); } catch(e){} }, { serialize: true });
                      dataWidget.hidden = true; dataWidget.computeSize = () => [0, 0];
 
-                     const container = createEl("div");
+                     const container = createEl("div"); // <-- 这里会调用到局部定义的 createEl
                      container.style.cssText = `background: #2b2b2b; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; display: flex; flex-direction: column; padding: 6px;`;
 
-                     const topControls = createEl("div", { className: "zml-pll-controls-top" });
+                     const topControls = createEl("div", { className: "zml-pll-controls-top" }); // <-- 这里会调用到局部定义的 createEl
 
-                     const loraNameWidthGroup = createEl("div", { className: "zml-control-group-pll" });
-                     const loraNameWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "名称宽度" });
-                     const loraNameWidthInput = createEl("input", { className: "zml-control-input-pll" });
+                     const loraNameWidthGroup = createEl("div", { className: "zml-control-group-pll" });// <-- 这里会调用到局部定义的 createEl
+                     const loraNameWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "名称宽度" });// <-- 这里会调用到局部定义的 createEl
+                     const loraNameWidthInput = createEl("input", { className: "zml-control-input-pll" });// <-- 这里会调用到局部定义的 createEl
                      loraNameWidthInput.type = "number";
                      loraNameWidthInput.min = "10";
                      loraNameWidthInput.max = "300";
@@ -513,9 +731,9 @@ app.registerExtension({
                      loraNameWidthGroup.append(loraNameWidthLabel, loraNameWidthInput);
                      topControls.appendChild(loraNameWidthGroup);
 
-                     const customTextWidthGroup = createEl("div", { className: "zml-control-group-pll" });
-                     const customTextWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "文本宽度" });
-                     const customTextWidthInput = createEl("input", { className: "zml-control-input-pll" });
+                     const customTextWidthGroup = createEl("div", { className: "zml-control-group-pll" });// <-- 这里会调用到局部定义的 createEl
+                     const customTextWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "文本宽度" });// <-- 这里会调用到局部定义的 createEl
+                     const customTextWidthInput = createEl("input", { className: "zml-control-input-pll" });// <-- 这里会调用到局部定义的 createEl
                      customTextWidthInput.type = "number";
                      customTextWidthInput.min = "10";
                      customTextWidthInput.max = "300";
@@ -534,7 +752,7 @@ app.registerExtension({
                      topControls.appendChild(customTextWidthGroup);
                      
                      // === 新建文件夹按钮 ===
-                     const newFolderBtn = createEl("button", { className: "zml-control-btn-pll", textContent: "📁+" });
+                     const newFolderBtn = createEl("button", { className: "zml-control-btn-pll", textContent: "📁+" });// <-- 这里会调用到局部定义的 createEl
                      newFolderBtn.title = "新建文件夹";
                      newFolderBtn.onclick = () => {
                          this.powerLoraLoader_data.entries.push({
@@ -551,13 +769,13 @@ app.registerExtension({
                      // =======================
 
                      // === 文件夹颜色按钮 (新增) ===
-                     const folderColorInput = createEl("input", { type: "color", value: this.folderColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" });
+                     const folderColorInput = createEl("input", { type: "color", value: this.folderColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" });// <-- 这里会调用到局部定义的 createEl
                      folderColorInput.onchange = (e) => {
                          this.folderColor = e.target.value;
                          this.renderLoraEntries(); // Re-render to apply new color
                          this.triggerSlotChanged();
                      };
-                     const folderColorBtn = createEl("button", { className: "zml-control-btn-pll", textContent: "🎨" });
+                     const folderColorBtn = createEl("button", { className: "zml-control-btn-pll", textContent: "🎨" });// <-- 这里会调用到局部定义的 createEl
                      folderColorBtn.title = "自定义文件夹颜色";
                      folderColorBtn.onclick = () => folderColorInput.click();
                      topControls.appendChild(folderColorInput); // Hidden input
@@ -565,7 +783,7 @@ app.registerExtension({
                      // =============================
 
 
-                     const lockToggleButton = createEl("button", { className: "zml-control-btn-pll", textContent: this.isLocked ? "🔒" : "🔓" });
+                     const lockToggleButton = createEl("button", { className: "zml-control-btn-pll", textContent: this.isLocked ? "🔒" : "🔓" });// <-- 这里会调用到局部定义的 createEl
                      lockToggleButton.title = "锁定/解锁 LoRA 排序";
                      lockToggleButton.style.cssText += `${this.isLocked ? 'background: #644;' : 'background: #333;'}`;
                      lockToggleButton.onmouseenter = () => lockToggleButton.style.background = '#555';
@@ -579,7 +797,7 @@ app.registerExtension({
                      };
                      topControls.appendChild(lockToggleButton);
 
-                     const sizeToggleButton = createEl("button", { className: "zml-control-btn-pll", textContent: "↕" });
+                     const sizeToggleButton = createEl("button", { className: "zml-control-btn-pll", textContent: "↕" });// <-- 这里会调用到局部定义的 createEl
                      sizeToggleButton.title = "切换紧凑/普通视图";
                      sizeToggleButton.onmouseenter = () => sizeToggleButton.style.background = '#555';
                      sizeToggleButton.onmouseleave = () => sizeToggleButton.style.background = '#444';
@@ -590,13 +808,13 @@ app.registerExtension({
                      };
                      topControls.appendChild(sizeToggleButton);
 
-                     const entriesList = createEl("div", { className: "zml-pll-entries-list" });
+                     const entriesList = createEl("div", { className: "zml-pll-entries-list" });// <-- 这里会调用到局部定义的 createEl
 
-                     const bottomControls = createEl("div", { className: "zml-pll-controls-bottom" });
+                     const bottomControls = createEl("div", { className: "zml-pll-controls-bottom" });// <-- 这里会调用到局部定义的 createEl
 
-                     const newLoraBtn = createEl("button", { className: "zml-pll-button zml-pll-button-lg", textContent: "＋ 添加 Lora" });
+                     const newLoraBtn = createEl("button", { className: "zml-pll-button zml-pll-button-lg", textContent: "＋ 添加 Lora" });// <-- 这里会调用到局部定义的 createEl
                      newLoraBtn.onclick = () => {
-                        this.powerLoraLoader_data.entries.push({ 
+                        this.powerLoraLoader_data.entries.push({
                             id: "lora" + Date.now(),
                             item_type: "lora",
                             display_name: "",
@@ -629,39 +847,59 @@ app.registerExtension({
 
                      this.createLoraEntryDOM = (entry) => { // Removed index parameter as it's not strictly needed for rendering
                          const s = this.compactView ? this.stylesPLL.compact : this.stylesPLL.normal;
-                         const entryCard = createEl("div", {
+                         const entryCard = createEl("div", { // <-- 这里会调用到局部定义的 createEl
                              className: "zml-pll-entry-card",
                              style: `display: flex; align-items: center; gap: 4px; padding: ${s.cardPadding}; background: ${entry.enabled ? '#3a3a3a' : '#2a2a2a'}; border-radius: 2px;`
                          });
                          entryCard.dataset.id = entry.id;
                          entryCard.dataset.type = "lora";
 
-                         const checkbox = createEl("input", { type: "checkbox", checked: entry.enabled, style: `transform: scale(${s.checkboxScale}); flex-shrink: 0; margin-right: 4px;` });
+                         const checkbox = createEl("input", { type: "checkbox", checked: entry.enabled, style: `transform: scale(${s.checkboxScale}); flex-shrink: 0; margin-right: 4px;` });// <-- 这里会调用到局部定义的 createEl
                          checkbox.onchange = (e) => { entry.enabled = e.target.checked; this.renderLoraEntries(); this.triggerSlotChanged(); };
 
-                         const dragHandle = createEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; display: flex; align-items: center; justify-content: center; width: 20px; color: ${this.isLocked ? '#666' : '#888'}; flex-shrink: 0; user-select: none; font-size: 14px;` });
+                         const dragHandle = createEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; display: flex; align-items: center; justify-content: center; width: 20px; color: ${this.isLocked ? '#666' : '#888'}; flex-shrink: 0; user-select: none; font-size: 14px;` });// <-- 这里会调用到局部定义的 createEl
                          dragHandle.draggable = !this.isLocked;
 
-                         const displayNameInput = createEl("input", { className: "zml-lora-display-name-input", type: "text", value: entry.display_name, placeholder: "输入名称...", title: "自定义此LoRA条目的显示名称", style: `width: ${this.loraNameWidth}px;` });
-                         displayNameInput.oninput = (e) => { entry.display_name = e.target.value; this.triggerSlotChanged(); };
+                         const displayNameInput = createEl("input", { className: "zml-lora-display-name-input", type: "text", value: entry.display_name, placeholder: "输入名称...", title: "自定义此LoRA条目的显示名称", style: `width: ${this.loraNameWidth}px;` });// <-- 这里会调用到局部定义的 createEl
+                         // --- 修改开始：oninput 不再触发 triggerSlotChanged，改为 onblur 触发 ---
+                         displayNameInput.oninput = (e) => {
+                             entry.display_name = e.target.value;
+                             // 不再在此处调用 this.triggerSlotChanged()
+                         };
+                         displayNameInput.onblur = () => {
+                             this.triggerSlotChanged(); // 在输入框失去焦点时触发更新
+                         };
+                         // --- 修改结束 ---
 
-                         const loraSelectorBtn = createEl("button", { style: `flex-grow: 1; min-width: 100px; padding: ${s.inputPadding}; background: #222; border: 1px solid #555; border-radius: 2px; color: #ccc; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: ${s.inputHeight};`, textContent: entry.lora_name === "None" ? "None" : entry.lora_name.split(/[/\\]/).pop() });
-                         loraSelectorBtn.onclick = () => { if (activeLoraMenu) activeLoraMenu.close(); activeLoraMenu = this.createLoraTreeMenu(loraSelectorBtn, entry, () => { loraSelectorBtn.textContent = entry.lora_name === "None" ? "None" : entry.lora_name.split(/[/\\]/).pop(); this.triggerSlotChanged(); }); };
+                         const loraSelectorBtn = createEl("button", { style: `flex-grow: 1; min-width: 100px; padding: ${s.inputPadding}; background: #222; border: 1px solid #555; border-radius: 2px; color: #ccc; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: ${s.inputHeight};`, textContent: entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop() });// <-- 这里会调用到局部定义的 createEl
+                         loraSelectorBtn.onclick = () => { if (activeLoraMenu) activeLoraMenu.close(); activeLoraMenu = this.createLoraTreeMenu(loraSelectorBtn, entry, () => { loraSelectorBtn.textContent = entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop(); this.triggerSlotChanged(); }); };
 
-                         const weightWidget = createEl("div", { style: `display: flex; align-items: center; justify-content: center; gap: 4px; background: #222; border: 1px solid #555; border-radius: 2px; padding: 2px 4px; height: ${s.inputHeight};` });
-                         const decBtn = createEl("button", { style: "background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%;" }, "<");
-                         const weightDisplay = createEl("span", { style: "min-width: 32px; text-align: center; color: #ddd;" }, entry.weight.toFixed(2));
-                         const incBtn = createEl("button", { style: "background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%;" }, ">");
+                         const weightWidget = createEl("div", { style: `display: flex; align-items: center; justify-content: center; gap: 4px; background: #222; border: 1px solid #555; border-radius: 2px; padding: 2px 4px; height: ${s.inputHeight};` });// <-- 这里会调用到局部定义的 createEl
+                         const decBtn = createEl("button", { style: "background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%;" }, "<");// <-- 这里会调用到局部定义的 createEl
+                         const weightDisplay = createEl("span", { style: "min-width: 32px; text-align: center; color: #ddd;" }, entry.weight.toFixed(2));// <-- 这里会调用到局部定义的 createEl
+                         const incBtn = createEl("button", { style: "background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%;" }, ">");// <-- 这里会调用到局部定义的 createEl
                          decBtn.onclick = () => { entry.weight = Math.max(-10, parseFloat((entry.weight - 0.05).toFixed(2))); weightDisplay.textContent = entry.weight.toFixed(2); this.triggerSlotChanged(); };
                          incBtn.onclick = () => { entry.weight = Math.min(10, parseFloat((entry.weight + 0.05).toFixed(2))); weightDisplay.textContent = entry.weight.toFixed(2); this.triggerSlotChanged(); };
                          weightWidget.append(decBtn, weightDisplay, incBtn);
 
-                         const customTextInput = createEl("textarea", { className: "zml-lora-custom-text-input", value: entry.custom_text || "", placeholder: "输入文本", title: "LoRA 的自定义文本内容", style: `width: ${this.customTextWidth}px;` });
-                         customTextInput.oninput = (e) => { entry.custom_text = e.target.value; this.triggerSlotChanged(); };
+                         const customTextInput = createEl("textarea", { // <-- 这里会调用到局部定义的 createEl
+                            className: "zml-lora-custom-text-input",
+                            value: entry.custom_text || "",
+                            placeholder: "输入文本",
+                            title: "点击编辑 LoRA 的自定义文本内容", // 更新提示文字
+                            readOnly: true, // 设置为只读
+                            style: `width: ${this.customTextWidth}px;`
+                         });
+                         // 监听点击事件，弹出编辑弹窗，传递当前节点实例
+                         const currentNodeInstance = this;
+                         customTextInput.onclick = () => {
+                            showPllEditContentModal(entry, currentNodeInstance);
+                         };
+
 
                          // === 移出文件夹按钮 (新增) ===
                          if (entry.parent_id) { // Only show if Lora is in a folder
-                            const moveOutBtn = createEl("button", { 
+                            const moveOutBtn = createEl("button", { // <-- 这里会调用到局部定义的 createEl
                                 style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #4a6a4a; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;`,
                                 title: "移出文件夹"
                             }, "⬆️");
@@ -676,7 +914,7 @@ app.registerExtension({
                          }
                          // ===========================
 
-                         const deleteBtn = createEl("button", {
+                         const deleteBtn = createEl("button", { // <-- 这里会调用到局部定义的 createEl
                             style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #444; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;`
                          }, "X");
                          deleteBtn.onclick = () => {
@@ -694,21 +932,21 @@ app.registerExtension({
                      };
 
                      this.createFolderDOM = (entry) => { // Removed index parameter
-                         const folderCard = createEl("div", { 
+                         const folderCard = createEl("div", {  // <-- 这里会调用到局部定义的 createEl
                             className: "zml-pll-folder-card",
                             style: `background: ${this.folderColor}; border: 1px solid ${adjustBrightness(this.folderColor, -15)};` // Apply custom color
                          });
                          folderCard.dataset.id = entry.id;
                          folderCard.dataset.type = "folder";
 
-                         const header = createEl("div", { className: "zml-pll-folder-header" });
-                         const toggle = createEl("div", { className: "zml-pll-folder-toggle", textContent: entry.is_collapsed ? "▶" : "▼" });
-                         const nameInput = createEl("input", { className: "zml-pll-folder-name-input", type: "text", value: entry.name });
-                         const deleteBtn = createEl("button", { className: "zml-pll-folder-delete", textContent: "🗑️" });
-                         const dragHandle = createEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; color: ${this.isLocked ? '#666' : '#ccc'}; user-select: none; font-size: 14px; padding: 0 5px;` });
+                         const header = createEl("div", { className: "zml-pll-folder-header" }); // <-- 这里会调用到局部定义的 createEl
+                         const toggle = createEl("div", { className: "zml-pll-folder-toggle", textContent: entry.is_collapsed ? "▶" : "▼" });// <-- 这里会调用到局部定义的 createEl
+                         const nameInput = createEl("input", { className: "zml-pll-folder-name-input", type: "text", value: entry.name });// <-- 这里会调用到局部定义的 createEl
+                         const deleteBtn = createEl("button", { className: "zml-pll-folder-delete", textContent: "🗑️" });// <-- 这里会调用到局部定义的 createEl
+                         const dragHandle = createEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; color: ${this.isLocked ? '#666' : '#ccc'}; user-select: none; font-size: 14px; padding: 0 5px;` });// <-- 这里会调用到局部定义的 createEl
                          dragHandle.draggable = !this.isLocked;
 
-                         const content = createEl("div", { className: `zml-pll-folder-content ${entry.is_collapsed ? 'hidden' : ''}` });
+                         const content = createEl("div", { className: `zml-pll-folder-content ${entry.is_collapsed ? 'hidden' : ''}` });// <-- 这里会调用到局部定义的 createEl
                          // Apply the same border color as the folder card header for consistency
                          content.style.borderColor = adjustBrightness(this.folderColor, -15);
 
@@ -893,64 +1131,62 @@ app.registerExtension({
                      container.append(topControls, entriesList, bottomControls);
                      this.addDOMWidget("power_lora_loader_ui", "div", container, { serialize: false });
 
-                     // 修改：调整初始最小高度的计算
-                     // 确保至少有足够的空间容纳顶部的输入/输出插槽以及顶部控制区域
-                     // (this.widgets_always_on_top?.[0]?.last_y || 0): 这是顶部输入连接点（model）的y坐标，基本上是节点最上方的内部Y值。
-                     // 加上 POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST（例如 100或150）是为了给该点以下的内容预留初步空间。
                      const initialHeightFromWidgets = (this.widgets_always_on_top?.[0]?.last_y || 0) + POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST; 
                      this.size = [
                          Math.max(this.size[0] || 0, POWER_LORA_LOADER_MIN_WIDTH), 
-                         Math.max(this.size[1] || 0, initialHeightFromWidgets) // 使用新的计算方式
+                         Math.max(this.size[1] || 0, initialHeightFromWidgets)
                      ];
                      
 
                      const origOnResize = this.onResize;
                      this.onResize = function(size) {
                          size[0] = Math.max(size[0], POWER_LORA_LOADER_MIN_WIDTH);
-                         // Dynamic height adjustment based on content height
-                         let currentContentHeight = topControls.offsetHeight + bottomControls.offsetHeight + 12; // Controls + padding
+                         let currentContentHeight = topControls.offsetHeight + bottomControls.offsetHeight + 12;
                          
-                         // 如果没有LoRA条目（包括文件夹），确保entriesList区域有一个最小高度
                          if (this.powerLoraLoader_data.entries.length === 0) {
-                             currentContentHeight += 50; // 为空的LoRA列表预留一部分高度，避免过度压缩
+                             currentContentHeight += 50;
                          } else {
-                             // 否则使用实际的滚动高度或者客户端高度
                              currentContentHeight += Math.max(entriesList.scrollHeight, entriesList.clientHeight);
                          }
 
-                         // 确保总高度不小于初始布局所需的高度，防止在内容很少时高度过小
                          currentContentHeight = Math.max(currentContentHeight, initialHeightFromWidgets);
                          
-                         size[1] = Math.max(size[1], currentContentHeight); // 使用计算出的高度和当前用户拖动的高度中较大的值
+                         size[1] = Math.max(size[1], currentContentHeight);
 
                          this.size = size;
 
                          const domElement = this.domElement;
                          if (domElement) {
-                            // 当节点大小不足以显示全部内容时，允许滚动
                             if (size[1] < domElement.scrollHeight || size[0] < domElement.scrollWidth) {
                                 domElement.style.overflow = "auto";
-                                entriesList.style.overflowY = "auto"; // Also ensure internal list scrolls
+                                entriesList.style.overflowY = "auto";
                             } else {
                                 domElement.style.overflow = "hidden";
-                                entriesList.style.overflowY = "visible"; // Allow it to push node size
+                                entriesList.style.overflowY = "visible";
                             }
                          }
 
                          if (origOnResize) origOnResize.call(this, size);
                      };
 
-
-                     this.triggerSlotChanged = () => { dataWidget.value = JSON.stringify(this.powerLoraLoader_data); this.setDirtyCanvas(true, true); };
+                     // --- 修改：triggerSlotChanged 保持不变，因为它需要调用 renderLoraEntries ---
+                     this.triggerSlotChanged = () => {
+                         dataWidget.value = JSON.stringify(this.powerLoraLoader_data);
+                         this.renderLoraEntries(); // 确保UI立即刷新
+                         this.setDirtyCanvas(true, true);
+                     };
+                     // --- 结束修改 ---
 
                      // 确保在初始化时就调用一次 onResize 来设置正确的大小
                      // 使用 next tick 确保 DOM 完全渲染后再计算尺寸
                      setTimeout(() => {
-                        this.onResize(this.size); 
-                        this.applySizeMode(); 
+                        this.onResize(this.size);
+                        this.applySizeMode();
+                        // --- 新增：确保弹窗的DOM在节点创建时就存在 ---
+                        createPllEditContentModal();
+                        // --- 结束新增 ---
                      }, 0);
 
-                     // 确保 onConfigure 也会触发正确的大小调整
                      const originalOnConfigure = nodeType.prototype.onConfigure;
                      nodeType.prototype.onConfigure = function(obj) {
                          originalOnConfigure?.apply(this, arguments);
@@ -976,8 +1212,7 @@ app.registerExtension({
                                  }
 
                                  this.applySizeMode(); // This will call renderLoraEntries
-                                 // 再次调用 onResize 确保重新配置后高度正确
-                                 this.onResize(this.size); 
+                                 this.onResize(this.size);
                              }, 10);
                          }
                      };
@@ -989,7 +1224,7 @@ app.registerExtension({
 
             nodeType.prototype.createLoraTreeMenu = function(button, entry, onSelect) {
                 // This function remains largely the same
-                const menu = createEl("div", { className: "zml-lora-tree-menu" });
+                const menu = createEl("div", { className: "zml-lora-tree-menu" }); // <-- 这里会调用到局部定义的 createEl
                 const closeMenu = () => { menu.remove(); document.removeEventListener("click", clickOutside, true); activeLoraMenu = null; };
 
                 const ext = app.extensions.find(e => e.name === "zml.LoraLoader.Final.v9");
@@ -999,7 +1234,7 @@ app.registerExtension({
 
                 const buildMenuLevel = (parent, treeLevel) => {
                     treeLevel.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
-                        const fileEl = createEl("div", { className: "zml-lora-file", textContent: file.name });
+                        const fileEl = createEl("div", { className: "zml-lora-file", textContent: file.name }); // <-- 这里会调用到局部定义的 createEl
                         fileEl.onclick = () => { entry.lora_name = file.fullpath; onSelect(); hideImage?.(); closeMenu(); };
 
                         if (loraImages[file.fullpath] && imageHost && showImage && hideImage) {
@@ -1016,15 +1251,15 @@ app.registerExtension({
                     });
 
                     Object.keys(treeLevel.folders).sort().forEach(folderName => {
-                        const folderEl = createEl("div", { className: "zml-lora-folder", innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}` });
-                        const contentEl = createEl("div", { className: "zml-lora-folder-content" });
+                        const folderEl = createEl("div", { className: "zml-lora-folder", innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}` }); // <-- 这里会调用到局部定义的 createEl
+                        const contentEl = createEl("div", { className: "zml-lora-folder-content" }); // <-- 这里会调用到局部定义的 createEl
                         folderEl.onclick = (e) => { e.stopPropagation(); const isHidden = contentEl.style.display === "none"; contentEl.style.display = isHidden ? "block" : "none"; folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶"; };
                         buildMenuLevel(contentEl, treeLevel.folders[folderName]);
                         parent.append(folderEl, contentEl);
                     });
                 };
 
-                const noneEl = createEl("div", { className: "zml-lora-file", textContent: "None" });
+                const noneEl = createEl("div", { className: "zml-lora-file", textContent: "None" }); // <-- 这里会调用到局部定义的 createEl
                 noneEl.onclick = () => { entry.lora_name = "None"; onSelect(); hideImage?.(); closeMenu(); };
                 menu.appendChild(noneEl);
                 buildMenuLevel(menu, this.loraTree);
@@ -1060,6 +1295,9 @@ app.registerExtension({
                         if (e.parent_id === undefined && e.item_type === 'lora') e.parent_id = null; // Default to top-level for lora if missing
                         if (e.item_type === 'lora' && e.display_name === undefined) e.display_name = "";
                         if (e.item_type === 'lora' && e.custom_text === undefined) e.custom_text = "";
+                        // 确保加载旧工作流时存在 is_collapsed, name 字段
+                        if (e.item_type === 'folder' && e.is_collapsed === undefined) e.is_collapsed = false;
+                        if (e.item_type === 'folder' && e.name === undefined) e.name = "新建文件夹";
                     });
                 }
 
