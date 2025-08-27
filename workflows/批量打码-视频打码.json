@@ -1,8 +1,8 @@
 {
   "id": "ead2efa3-aac6-4368-bc8e-b3eef606ecc4",
   "revision": 0,
-  "last_node_id": 96,
-  "last_link_id": 133,
+  "last_node_id": 98,
+  "last_link_id": 134,
   "nodes": [
     {
       "id": 2,
@@ -37,7 +37,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.42",
         "Node name for S&R": "LoadImage",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "克鲁鲁#-#00035.png",
@@ -142,8 +145,11 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "ccb4ba08fcfc508e16dedf6491a85efe74f27e2b",
         "Node name for S&R": "easy loadImagesForLoop",
-        "widget_ue_connectable": {
-          "directory": true
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {
+            "directory": true
+          }
         }
       },
       "widgets_values": [
@@ -153,62 +159,6 @@
       ],
       "color": "#008181",
       "bgcolor": "rgba(24,24,27,.9)",
-      "shape": 1
-    },
-    {
-      "id": 23,
-      "type": "ZML_SaveImage",
-      "pos": [
-        -2290,
-        5960
-      ],
-      "size": [
-        240,
-        342
-      ],
-      "flags": {},
-      "order": 30,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "图像",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 48
-        }
-      ],
-      "outputs": [
-        {
-          "name": "图像",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "Help",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "zml-image",
-        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
-        "Node name for S&R": "ZML_SaveImage",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "ZML",
-        "",
-        "禁用",
-        "启用",
-        "",
-        "启用",
-        "",
-        "禁用",
-        "禁用",
-        1,
-        "启用",
-        "禁用"
-      ],
       "shape": 1
     },
     {
@@ -237,10 +187,13 @@
       ],
       "title": "文件夹路径",
       "properties": {
+        "Node name for S&R": "ZML_TextInput",
         "cnr_id": "zml-image",
         "ver": "c916329e57317d8799ee6db89263a565e5b83629",
-        "Node name for S&R": "ZML_TextInput",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "E:\\111\\AI\\ComfyUI\\ComfyUI-aki-v1.4\\output\\文生图\\NSFW抽卡\\申鹤",
@@ -265,7 +218,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 31,
+      "order": 30,
       "mode": 2,
       "inputs": [
         {
@@ -310,7 +263,10 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "ccb4ba08fcfc508e16dedf6491a85efe74f27e2b",
         "Node name for S&R": "easy forLoopEnd",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [],
       "color": "#008181",
@@ -351,7 +307,10 @@
         "cnr_id": "comfyui-custom-scripts",
         "ver": "aac13aa7ce35b07d43633c3bbe654a38c00d74f5",
         "Node name for S&R": "PlaySound|pysssss",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "always",
@@ -388,7 +347,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.42",
         "Node name for S&R": "PreviewImage",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [],
       "shape": 1
@@ -426,7 +388,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.42",
         "Node name for S&R": "LoadImage",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "00006-864234819-(tiny fairy_2),(1fairy_2),size difference,tiny fairy,1man,fishnets,looking back,(bare foot_2),, best quality,amazing quality,ver.png",
@@ -461,7 +426,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.42",
         "Node name for S&R": "MaskPreview",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [],
       "shape": 1
@@ -483,7 +451,10 @@
       "inputs": [],
       "outputs": [],
       "properties": {
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "使用yolo模型进行检查目标，支持bbox和sagm。\n\n覆盖图留空时默认填充黑色。\n\n从路径加载图像节点可以在每次运行后自动+1索引，如果文件夹里有十张图，则只需将comfyui的运行队列设置为10即可，如果你的队列上限为100，可以到设置里更改。\n\n当你更换文件夹想要刷新索引值时，只需将“custom_nodes\\ComfyUI-ZML-Image\\zml_w\\路径图像计数.json”里的值清零即可。\n\n推荐下载Wenaka炼制的专门用于打码的sagm模型：https://civitai.com/models/1736285\n\n如果你无法正常加载节点，请到GitHub上手动克隆节点包，或复制链接到秋叶启动器安装，GitHub链接：\nhttps://github.com/zml-w/ComfyUI-ZML-Image"
@@ -541,10 +512,13 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "ZML_AutoCensorNode",
         "cnr_id": "zml-image",
         "ver": "743b5bd98932cdad845b5bcb5192c27d29b8ae30",
-        "Node name for S&R": "ZML_AutoCensorNode",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "segm\\wenaka_yolov8s-seg.pt",
@@ -589,8 +563,8 @@
           "name": "处理后图像",
           "type": "IMAGE",
           "links": [
-            48,
-            49
+            49,
+            134
           ]
         },
         {
@@ -605,10 +579,13 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "ZML_AutoCensorNode",
         "cnr_id": "zml-image",
         "ver": "743b5bd98932cdad845b5bcb5192c27d29b8ae30",
-        "Node name for S&R": "ZML_AutoCensorNode",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "segm\\wenaka_yolov8s-seg.pt",
@@ -654,7 +631,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.42",
         "Node name for S&R": "LoadImage",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "00006-864234819-(tiny fairy_2),(1fairy_2),size difference,tiny fairy,1man,fishnets,looking back,(bare foot_2),, best quality,amazing quality,ver.png",
@@ -704,7 +684,10 @@
         "cnr_id": "comfyui-impact-pack",
         "ver": "705698faf242851881abd7d1e1774baa3cf47136",
         "Node name for S&R": "PreviewBridge",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "$19-0",
@@ -730,7 +713,10 @@
       "inputs": [],
       "outputs": [],
       "properties": {
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "使用yolo模型进行检查目标，支持bbox和sagm。\n\n覆盖图留空时默认填充黑色。\n\n在上方输入需要打码的图像文件夹路径，保存图像节点里输入保存的文件夹路径，默认为留空则为output。\n\n然后，直接运行即可，用这个for循环时记得把上面的工作流给停用或忽略了。\n\n推荐下载Wenaka炼制的专门用于打码的sagm模型：https://civitai.com/models/1736285\n\n如果你无法正常加载节点，请到GitHub上手动克隆节点包，或复制链接到秋叶启动器安装，GitHub链接：\nhttps://github.com/zml-w/ComfyUI-ZML-Image"
@@ -773,7 +759,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.43",
         "Node name for S&R": "ImageScaleBy",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "nearest-exact",
@@ -823,7 +812,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.43",
         "Node name for S&R": "ImageFromBatch",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         0,
@@ -887,7 +879,10 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "e7320ec0c463641f702add48b87363c7a9713a1c",
         "Node name for S&R": "easy forLoopEnd",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [],
       "color": "#1f1f48",
@@ -935,7 +930,10 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "e7320ec0c463641f702add48b87363c7a9713a1c",
         "Node name for S&R": "easy batchAnything",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [],
       "shape": 1
@@ -973,7 +971,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.43",
         "Node name for S&R": "LoadImage",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "0a39a50ed8a4a26d560c138cc71e8e57.jpg",
@@ -998,7 +999,10 @@
       "inputs": [],
       "outputs": [],
       "properties": {
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "降低图像的缩放比例和减少视频的帧率可以让爆内存的风险大大降低。\n\n将“添加文字水印”节点的输出拉到“任何批次组合”节点的“任意_2”上可以给视频添加水印。"
@@ -1073,8 +1077,11 @@
         "cnr_id": "comfyui-videohelpersuite",
         "ver": "4c7858ddd5126f7293dc3c9f6e0fc4c263cde079",
         "Node name for S&R": "VHS_VideoCombine",
-        "widget_ue_connectable": {},
-        "aux_id": "Kosinkadink/ComfyUI-VideoHelperSuite"
+        "aux_id": "Kosinkadink/ComfyUI-VideoHelperSuite",
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": {
         "frame_rate": 16,
@@ -1176,7 +1183,10 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "e7320ec0c463641f702add48b87363c7a9713a1c",
         "Node name for S&R": "easy forLoopStart",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         1
@@ -1245,7 +1255,10 @@
         "cnr_id": "comfyui-videohelpersuite",
         "ver": "a7ce59e381934733bfae03b1be029756d6ce936d",
         "Node name for S&R": "VHS_VideoInfoLoaded",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": {},
       "shape": 1
@@ -1259,7 +1272,7 @@
       ],
       "size": [
         350,
-        595
+        310
       ],
       "flags": {},
       "order": 8,
@@ -1315,7 +1328,10 @@
         "cnr_id": "comfyui-videohelpersuite",
         "ver": "a7ce59e381934733bfae03b1be029756d6ce936d",
         "Node name for S&R": "VHS_LoadVideo",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": {
         "video": "9de4ff1bda944dd083d3688a5a95658e.mp4",
@@ -1393,10 +1409,13 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "ZML_AutoCensorNode",
         "cnr_id": "zml-image",
         "ver": "743b5bd98932cdad845b5bcb5192c27d29b8ae30",
-        "Node name for S&R": "ZML_AutoCensorNode",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "segm\\wenaka_yolov8s-seg.pt",
@@ -1475,8 +1494,11 @@
         "cnr_id": "comfyui-videohelpersuite",
         "ver": "4c7858ddd5126f7293dc3c9f6e0fc4c263cde079",
         "Node name for S&R": "VHS_VideoCombine",
-        "widget_ue_connectable": {},
-        "aux_id": "Kosinkadink/ComfyUI-VideoHelperSuite"
+        "aux_id": "Kosinkadink/ComfyUI-VideoHelperSuite",
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": {
         "frame_rate": 16,
@@ -1578,7 +1600,10 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "e7320ec0c463641f702add48b87363c7a9713a1c",
         "Node name for S&R": "easy forLoopStart",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         1
@@ -1647,7 +1672,10 @@
         "cnr_id": "comfyui-videohelpersuite",
         "ver": "a7ce59e381934733bfae03b1be029756d6ce936d",
         "Node name for S&R": "VHS_VideoInfoLoaded",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": {},
       "shape": 1
@@ -1693,7 +1721,10 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "e7320ec0c463641f702add48b87363c7a9713a1c",
         "Node name for S&R": "easy batchAnything",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [],
       "shape": 1
@@ -1740,7 +1771,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.43",
         "Node name for S&R": "ImageFromBatch",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         0,
@@ -1783,7 +1817,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.43",
         "Node name for S&R": "ImageScaleBy",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "nearest-exact",
@@ -1827,7 +1864,10 @@
         "cnr_id": "comfy-core",
         "ver": "0.3.43",
         "Node name for S&R": "ImageFromBatch",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         0,
@@ -1891,7 +1931,10 @@
         "cnr_id": "comfyui-easy-use",
         "ver": "e7320ec0c463641f702add48b87363c7a9713a1c",
         "Node name for S&R": "easy forLoopEnd",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [],
       "color": "#1f1f48",
@@ -1915,7 +1958,10 @@
       "inputs": [],
       "outputs": [],
       "properties": {
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "降低图像的缩放比例和减少视频的帧率可以让爆内存的风险大大降低。\n\n先运行一下“桥接预览图像”节点，然后给图像涂上遮罩，再运行工作流。\n\n将“添加文字水印”节点的输出拉到“任何批次组合”节点的“任意_2”上可以给视频添加水印。"
@@ -1966,7 +2012,10 @@
         "cnr_id": "comfyui-impact-pack",
         "ver": "df330c1b06c094b2b7c4c606fb6f6dac48d39864",
         "Node name for S&R": "PreviewBridge",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "$94-0",
@@ -1984,7 +2033,7 @@
       ],
       "size": [
         350,
-        595
+        310
       ],
       "flags": {},
       "order": 10,
@@ -2040,7 +2089,10 @@
         "cnr_id": "comfyui-videohelpersuite",
         "ver": "a7ce59e381934733bfae03b1be029756d6ce936d",
         "Node name for S&R": "VHS_LoadVideo",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": {
         "video": "e34d354a8978136c7cb05e519f47a0d0.mp4",
@@ -2071,62 +2123,6 @@
       "shape": 1
     },
     {
-      "id": 13,
-      "type": "ZML_SaveImage",
-      "pos": [
-        -2310,
-        5280
-      ],
-      "size": [
-        260,
-        342
-      ],
-      "flags": {},
-      "order": 11,
-      "mode": 4,
-      "inputs": [
-        {
-          "name": "图像",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "图像",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "Help",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "zml-image",
-        "ver": "c916329e57317d8799ee6db89263a565e5b83629",
-        "Node name for S&R": "ZML_SaveImage",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "ZML",
-        "",
-        "禁用",
-        "启用",
-        "",
-        "启用",
-        "",
-        "禁用",
-        "禁用",
-        1,
-        "启用",
-        "禁用"
-      ],
-      "shape": 1
-    },
-    {
       "id": 12,
       "type": "ZML_LoadImageFromPath",
       "pos": [
@@ -2135,15 +2131,16 @@
       ],
       "size": [
         250,
-        234
+        274
       ],
       "flags": {},
-      "order": 12,
+      "order": 11,
       "mode": 4,
       "inputs": [],
       "outputs": [
         {
-          "name": "图像",
+          "name": "图像列表",
+          "shape": 6,
           "type": "IMAGE",
           "links": null
         },
@@ -2166,13 +2163,27 @@
           "name": "高",
           "type": "INT",
           "links": null
+        },
+        {
+          "name": "图像路径",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "图像数量",
+          "type": "INT",
+          "links": null
         }
       ],
       "properties": {
+        "Node name for S&R": "ZML_LoadImageFromPath",
         "cnr_id": "zml-image",
         "ver": "c916329e57317d8799ee6db89263a565e5b83629",
-        "Node name for S&R": "ZML_LoadImageFromPath",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "",
@@ -2219,10 +2230,13 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "ZML_AddTextWatermark",
         "cnr_id": "zml-image",
         "ver": "743b5bd98932cdad845b5bcb5192c27d29b8ae30",
-        "widget_ue_connectable": {},
-        "Node name for S&R": "ZML_AddTextWatermark"
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "ZML_水印",
@@ -2237,6 +2251,11 @@
         0,
         10,
         -30,
+        1,
+        [
+          false,
+          true
+        ],
         1,
         [
           false,
@@ -2281,10 +2300,13 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "ZML_AddTextWatermark",
         "cnr_id": "zml-image",
         "ver": "743b5bd98932cdad845b5bcb5192c27d29b8ae30",
-        "widget_ue_connectable": {},
-        "Node name for S&R": "ZML_AddTextWatermark"
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "ZML_水印",
@@ -2299,6 +2321,11 @@
         0,
         10,
         -30,
+        1,
+        [
+          false,
+          true
+        ],
         1,
         [
           false,
@@ -2360,16 +2387,125 @@
         }
       ],
       "properties": {
+        "Node name for S&R": "ZML_CustomCensorNode",
         "cnr_id": "zml-image",
         "ver": "743b5bd98932cdad845b5bcb5192c27d29b8ae30",
-        "Node name for S&R": "ZML_CustomCensorNode",
-        "widget_ue_connectable": {}
+        "ue_properties": {
+          "version": "7.0.1",
+          "widget_ue_connectable": {}
+        }
       },
       "widgets_values": [
         "图像",
         5,
         1,
         0
+      ],
+      "shape": 1
+    },
+    {
+      "id": 97,
+      "type": "ZML_SaveImage",
+      "pos": [
+        -2310,
+        5280
+      ],
+      "size": [
+        260,
+        342
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "图像",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "Help",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_SaveImage"
+      },
+      "widgets_values": [
+        "保存图像",
+        "ZML",
+        "output/ZML/%Y-%m-%d",
+        "禁用",
+        "启用",
+        "",
+        "启用",
+        "",
+        "禁用",
+        "禁用",
+        1,
+        "禁用"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 98,
+      "type": "ZML_SaveImage",
+      "pos": [
+        -2290,
+        5960
+      ],
+      "size": [
+        240,
+        342
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "图像",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 134
+        }
+      ],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "Help",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_SaveImage"
+      },
+      "widgets_values": [
+        "保存图像",
+        "ZML",
+        "output/ZML/%Y-%m-%d",
+        "禁用",
+        "启用",
+        "",
+        "启用",
+        "",
+        "禁用",
+        "禁用",
+        1,
+        "禁用"
       ],
       "shape": 1
     }
@@ -2453,14 +2589,6 @@
       0,
       29,
       1,
-      "IMAGE"
-    ],
-    [
-      48,
-      29,
-      0,
-      23,
-      0,
       "IMAGE"
     ],
     [
@@ -2710,6 +2838,14 @@
       83,
       1,
       "*"
+    ],
+    [
+      134,
+      29,
+      0,
+      98,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -2771,16 +2907,16 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.6588450000000007,
+      "scale": 0.4950000000000008,
       "offset": [
-        3353.643742687296,
-        -5062.275687618219
+        3780.513466003701,
+        -4854.257616119626
       ]
     },
-    "frontendVersion": "1.23.4",
+    "frontendVersion": "1.25.9",
     "VHS_latentpreview": true,
     "VHS_latentpreviewrate": 0,
-    "VHS_MetadataImage": true,
+    "VHS_MetadataImage": false,
     "VHS_KeepIntermediate": true
   },
   "version": 0.4
