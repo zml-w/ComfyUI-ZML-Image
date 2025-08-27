@@ -1,4 +1,3 @@
-# 文件路径: ComfyUI-ZML-Image\zml_w\zml_lora_nodes.py
 import os
 import shutil
 import server
@@ -51,9 +50,16 @@ def clean_html(raw_html):
 def calculate_sha256(filepath):
     """计算文件的SHA256哈希值"""
     sha256 = hashlib.sha256()
+    # 按照ComfyUI官方哈希计算方法
+    # https://github.com/comfyanonymous/ComfyUI/blob/master/server.py#L93
+    # 官方使用分块读取，这里也采用分块读取
+    chunk_size = 4096
     with open(filepath, 'rb') as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256.update(byte_block)
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            sha256.update(chunk)
     return sha256.hexdigest()
 
 def fetch_civitai_data_by_hash(hash_string):
@@ -72,8 +78,10 @@ def fetch_civitai_data_by_hash(hash_string):
                     if model_response.status == 200:
                         data['model'] = json.loads(model_response.read().decode('utf-8'))
                     else:
-                        data['model'] = {}
+                        data['model'] = {} # No model info if that request fails
                 return data
+            else:
+                print(f"[ZML_Parser] Civitai API请求失败: 状态码 {response.status} (Hash: {hash_string})")
     except urllib.error.HTTPError as e:
         print(f"[ZML_Parser] Civitai API请求失败: {e} (Hash: {hash_string})")
     except Exception as e:
@@ -88,13 +96,15 @@ def download_file(url, destination_path):
         with urllib.request.urlopen(req) as response, open(destination_path, 'wb') as out_file:
             if response.status == 200:
                 shutil.copyfileobj(response, out_file)
-                print(f"[ZML_Parser] 文件已保存: {destination_path}")
+                # print(f"[ZML_Parser] 文件已保存: {destination_path}") # Suppress excessive logs
                 return True
+            else:
+                print(f"[ZML_Parser] 下载文件前响应状态码不为200: {response.status} (URL: {url})")
     except Exception as e:
         print(f"[ZML_Parser] 下载文件时出错 {url}: {e}")
     return False
 
-# --- API 路由（保持不变） ---
+# --- API 路由 ---
 @server.PromptServer.instance.routes.get(ZML_API_PREFIX + "/view/{name:.*}")
 async def view(request):
     name = request.match_info["name"]
@@ -104,17 +114,26 @@ async def view(request):
     
     lora_filename_no_ext = os.path.splitext(relative_path.replace("zml/", ""))[0]
     
+    # Iterate through potential extensions to find the original lora file
+    found_lora_full_path = None
     for ext in [".safetensors", ".pt", ".bin", ".ckpt"]:
-        lora_file = f"{lora_filename_no_ext}{ext}"
-        lora_full_path = folder_paths.get_full_path(type, lora_file)
-        if lora_full_path:
-            lora_dir = os.path.dirname(lora_full_path)
-            preview_filename = os.path.basename(relative_path)
-            target_path = os.path.join(lora_dir, "zml", preview_filename)
-            if os.path.isfile(target_path):
-                 return web.FileResponse(target_path, headers={"Content-Disposition": f"filename=\"{os.path.basename(target_path)}\""})
+        lora_file_stem = os.path.splitext(os.path.basename(relative_path))[0] # Get just the filename (no path, no ext) from the /view path
+        possible_lora_filename = os.path.join(os.path.dirname(relative_path.replace("zml/", "")), f"{lora_file_stem}{ext}") # Reconstruct original lora relative path
+        found_lora_full_path = folder_paths.get_full_path(type, possible_lora_filename)
+        if found_lora_full_path:
+            break
 
-    return web.Response(status=404)
+    if not found_lora_full_path:
+        return web.Response(status=404, text=f"LoRA文件未找到. (Requested path: {relative_path})")
+
+    lora_dir = os.path.dirname(found_lora_full_path)
+    preview_filename_with_ext = os.path.basename(relative_path) # The original image file requested
+    target_path = os.path.join(lora_dir, "zml", preview_filename_with_ext) # Construct actual path to zml preview
+
+    if os.path.isfile(target_path):
+        return web.FileResponse(target_path, headers={"Content-Disposition": f"filename=\"{os.path.basename(target_path)}\""})
+
+    return web.Response(status=404, text=f"预览图未找到: {target_path}")
 
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/save/{name:.*}")
 async def save_preview(request):
@@ -133,7 +152,10 @@ async def save_preview(request):
 
     lora_root_dir = find_lora_root_path_for_file(lora_relative_path)
     if not lora_root_dir:
-         lora_root_dir = folder_paths.get_folder_paths("loras")[0]
+         # Fallback to the first lora root if the specific one cannot be determined
+         lora_root_dir = folder_paths.get_folder_paths("loras")[0] if folder_paths.get_folder_paths("loras") else None
+         if not lora_root_dir:
+             return web.Response(status=500, text="无法确定LoRA根目录来保存预览图。")
 
     zml_dir = os.path.join(lora_root_dir, "zml")
     lora_path_no_ext = os.path.splitext(lora_relative_path)[0]
@@ -141,8 +163,16 @@ async def save_preview(request):
     destination_path = os.path.join(zml_dir, f"{lora_path_no_ext}{source_ext}")
     os.makedirs(os.path.dirname(destination_path), exist_ok=True)
     shutil.copyfile(source_filepath, destination_path)
-    relative_image_path = os.path.join("zml", f"{lora_path_no_ext}{source_ext}").replace("\\", "/")
-    return web.json_response({"image": relative_image_path})
+    relative_image_path = os.path.join("zml", f"{lora_path_no_ext}{source_ext}").replace("\\", "/") # This assumes zml is directly under the lora_root_dir, which it is.
+                                                                                                    # But for frontend to reconstruct URL, it needs the full Lora relative path + "zml/" + image_basename
+    
+    # The existing image retrieval in JS uses loraImages[lora_filename] = relative_path_for_frontend
+    # where relative_path_for_frontend is like "subdir/zml/image.png" and lora_filename is "subdir/lora.safetensors"
+    # So we need to return something similar.
+    lora_dir_relative_path = os.path.dirname(lora_relative_path)
+    final_relative_image_path_for_frontend = os.path.join(lora_dir_relative_path, "zml", f"{lora_path_no_ext}{source_ext}").replace("\\", "/")
+
+    return web.json_response({"image": final_relative_image_path_for_frontend})
 
 @server.PromptServer.instance.routes.get(ZML_API_PREFIX + "/images/{type}")
 async def get_images(request):
@@ -164,16 +194,119 @@ async def get_images(request):
             continue
             
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_filename))[0]
+        # Look for existing preview images in zml subfolder
         for ext in [".png", ".jpg", ".jpeg", ".webp"]:
             preview_path_abs = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
             if os.path.isfile(preview_path_abs):
                 lora_dir_relative = os.path.dirname(lora_filename)
                 preview_basename = os.path.basename(preview_path_abs)
-                relative_path_for_frontend = os.path.join(lora_dir_relative, "zml", preview_basename).replace("\\", "/")
+                # The path for frontend to dynamically load the image via /view API
+                # Example: "some_dir/lora_model.safetensors" -> "some_dir/zml/lora_model.png"
+                relative_path_for_frontend = os.path.join(lora_dir_relative, preview_basename).replace("\\", "/") # Note: doesn't include "zml/" here, as /view API handles it.
                 images[lora_filename] = relative_path_for_frontend
                 break
         
     return web.json_response(images)
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/fetch_civitai_metadata")
+async def fetch_civitai_metadata(request):
+    """
+    通过Civitai API为指定的LoRA文件获取并保存元数据和预览图。
+    期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors"}
+    返回 JSON body: {"status": "success", "message": "...", "image_path_updated": "..."}
+    """
+    try:
+        body = await request.json()
+        lora_relative_filename = body.get("lora_filename")
+        
+        if not lora_relative_filename:
+            return web.json_response({"status": "error", "message": "缺少 'lora_filename' 参数"}, status=400)
+
+        lora_full_path = folder_paths.get_full_path("loras", lora_relative_filename)
+        if not lora_full_path or not os.path.exists(lora_full_path):
+            return web.json_response({"status": "error", "message": f"LoRA文件未找到: {lora_relative_filename}"}, status=404)
+
+        lora_dir = os.path.dirname(lora_full_path)
+        lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
+        zml_dir = os.path.join(lora_dir, "zml")
+        os.makedirs(zml_dir, exist_ok=True)
+        
+        lora_hash = calculate_sha256(lora_full_path)
+        civitai_data = fetch_civitai_data_by_hash(lora_hash)
+        
+        downloaded_image_path = None
+        message_parts = []
+
+        if civitai_data:
+            message_parts.append(f"已从Civitai获取到 '{civitai_data.get('model', {}).get('name', 'N/A')}' 的信息。")
+            
+            # --- 保存首张图像 ---
+            if civitai_data.get('images'):
+                first_image = civitai_data['images'][0]
+                img_url = first_image.get('url')
+                img_ext = os.path.splitext(urllib.parse.urlparse(img_url).path)[1]
+                if not img_ext or not img_ext.lower() in ['.png', '.jpg', '.jpeg', '.webp']:
+                    img_ext = '.jpg' # Fallback to JPG
+                img_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{img_ext}")
+                if download_file(img_url, img_dest_path):
+                    downloaded_image_path = os.path.join(os.path.dirname(lora_relative_filename), os.path.basename(img_dest_path)).replace("\\", "/")
+                    message_parts.append("预览图已下载。")
+                else:
+                    message_parts.append("预览图下载失败。")
+            else:
+                message_parts.append("Civitai上没有找到预览图。")
+
+            # --- 保存触发词为txt ---
+            if civitai_data.get('trainedWords'):
+                words_content = ", ".join(civitai_data['trainedWords'])
+                txt_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.txt")
+                try:
+                    with open(txt_dest_path, 'w', encoding='utf-8') as f:
+                        f.write(words_content)
+                    message_parts.append("触发词已保存。")
+                except Exception as e:
+                    print(f"[ZML_Parser] 保存触发词时出错: {e}")
+                    message_parts.append("触发词保存失败。")
+            else:
+                message_parts.append("Civitai上没有找到触发词。")
+            
+            # --- 保存介绍为log ---
+            raw_model_desc = civitai_data.get('model', {}).get('description', '')
+            raw_version_desc = civitai_data.get('description', '')
+            model_desc = clean_html(raw_model_desc)
+            version_desc = clean_html(raw_version_desc)
+            base_model = civitai_data.get('baseModel', 'N/A')
+            model_id = civitai_data.get('modelId')
+            version_id = civitai_data.get('id')
+            civitai_link = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}" if model_id and version_id else "链接不可用"
+
+            log_content = (
+                f"--- 基础信息 ---\n"
+                f"基础模型: {base_model}\n"
+                f"C站链接: {civitai_link}\n\n"
+                f"--- 模型介绍 ---\n\n{model_desc if model_desc else '无模型介绍。'}\n\n"
+                f"--- 版本信息 ---\n\n{version_desc if version_desc else '无版本信息。'}\n"
+            )
+            log_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.log")
+            try:
+                with open(log_dest_path, 'w', encoding='utf-8') as f:
+                    f.write(log_content)
+                message_parts.append("介绍已保存。")
+            except Exception as e:
+                print(f"[ZML_Parser] 保存介绍时出错: {e}")
+                message_parts.append("介绍保存失败。")
+        else:
+            message_parts.append("无法从Civitai获取此LoRA的信息（可能未上传或哈希不匹配）。")
+            
+        return web.json_response({
+            "status": "success", 
+            "message": "\n".join(message_parts), 
+            "image_path_updated": downloaded_image_path
+        })
+
+    except Exception as e:
+        print(f"[ZML_Parser] 处理Civitai元数据请求时出错: {e}")
+        return web.json_response({"status": "error", "message": f"服务器内部错误: {e}"}, status=500)
 
 # --- 解析LoRA元数据节点 ---
 class ZmlLoraMetadataParser:
@@ -227,7 +360,10 @@ class ZmlLoraMetadataParser:
                     if not img_ext in ['.png', '.jpg', '.jpeg', '.webp']:
                         img_ext = '.jpg'
                     img_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{img_ext}")
-                    download_file(img_url, img_dest_path)
+                    if download_file(img_url, img_dest_path):
+                        parsed_info_str += "预览图已下载。\n"
+                    else:
+                        parsed_info_str += "预览图下载失败。\n"
                 
                 if 保存触发词为txt and civitai_data.get('trainedWords'):
                     words_content = ", ".join(civitai_data['trainedWords'])
@@ -267,7 +403,7 @@ class ZmlLoraMetadataParser:
             else:
                 parsed_info_str += "\n无法从Civitai获取此LoRA的信息（可能未上传或哈希不匹配）。"
         else:
-            parsed_info_str = "未执行任何保存操作。\n请开启至少一个保存选项后重新运行。"
+            parsed_info_str += "未执行任何保存操作。\n请开启至少一个保存选项后重新运行。"
 
         try:
             lora_meta = comfy.utils.load_torch_file(lora_full_path, safe_load=True)
@@ -290,6 +426,7 @@ class ZmlLoraMetadataParser:
         preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         txt_content, log_content = "", ""
         for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+            # Adjust path construction for preview_path to be relative to lora_dir/zml
             preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
             if os.path.isfile(preview_path):
                 try:
@@ -602,6 +739,7 @@ class ZmlPowerLoraLoader:
                     zml_dir = os.path.join(lora_dir, "zml")
                     
                     for ext in ['.png', '.jpg', '.jpeg', '.webp']:
+                        # Corrected path construction for preview_path (absolute path)
                         preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
                         if os.path.isfile(preview_path):
                             try:
