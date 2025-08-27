@@ -1186,7 +1186,7 @@ class ZML_ClassifyImage:
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE",)
     RETURN_NAMES = ("无数据", "元数据", "文本块",)
     FUNCTION = "classify"
-    CATEGORY = "image/ZML_图像/图像" 
+    CATEGORY = "image/ZML_图像/工具" 
     DISPLAY_NAME = "ZML_分类图像" 
 
     def _create_placeholder_image(self, size=1) -> torch.Tensor:
