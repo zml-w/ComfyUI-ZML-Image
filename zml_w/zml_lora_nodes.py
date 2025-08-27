@@ -19,6 +19,9 @@ import re # 导入正则表达式模块
 
 ZML_API_PREFIX = "/zml/lora"
 
+# 定义一个用于LORA列表的自定义类型字符串
+ZML_LORA_STACK_TYPE = "ZML_LORA_STACK"
+
 # --- 辅助函数：查找LoRA根路径 ---
 def find_lora_root_path_for_file(lora_filename):
     """辅助函数，根据lora的相对文件名找到其所在的绝对根目录"""
@@ -426,7 +429,7 @@ class ZmlLoraMetadataParser:
         preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         txt_content, log_content = "", ""
         for ext in ['.png', '.jpg', '.jpeg', '.webp']:
-            # Adjust path construction for preview_path to be relative to lora_dir/zml
+            # Adjust path construction for preview_path to be relative to zml_dir
             preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
             if os.path.isfile(preview_path):
                 try:
@@ -644,11 +647,12 @@ class ZmlLoraLoaderFive:
         return (model_out, clip_out, final_txt_output)
 
 
-# 强力 Lora 加载器节点
+# 强力 Lora 加载器节点 (ZmlPowerLoraLoader)
 class ZmlPowerLoraLoader:
     """
     ZML 强力LoRA加载器节点。
     允许用户通过自定义UI动态添加、删除和配置多个LoRA。
+    现在增加输出一个已启用LoRA的名称和权重的列表。
     """
     
     @classmethod
@@ -669,10 +673,10 @@ class ZmlPowerLoraLoader:
             },
         }
 
-    OUTPUT_IS_LIST = (False, False, True, False, False)
+    OUTPUT_IS_LIST = (False, False, False, True, False, False) # 新增的 lora名称列表 也不是列表输出，因为它自己就是一个列表对象
     
-    RETURN_TYPES = ("MODEL", "CLIP", "IMAGE", "STRING", "STRING")
-    RETURN_NAMES = ("MODEL", "CLIP", "预览_图", "触发词", "自定义文本")
+    RETURN_TYPES = ("MODEL", "CLIP", ZML_LORA_STACK_TYPE, "IMAGE", "STRING", "STRING") # 增加 ZML_LORA_STACK_TYPE
+    RETURN_NAMES = ("MODEL", "CLIP", "lora名称列表", "预览_图", "触发词", "自定义文本") # 增加 "lora名称列表"
     FUNCTION = "load_loras"
     CATEGORY = "图像/ZML_图像/lora加载器"
 
@@ -682,7 +686,8 @@ class ZmlPowerLoraLoader:
             entries = data.get("entries", [])
         except (json.JSONDecodeError, TypeError):
             # 如果JSON解析失败，也应该返回一个占位图列表避免下游节点报错
-            return (model, clip, [torch.zeros((1, 64, 64, 3), dtype=torch.float32)], "", "") 
+            # 同时确保 lora名称列表 返回空列表
+            return (model, clip, [], [torch.zeros((1, 64, 64, 3), dtype=torch.float32)], "", "") 
 
         current_model = model
         current_clip = clip
@@ -690,6 +695,7 @@ class ZmlPowerLoraLoader:
         output_images = [] # 存储收集到的所有真实预览图
         temp_txts = [] 
         output_custom_texts = [] 
+        loaded_lora_names_and_weights = [] # 存储已启用LoRA的名称和权重
 
         # 判断是否应尝试应用LoRA权重 (只要有一个输入是有效的，就尝试应用)
         should_attempt_apply_lora_weights = (current_model is not None) or (current_clip is not None)
@@ -713,15 +719,19 @@ class ZmlPowerLoraLoader:
                 lora_path = folder_paths.get_full_path("loras", lora_name)
                 # LoRA文件未找到的警告也移除，但在遇到实际错误时会打印
                 if not lora_path:
-                    # print(f"ZML_PowerLoraLoader: 警告: LoRA文件 '{lora_name}' 未找到，跳过处理。")
+                    # print(f"ZML_PowerLoraLoader: 警告: LoRA文件 '{lora_name}' 未找到，跳过处理。", file=sys.stderr) # 打印到stderr
                     continue
                 
                 try:
                     lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
                     
+                    weight = float(entry.get("weight", 1.0)) # 获取当前LoRA的权重
+                    
+                    # 收集已启用的LoRA名称和权重，无论模型是否为None
+                    loaded_lora_names_and_weights.append({"lora_name": lora_name, "weight": weight})
+
                     # 只有当 `should_attempt_apply_lora_weights` 为 True 时，才尝试应用 LoRA 权重
                     if should_attempt_apply_lora_weights:
-                        weight = float(entry.get("weight", 1.0))
                         current_model, current_clip = comfy.sd.load_lora_for_models(
                             current_model, 
                             current_clip, 
@@ -729,8 +739,9 @@ class ZmlPowerLoraLoader:
                             weight, 
                             weight
                         )
-                    else:
-                        pass # 跳过权重应用，也不打印任何消息
+                    # else:
+                        # print(f"ZML_PowerLoraLoader: 模型或CLIP未提供，跳过 '{lora_name}' 的权重应用。")
+
 
                     # 尝试收集 LoRA 预览图
                     found_image_tensor = None # 为每个 LoRA 重置
@@ -781,7 +792,67 @@ class ZmlPowerLoraLoader:
         # --------------------------------------------------------------------------------------
 
         # 返回所有输出
-        return (current_model, current_clip, output_images, final_txt_output, final_custom_text_output)
+        return (current_model, current_clip, loaded_lora_names_and_weights, output_images, final_txt_output, final_custom_text_output)
+
+
+# --- 新增节点：ZML_名称加载lora ---
+class ZmlNameLoraLoader:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "模型": ("MODEL",),
+                "CLIP": ("CLIP",),
+                "名称列表": (ZML_LORA_STACK_TYPE, {"default": []}), # 接收 ZML_LORA_STACK_TYPE 类型
+            }
+        }
+
+    RETURN_TYPES = ("MODEL", "CLIP")
+    RETURN_NAMES = ("输出_模型", "输出_CLIP")
+    FUNCTION = "load_named_loras"
+    CATEGORY = "图像/ZML_图像/lora加载器"
+    
+    def load_named_loras(self, 模型, CLIP, 名称列表):
+        current_model = 模型
+        current_clip = CLIP
+
+        if not isinstance(名称列表, list):
+            print(f"ZML_名称加载lora: '名称列表' 输入不是一个有效的列表类型，跳过LoRA加载。")
+            return (模型, CLIP) # 返回原始模型和CLIP，不报错
+
+        for lora_info in 名称列表:
+            if not isinstance(lora_info, dict) or "lora_name" not in lora_info or "weight" not in lora_info:
+                print(f"ZML_名称加载lora: '名称列表' 中的LoRA信息格式不正确: {lora_info}，跳过。")
+                continue
+
+            lora_name = lora_info["lora_name"]
+            weight = lora_info["weight"]
+
+            if lora_name == "None" or lora_name is None:
+                continue
+
+            lora_path = folder_paths.get_full_path("loras", lora_name)
+            if not lora_path:
+                print(f"ZML_名称加载lora: LoRA文件 '{lora_name}' 未找到，跳过。")
+                continue
+
+            try:
+                lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+                current_model, current_clip = comfy.sd.load_lora_for_models(
+                    current_model,
+                    current_clip,
+                    lora,
+                    weight,
+                    weight
+                )
+            except Exception as e:
+                print(f"ZML_名称加载lora: 处理 LoRA '{lora_name}' 时发生意外错误: {e}")
+        
+        return (current_model, current_clip)
+
 
 # 注册节点
 NODE_CLASS_MAPPINGS = {
@@ -790,6 +861,7 @@ NODE_CLASS_MAPPINGS = {
     "ZmlLoraLoaderFive": ZmlLoraLoaderFive,
     "ZmlLoraMetadataParser": ZmlLoraMetadataParser,
     "ZmlPowerLoraLoader": ZmlPowerLoraLoader,
+    "ZmlNameLoraLoader": ZmlNameLoraLoader, # 新增节点
 }
 
 # 节点显示名称映射
@@ -799,4 +871,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZmlLoraLoaderFive": "ZML_LoRA加载器_五",
     "ZmlLoraMetadataParser": "ZML_解析LoRA元数据",
     "ZmlPowerLoraLoader": "ZML_强力lora加载器",
+    "ZmlNameLoraLoader": "ZML_名称加载lora", # 新增节点显示名称
 }
