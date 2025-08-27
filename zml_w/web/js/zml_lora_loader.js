@@ -10,7 +10,7 @@ const IMAGE_HEIGHT = 384;
 const POWER_LORA_LOADER_MIN_WIDTH = 460;
 
 // 新增：定义强力LORA加载器推荐的最小高度（仅当lora列表为空时使用）
-const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 280; // 根据实际测试调整，确保底部按钮不被裁切
+const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 300; // 根据实际测试调整，确保底部按钮不被裁切
 
 function encodeRFC3986URIComponent(str) {
 	return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -116,7 +116,8 @@ app.registerExtension({
                 .zml-pll-folder-delete, .zml-lora-entry-delete, /* Added .zml-lora-entry-delete class */
                 .zml-batch-lora-modal-container button,
                 .zml-weight-btn, /* New class for weight buttons */
-                .zml-batch-lora-fetch-from-civitai-btn /* Civitai fetch button */
+                .zml-batch-lora-fetch-from-civitai-btn, /* Civitai fetch button */
+                .zml-batch-lora-all-loras-btn /* "全部" Lora button */
                 {
                     transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
                 }
@@ -124,7 +125,8 @@ app.registerExtension({
                 .zml-control-btn-pll:hover, .zml-pll-button:hover,
                 .zml-batch-lora-modal-container button:hover,
                 .zml-weight-btn:hover, /* Weight buttons hover */
-                .zml-batch-lora-fetch-from-civitai-btn:hover /* Civitai fetch button hover */
+                .zml-batch-lora-fetch-from-civitai-btn:hover, /* Civitai fetch button hover */
+                .zml-batch-lora-all-loras-btn:hover /* "全部" Lora button hover */
                 {
                     background-color: #555 !important;
                     border-color: #777 !important;
@@ -134,7 +136,7 @@ app.registerExtension({
                 .zml-control-btn-pll:active, .zml-pll-button:active,
                 .zml-batch-lora-modal-container button:active,
                 .zml-weight-btn:active, /* Weight buttons active */
-                .zml-batch-lora-fetch-from-civitai-btn:active /* Civitai fetch button active */
+                .zml-batch-lora-all-loras-btn:active /* "全部" Lora button active */
                 {
                     transform: translateY(1px);
                     box-shadow: 0 1px 4px rgba(0,0,0,0.2) inset;
@@ -669,7 +671,10 @@ app.registerExtension({
             let zmlBatchLoraGridContainer = null;
             let zmlBatchLoraSelectedCountDisplay = null; // 用于显示选中数量
             let zmlBatchLoraCurrentNodeInstance = null;
-            let zmlBatchLoraCurrentPath = []; // ['Root', 'Folder1', 'Subfolder']
+            
+            // 使用特殊字符串作为“显示所有”的路径标识
+            const ALL_LORAS_VIEW_PATH = '__ALL_LORAS_VIEW__'; 
+            let zmlBatchLoraCurrentPath = []; 
             let zmlBatchLoraSelected = new Set(); // 存储选中的 LoRA 的 fullpath
 
             function createBatchLoraModal() {
@@ -812,6 +817,24 @@ app.registerExtension({
                 return currentLevel;
             }
 
+            /**
+             * 递归收集所有 LoRA 文件
+             * @param {object} treeNode 包含 files 和 folders 的树节点
+             * @returns {Array<{name: string, fullpath: string}>} 所有 LoRA 文件的扁平列表
+             */
+            function collectAllLoraFiles(treeNode) {
+                let allFiles = [];
+                if (treeNode.files) {
+                    allFiles = allFiles.concat(treeNode.files);
+                }
+                if (treeNode.folders) {
+                    for (const folderName in treeNode.folders) {
+                        allFiles = allFiles.concat(collectAllLoraFiles(treeNode.folders[folderName]));
+                    }
+                }
+                return allFiles;
+            }
+
             // 更新选中 LoRA 数量显示
             function updateSelectedCountDisplay() {
                 if (zmlBatchLoraSelectedCountDisplay) {
@@ -826,9 +849,11 @@ app.registerExtension({
                 zmlBatchLoraFoldersPanel.innerHTML = "";
                 zmlBatchLoraGridContainer.innerHTML = "";
 
+                // 判断是否是“全部显示”模式
+                const isShowingAllLoras = zmlBatchLoraCurrentPath.length === 1 && zmlBatchLoraCurrentPath[0] === ALL_LORAS_VIEW_PATH;
+
                 // --- 渲染面包屑导航 (路径) ---
-                // 返回上一级按钮
-                if (zmlBatchLoraCurrentPath.length > 0) {
+                if (!isShowingAllLoras && zmlBatchLoraCurrentPath.length > 0) { // 在非“全部显示”模式且不在根目录时显示返回按钮
                     const backButton = createEl("a", {
                         textContent: "↩︎",
                         href: "#",
@@ -847,56 +872,112 @@ app.registerExtension({
                     zmlBatchLoraParentPathDisplay.appendChild(separator);
                 }
 
-
                 const rootLink = createEl("a", {
                     textContent: "Root",
                     href: "#",
-                    style: `color: #5d99f2; text-decoration: none; cursor: pointer;`
+                    style: `color: ${zmlBatchLoraCurrentPath.length === 0 && !isShowingAllLoras ? '#e0e0e0' : '#5d99f2'}; text-decoration: none; cursor: pointer;`
                 });
                 rootLink.onmouseenter = (e) => e.target.style.textDecoration = 'underline';
                 rootLink.onmouseleave = (e) => e.target.style.textDecoration = 'none';
                 rootLink.onclick = (e) => {
                     e.preventDefault();
-                    zmlBatchLoraCurrentPath = [];
+                    zmlBatchLoraCurrentPath = []; // 返回根目录
                     renderBatchLoraContent();
                 };
                 zmlBatchLoraParentPathDisplay.appendChild(rootLink);
 
                 let currentPathAccumulate = [];
-                zmlBatchLoraCurrentPath.forEach((part, index) => {
-                    currentPathAccumulate.push(part);
+                if (!isShowingAllLoras) { // 仅在非“全部显示”模式下渲染路径面包屑
+                    zmlBatchLoraCurrentPath.forEach((part, index) => {
+                        currentPathAccumulate.push(part);
+                        const separator = createEl("span", { textContent: " > ", style: "color:#888;" });
+                        zmlBatchLoraParentPathDisplay.appendChild(separator);
+
+                        const pathLink = createEl("a", {
+                            textContent: part,
+                            href: "#",
+                            style: `color: ${index === zmlBatchLoraCurrentPath.length - 1 ? '#e0e0e0' : '#5d99f2'}; text-decoration: none; cursor: pointer;`
+                        });
+                        pathLink.onmouseenter = (e) => e.target.style.textDecoration = 'underline';
+                        pathLink.onmouseleave = (e) => e.target.style.textDecoration = 'none';
+                        const pathCopy = Array.from(currentPathAccumulate); // 复制一份
+                        pathLink.onclick = (e) => {
+                            e.preventDefault();
+                            zmlBatchLoraCurrentPath = pathCopy;
+                            renderBatchLoraContent();
+                        };
+                        zmlBatchLoraParentPathDisplay.appendChild(pathLink);
+                    });
+                } else {
                     const separator = createEl("span", { textContent: " > ", style: "color:#888;" });
                     zmlBatchLoraParentPathDisplay.appendChild(separator);
-
-                    const pathLink = createEl("a", {
-                        textContent: part,
-                        href: "#",
-                        style: `color: ${index === zmlBatchLoraCurrentPath.length - 1 ? '#e0e0e0' : '#5d99f2'}; text-decoration: none; cursor: pointer;`
-                    });
-                    pathLink.onmouseenter = (e) => e.target.style.textDecoration = 'underline';
-                    pathLink.onmouseleave = (e) => e.target.style.textDecoration = 'none';
-                    const pathCopy = Array.from(currentPathAccumulate); // 复制一份
-                    pathLink.onclick = (e) => {
-                        e.preventDefault();
-                        zmlBatchLoraCurrentPath = pathCopy;
-                        renderBatchLoraContent();
-                    };
-                    zmlBatchLoraParentPathDisplay.appendChild(pathLink);
-                });
-
-                // 获取当前路径下的 LoRA 数据
-                const currentContent = getLoraContentByPath(zmlBatchLoraCurrentNodeInstance.loraTree, zmlBatchLoraCurrentPath);
-                if (!currentContent) {
-                    zmlBatchLoraGridContainer.textContent = "无效的LoRA路径。";
-                    return;
+                    const allLorasText = createEl("span", { textContent: "全部 LoRA", style: "color:#e0e0e0;" });
+                    zmlBatchLoraParentPathDisplay.appendChild(allLorasText);
                 }
 
+                // 获取当前要显示的内容
+                let foldersToDisplay = [];
+                let filesToDisplay = [];
+                let currentContent = null;
+
+                if (isShowingAllLoras) {
+                    filesToDisplay = collectAllLoraFiles(zmlBatchLoraCurrentNodeInstance.loraTree);
+                    zmlBatchLoraFoldersPanel.style.display = 'none'; // 全部LoRA模式下不显示文件夹行
+                    zmlBatchLoraParentPathDisplay.style.borderBottom = '1px solid #3c3c3c'; // 路径底部加线
+                } else {
+                    currentContent = getLoraContentByPath(zmlBatchLoraCurrentNodeInstance.loraTree, zmlBatchLoraCurrentPath);
+                    if (!currentContent) {
+                        zmlBatchLoraGridContainer.textContent = "无效的LoRA路径。";
+                        return;
+                    }
+                    foldersToDisplay = Object.keys(currentContent.folders).sort();
+                    filesToDisplay = (currentContent.files || []).sort((a,b) => a.name.localeCompare(b.name));
+
+                     // 仅在非“全部显示”模式下且存在子文件夹时才显示文件夹面板
+                    if(foldersToDisplay.length > 0) {
+                        zmlBatchLoraFoldersPanel.style.display = 'flex'; // 显示文件夹面板
+                        zmlBatchLoraParentPathDisplay.style.borderBottom = 'none'; // 路径底部不需要线
+                    } else {
+                        zmlBatchLoraFoldersPanel.style.display = 'none'; // 如果没有文件夹，则隐藏这一行
+                        zmlBatchLoraParentPathDisplay.style.borderBottom = '1px solid #3c3c3c'; // 如果隐藏文件夹栏，则路径底部加线
+                    }
+                }
+                
+                // --- “全部” LoRA 按钮 ---
+                // 仅当不在“全部显示”模式时，才在文件夹列表中添加此按钮
+                if (!isShowingAllLoras) {
+                    const allLorasBtn = createEl("button", {
+                        className: "zml-batch-lora-all-loras-btn zml-batch-lora-folder-item", // 复用文件夹item样式
+                        textContent: "全部",
+                        title: "展示所有 LoRA 文件",
+                        style: `
+                            display: flex;
+                            align-items: center;
+                            gap: 3px;
+                            cursor: pointer;
+                            padding: 3px 6px;
+                            border-radius: 4px;
+                            background-color: #3f454d; /* 稍亮的背景 */
+                            border: 1px solid #555;
+                            color: #ccc;
+                            font-size: 13px;
+                            white-space: nowrap;
+                            transition: background-color 0.2s, border-color 0.2s;
+                        `
+                    });
+                    // allLorasBtn.innerHTML = `<span style="font-size: 14px;">☰</span><span>全部</span>`; // 可以用☰图标
+                    allLorasBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        zmlBatchLoraCurrentPath = [ALL_LORAS_VIEW_PATH]; // 设置为“全部显示”模式
+                        renderBatchLoraContent();
+                    };
+                    zmlBatchLoraFoldersPanel.appendChild(allLorasBtn); // 放在文件夹列表的前面
+                }
+
+
                 // --- 渲染子文件夹列表 (在路径下面) ---
-                const sortedFolderNames = Object.keys(currentContent.folders).sort();
-                if(sortedFolderNames.length > 0) {
-                    zmlBatchLoraFoldersPanel.style.display = 'flex'; // 显示文件夹面板
-                    zmlBatchLoraParentPathDisplay.style.borderBottom = 'none'; // 路径底部不需要线
-                    sortedFolderNames.forEach(folderName => {
+                if (!isShowingAllLoras) { // 仅在非“全部显示”模式下渲染子文件夹
+                    foldersToDisplay.forEach(folderName => {
                         const folderEl = createEl("div", {
                             className: "zml-batch-lora-folder-item",
                             style: `
@@ -923,15 +1004,12 @@ app.registerExtension({
                         folderEl.innerHTML = `<span style="font-size: 14px;">📁</span><span>${folderName}</span>`;
                         zmlBatchLoraFoldersPanel.appendChild(folderEl);
                     });
-                } else {
-                    zmlBatchLoraFoldersPanel.style.display = 'none'; // 如果没有文件夹，则隐藏这一行
-                    zmlBatchLoraParentPathDisplay.style.borderBottom = '1px solid #3c3c3c'; // 如果隐藏文件夹栏，则路径底部加线
                 }
+                
 
 
                 // 渲染 LoRA 文件
-                const sortedFiles = (currentContent.files || []).sort((a,b) => a.name.localeCompare(b.name));
-                sortedFiles.forEach(file => {
+                filesToDisplay.forEach(file => {
                     const loraPath = file.fullpath; // This is the relative path, e.g., "Char/Char1.safetensors"
                     const hasPreview = !!loraImages[loraPath];
                     const isSelected = zmlBatchLoraSelected.has(loraPath);
@@ -1546,6 +1624,10 @@ app.registerExtension({
                             align-items: center;
                             justify-content: center;
                         }
+                        /* “全部”LoRA按钮样式，复用文件夹 item 的基础视觉 */
+                        .zml-batch-lora-all-loras-btn {
+                            margin-right: 10px; /* 与其他文件夹项保持距离 */
+                        }
                     `,
                     parent: document.body,
                 });
@@ -1729,6 +1811,7 @@ app.registerExtension({
                          // 在每次打开批量添加模态框前确保 loraImages 是最新的
                          await loadImageList().catch(e => console.error("Error reloading lora images for batch add:", e));
                          showBatchLoraModal(this, this.loraTree); // 传递节点实例和 loraTree
+                         // console.log("Current loraTree:", this.loraTree); // Debugging
                      };
                      bottomControls.appendChild(batchAddLoraBtn);
                      // --- 结束：批量添加 LoRA 按钮 ---
