@@ -2,18 +2,20 @@
 
 import server
 from aiohttp import web
-from PIL import Image, PngImagePlugin
+from PIL import Image, PngImagePlugin, ImageOps, ImageSequence
 import os
 import time
 import torch
 import folder_paths
-from PIL import Image, ImageOps, ImageSequence, PngImagePlugin
 import numpy as np
 import datetime
 import re
 import json
 import random
 import urllib.parse
+
+# ZML节点用于存储文本块的特定键名 (所有相关节点统一使用此常量)
+DEFAULT_TEXT_BLOCK_KEY = "comfy_text_block"
 
 # 获取所有支持的图像扩展名
 if hasattr(folder_paths, 'supported_image_extensions'):
@@ -213,20 +215,20 @@ class ZML_SaveImage:
 
         # 检查是否应该跳过保存
         skip_save = False
-        skip_reason = ""
+        # skip_reason = "" # 暂时不需要这个变量
 
         if 图像 is None or 图像.size(0) == 0:
             skip_save = True
-            skip_reason = "无图像输入"
+            # skip_reason = "无图像输入"
         elif 图像.shape[1] == 1 and 图像.shape[2] == 1:
             skip_save = True
-            skip_reason = "图像尺寸为1x1像素"
+            # skip_reason = "图像尺寸为1x1像素"
         elif 图像.shape[1] == 64 and 图像.shape[2] == 64:
             # 检查是否为纯黑图像 (像素值接近0)
             # 使用一个小的容差值来判断是否为纯黑，因为浮点数比较可能不精确
             if torch.all(torch.abs(图像 - 0.0) < 1e-6): # 如果所有像素值都接近于0
                 skip_save = True
-                skip_reason = "图像尺寸为64x64像素且为纯黑"
+                # skip_reason = "图像尺寸为64x64像素且为纯黑"
 
         if skip_save:
             if unique_id is not None:
@@ -291,7 +293,7 @@ class ZML_SaveImage:
             image_array = 255. * image_tensor.cpu().numpy()
             pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
 
-            original_width, original_height = pil_image.size # 获取原始分辨率
+            # original_width, original_height = pil_image.size # 获取原始分辨率
 
             # 处理图像缩放
             if 缩放图像 == "启用" and 缩放比例 > 0:
@@ -338,7 +340,7 @@ class ZML_SaveImage:
             if text_content:
                 try:
                     # 使用zTXt块存储（压缩存储）
-                    metadata.add_text("comfy_text_block", text_content, zip=True)
+                    metadata.add_text(DEFAULT_TEXT_BLOCK_KEY, text_content, zip=True)
                 except Exception:
                     pass
             
@@ -493,7 +495,7 @@ class ZML_SimpleSaveImage:
             "optional": {
                  "操作模式": (["保存图像", "仅预览图像"], {"default": "保存图像"}),
                  "保存路径": ("STRING", {"default": "output/ZML/%Y-%m-%d", "placeholder": "相对/绝对路径 (留空使用output)"}),
-                 "文本块存储": ("STRING", {"default": "", "placeholder": "存储到PNG文本块的文本内容"}), # <--- 已修正
+                 "文本块存储": ("STRING", {"default": "", "placeholder": "存储到PNG文本块的文本内容"}),
             },
             "hidden": {
                 "prompt": "PROMPT", 
@@ -638,7 +640,7 @@ class ZML_SimpleSaveImage:
             # 添加自定义文本块
             if text_content:
                 try:
-                    metadata.add_text("comfy_text_block", text_content, zip=True)
+                    metadata.add_text(DEFAULT_TEXT_BLOCK_KEY, text_content, zip=True)
                 except Exception: pass
 
             try:
@@ -726,8 +728,8 @@ class ZML_LoadImage:
             with Image.open(image_path) as img:
                 text_content = "未读取"
                 if 读取文本块 == "启用":
-                    if hasattr(img, 'text') and "comfy_text_block" in img.text:
-                        text_content = img.text["comfy_text_block"]
+                    if hasattr(img, 'text') and DEFAULT_TEXT_BLOCK_KEY in img.text:
+                        text_content = img.text[DEFAULT_TEXT_BLOCK_KEY]
                     else:
                         text_content = "未找到文本块内容"
                 
@@ -748,7 +750,8 @@ class ZML_LoadImage:
                 return (image_tensor, text_content, normalized_name, int(width), int(height))
         
         except Exception as e:
-            print(f"ZML_LoadImage Error: {e}")
+            # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
+            print(f"ZML_LoadImage Error: {e}") 
             error_image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
             return (error_image, "加载失败", "加载失败", 64, 64)
     
@@ -763,13 +766,13 @@ class ZML_LoadImage:
             return "无效图像文件: {}".format(图像)
         return True
 
-# zml_image_nodes.py 中需要替换的 ZML_LoadImageFromPath 类
-
 # ============================== 从路径加载图像节点  ==============================
 class ZML_LoadImageFromPath:
     """
     ZML 从路径加载图像节点
     支持随机、顺序、全部索引和读取PNG文本块。
+    新增 '图像路径' 输出，提供加载图像的文件路径。
+    新增 '图像数量' 输出，提供文件夹内图像的总数量。
     """
     
     def __init__(self):
@@ -789,6 +792,7 @@ class ZML_LoadImageFromPath:
             with open(self.counter_file, "w", encoding="utf-8") as f:
                 json.dump({}, f)
         except Exception as e:
+            # 这里的 print 语句用于严重的初始化错误，建议保留以进行调试
             print(f"重置路径加载图像计数JSON文件失败: {str(e)}")
 
     def get_all_counts(self):
@@ -809,6 +813,7 @@ class ZML_LoadImageFromPath:
             with open(self.counter_file, "w", encoding="utf-8") as f:
                 json.dump(all_counts, f, indent=4)
         except Exception as e:
+            # 这里的 print 语句用于严重的计数器更新错误，建议保留以进行调试
             print(f"更新路径加载图像计数JSON文件失败: {str(e)}")
 
     @classmethod
@@ -827,21 +832,21 @@ class ZML_LoadImageFromPath:
             },
         }
     
-    # 1. 修改返回类型和名称
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT")
-    RETURN_NAMES = ("图像列表", "文本块", "Name", "宽", "高")
+    # 修改返回类型和名称：新增一个 "图像路径" 输出 和 "图像数量" 输出
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT", "STRING", "INT")
+    RETURN_NAMES = ("图像列表", "文本块", "Name", "宽", "高", "图像路径", "图像数量")
     FUNCTION = "load_image"
     CATEGORY = "image/ZML_图像/图像"
 
-    # 2. 新增 OUTPUT_IS_LIST 属性，声明第一个输出是列表
-    OUTPUT_IS_LIST = (True, False, False, False, False,)
+    # 新增 OUTPUT_IS_LIST 属性，声明 "图像列表" 和 "图像路径" 是列表
+    OUTPUT_IS_LIST = (True, False, False, False, False, True, False)
     
     def _load_single_image_from_path(self, image_path, read_text_block):
         with Image.open(image_path) as img:
             text_content = "未读取"
             if read_text_block == "启用":
-                if hasattr(img, 'text') and "comfy_text_block" in img.text:
-                    text_content = img.text["comfy_text_block"]
+                if hasattr(img, 'text') and DEFAULT_TEXT_BLOCK_KEY in img.text:
+                    text_content = img.text[DEFAULT_TEXT_BLOCK_KEY]
                 else:
                     text_content = "未找到文本块内容"
             
@@ -881,37 +886,50 @@ class ZML_LoadImageFromPath:
             self.cached_path = 文件夹路径
             self.cache_time = current_time
         
-        # 3. 修改：当找不到文件时，返回空的列表
+        num_files = len(self.cached_files) # 获取图像总数量
+
+        # 如果找不到文件，返回空的列表和0数量
         if not self.cached_files:
-            return ([], "未找到图像", "没有找到图像", 0, 0)
+            return ([], "未找到图像", "没有找到图像", 0, 0, [], 0) # 图像路径也返回空列表，数量为0
 
         if 索引模式 == "全部":
             image_tensors = []
-            first_image_meta = None
+            all_image_paths_list = [] # 新增列表存储所有图像路径
+            all_text_blocks = [] # 收集所有文本块
+            
+            # 使用一个默认值，以防 first_image_meta 无法初始化 (例如，所有图片都加载失败)
+            first_image_text = "N/A"
+            first_normalized_name = "N/A"
+            first_width = 0
+            first_height = 0
 
             for filename in self.cached_files:
                 image_path = os.path.join(文件夹路径, filename)
                 try:
                     (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
                     image_tensors.append(tensor)
-                    if first_image_meta is None:
-                        first_image_meta = {
-                            "text": text, "name": self.normalize_name(filename, 正规化),
-                            "width": width, "height": height
-                        }
+                    all_image_paths_list.append(image_path) # 添加路径
+                    all_text_blocks.append(text) # 添加文本块
+
+                    # 如果这是第一个成功加载的图像，更新其元数据用于标量输出
+                    # 确保只设置一次，且仅在成功加载后
+                    if len(image_tensors) == 1: 
+                        first_image_text = text
+                        first_normalized_name = self.normalize_name(filename, 正规化)
+                        first_width = width
+                        first_height = height
                 except Exception as e:
-                    print(f"加载图像失败: {filename}, 错误: {e}")
+                    # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
+                    print(f"ZML_LoadImageFromPath: 加载图像失败: {filename}, 错误: {e}")
                     continue
             
             if not image_tensors:
-                return ([], "加载失败", "文件夹中所有图像均加载失败", 0, 0)
-
-            # 4. 修改：不再合并，直接返回图像列表
-            # 其他输出仍然使用第一张图的信息
-            return (image_tensors, first_image_meta["text"], first_image_meta["name"], first_image_meta["width"], first_image_meta["height"])
+                # 返回空的图像列表和空的图像路径列表，以及总数量
+                return ([], "加载失败", "文件夹中所有图像均加载失败", 0, 0, [], num_files) 
+            
+            return (image_tensors, first_image_text, first_normalized_name, first_width, first_height, all_image_paths_list, num_files)
 
         # 处理单图模式 (固定、随机、顺序)
-        num_files = len(self.cached_files)
         index = 0
         if 索引模式 == "固定索引": index = 图像索引 % num_files
         elif 索引模式 == "随机索引": index = random.randint(0, num_files - 1)
@@ -926,14 +944,16 @@ class ZML_LoadImageFromPath:
         try:
             (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
             normalized_name = self.normalize_name(selected_filename, 正规化)
-            # 5. 修改：将单个张量包装在列表中以匹配输出类型
-            return ([tensor], text, normalized_name, width, height)
+            return ([tensor], text, normalized_name, width, height, [image_path], num_files) # 将单个路径也包装在列表中
         except Exception as e:
-            # 6. 修改：加载失败时也返回空列表
-            return ([], "加载失败", f"加载失败: {selected_filename}, {e}", 0, 0)
+            # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
+            print(f"ZML_LoadImageFromPath: 加载图片失败: {selected_filename}, 错误: {e}")
+            return ([], "加载失败", f"加载失败: {selected_filename}, {e}", 0, 0, [], num_files) 
     
     @classmethod
     def IS_CHANGED(cls, **kwargs):
+        # 确保每次运行时都更新文件列表，因为文件夹内容可能变化。
+        # 依赖于 load_image 内部的缓存机制来避免频繁的磁盘扫描。
         return float("nan")
 
 # ============================== 文本块加载器 ==============================
@@ -957,7 +977,7 @@ class ZML_TextBlockLoader:
     CATEGORY = "image/ZML_图像/工具"
 
     def load_text(self, text_from_image, trigger=0):
-        # 功能非常简单，就是把输入框的文本直接输出
+        # 功能非常简单，就是把输入框的文本直接 output
         return (text_from_image,)
 
 # ============================== API 路由设置 ==============================
@@ -1003,7 +1023,7 @@ async def get_image_text_block(request):
 
     try:
         with Image.open(image_path) as img:
-            text_content = img.text.get("comfy_text_block", "未在此图片中找到'comfy_text_block'。")
+            text_content = img.text.get(DEFAULT_TEXT_BLOCK_KEY, "未在此图片中找到'comfy_text_block'。")
             return web.json_response({"text": text_content})
     except Exception as e:
         return web.Response(status=500, text=f"Error reading image: {e}")
@@ -1034,6 +1054,7 @@ async def view_image(request):
     else:
         return web.Response(status=404, text="Image not found")
 
+
 # ============================== 标签化图片加载器 ==============================
 class ZML_TagImageLoader:
     """
@@ -1057,23 +1078,21 @@ class ZML_TagImageLoader:
             },
         }
 
-    # 1. 新增第三个输出端口
     RETURN_TYPES = ("IMAGE", "STRING", "STRING",)
     RETURN_NAMES = ("图像列表", "文本块", "文本块验证",) 
     FUNCTION = "load_images_by_tags"
     CATEGORY = "image/ZML_图像/工具"
 
-    # 2. 更新列表输出设置：只有第一个输出(图像)是列表
     OUTPUT_IS_LIST = (True, False, False,)
 
     def load_images_by_tags(self, selected_files_json="[]", **kwargs):
-        # 如果没有选择，则返回空的图像列表和两个空字符串
         if not selected_files_json or selected_files_json == "[]":
             return ([], "", "")
 
         try:
             file_list = json.loads(selected_files_json)
         except json.JSONDecodeError:
+            # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
             print("ZML_TagImageLoader: JSON解析失败。")
             return ([], "", "JSON解析失败")
 
@@ -1082,7 +1101,7 @@ class ZML_TagImageLoader:
 
         image_tensors = []
         text_blocks = []
-        validation_messages = [] # 用于存储验证信息的列表
+        validation_messages = [] 
 
         for item in file_list:
             subfolder = item.get("subfolder", "")
@@ -1102,23 +1121,19 @@ class ZML_TagImageLoader:
                 with Image.open(image_path) as img:
                     has_text_block = False
                     
-                    # 【关键修改】如果找不到文本块，则使用英文逗号作为占位符
                     text_content = ","
                     
-                    # 检查并读取文本块
-                    if hasattr(img, 'text') and "comfy_text_block" in img.text:
-                        text_content = img.text["comfy_text_block"]
+                    if hasattr(img, 'text') and DEFAULT_TEXT_BLOCK_KEY in img.text:
+                        text_content = img.text[DEFAULT_TEXT_BLOCK_KEY]
                         has_text_block = True
                     
                     text_blocks.append(text_content)
                     
-                    # 记录验证信息 (此部分逻辑不变)
                     if has_text_block:
                         validation_messages.append(f"{filename}：含有文本块")
                     else:
                         validation_messages.append(f"{filename}：不含文本块")
 
-                    # 处理图像
                     img = ImageOps.exif_transpose(img)
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
@@ -1128,28 +1143,84 @@ class ZML_TagImageLoader:
                     image_tensors.append(image_tensor)
                     
             except Exception as e:
-                # 记录加载失败的验证信息
+                # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
                 validation_messages.append(f"{filename}：加载失败 ({e})")
+                print(f"ZML_TagImageLoader: 加载图片 '{filename}' 失败: {e}")
 
         if not image_tensors:
             final_validation_output = "\n".join(validation_messages)
             return ([], "", final_validation_output)
 
-        # 3. 准备两个字符串输出
-        # 将所有文本块合并成一个字符串
         text_separator = "\n\n"
         final_text_output = text_separator.join(text_blocks)
         
-        # 将所有验证信息合并成一个字符串
         validation_separator = "\n\n" + ("-"*25) + "\n\n"
         final_validation_output = validation_separator.join(validation_messages)
         
-        # 4. 返回三个输出
         return (image_tensors, final_text_output, final_validation_output)
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
+
+# ============================== ZML_分类图像 节点 ==============================
+class ZML_ClassifyImage:
+    """
+    ZML_分类图像 节点：根据图片的元数据和特定文本块的存在与否进行分类。
+    必须连接有效的 '图像路径' (STRING) 才能正确检测元数据。
+    """
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                # image_path是必须的，用于读取元数据。
+                "图像路径": ("STRING", {"multiline": False, "default": ""}),
+                # 图像 tensor 是要作为输出传递的图像数据。
+                "图像": ("IMAGE",), 
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE",)
+    RETURN_NAMES = ("无数据", "元数据", "文本块",)
+    FUNCTION = "classify"
+    CATEGORY = "image/ZML_图像/图像" 
+    DISPLAY_NAME = "ZML_分类图像" 
+
+    def _create_placeholder_image(self, size=1) -> torch.Tensor:
+        """Helper: 创建一个 1x1 像素的黑色占位符图像张量"""
+        return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
+
+    def classify(self, 图像路径: str, 图像: torch.Tensor):
+        placeholder_image = self._create_placeholder_image(size=1)
+        
+        output_no_data = placeholder_image
+        output_metadata = placeholder_image
+        output_text_block = placeholder_image
+
+        has_info = False
+        has_text_block_content = False
+        
+        if 图像路径 and os.path.isfile(图像路径):
+            try:
+                with Image.open(图像路径) as img:
+                    has_info = bool(img.info)
+                    if has_info:
+                        has_text_block_content = DEFAULT_TEXT_BLOCK_KEY in img.info
+            except Exception as e:
+                # 移除 print 语句，但考虑到错误调试，这里可以改为更静默的错误处理，例如记录到日志文件而非控制台
+                pass
+
+        if not has_info:
+            output_no_data = 图像 
+        elif has_text_block_content:
+            output_text_block = 图像 
+        else:
+            output_metadata = 图像 
+
+        return (output_no_data, output_metadata, output_text_block,)
 
 # ============================== 节点注册 (更新) ==============================
 NODE_CLASS_MAPPINGS = {
@@ -1159,6 +1230,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_LoadImageFromPath": ZML_LoadImageFromPath,
     "ZML_TextBlockLoader": ZML_TextBlockLoader,
     "ZML_TagImageLoader": ZML_TagImageLoader,
+    "ZML_ClassifyImage": ZML_ClassifyImage, 
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1168,4 +1240,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LoadImageFromPath": "ZML_从路径加载图像",
     "ZML_TextBlockLoader": "ZML_文本块加载器", 
     "ZML_TagImageLoader": "ZML_标签化图片加载器", 
+    "ZML_ClassifyImage": "ZML_分类图像", 
 }
