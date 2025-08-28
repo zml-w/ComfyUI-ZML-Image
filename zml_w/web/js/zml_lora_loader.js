@@ -10,7 +10,10 @@ const IMAGE_HEIGHT = 384;
 const POWER_LORA_LOADER_MIN_WIDTH = 460;
 
 // 新增：定义强力LORA加载器推荐的最小高度（仅当lora列表为空时使用）
-const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 300; // 根据实际测试调整，确保底部按钮不被裁切
+const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 280; // 根据实际测试调整，确保底部按钮不被裁切
+
+// 特殊路径标识符，用于表示“全部显示”模式
+const ALL_LORAS_VIEW_PATH_IDENTIFIER = '__ALL_LORAS_VIEW__';
 
 function encodeRFC3986URIComponent(str) {
 	return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -122,37 +125,37 @@ app.registerExtension({
                     transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
                 }
                 /* 通用按钮 hover 状态 */
-                .zml-control-btn-pll:hover, .zml-pll-button:hover,
-                .zml-batch-lora-modal-container button:hover,
-                .zml-weight-btn:hover, /* Weight buttons hover */
-                .zml-batch-lora-fetch-from-civitai-btn:hover, /* Civitai fetch button hover */
-                .zml-batch-lora-all-loras-btn:hover /* "全部" Lora button hover */
+                .zml-control-btn-pll:hover:not(:disabled), .zml-pll-button:hover:not(:disabled),
+                .zml-batch-lora-modal-container button:hover:not(:disabled),
+                .zml-weight-btn:hover:not(:disabled), /* Weight buttons hover */
+                .zml-batch-lora-fetch-from-civitai-btn:hover:not(.fetching):not(:disabled), /* Civitai fetch button hover */
+                .zml-batch-lora-all-loras-btn:hover:not(:disabled) /* "全部" Lora button hover */
                 {
                     background-color: #555 !important;
                     border-color: #777 !important;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                 }
                 /* 通用按钮 active 状态 */
-                .zml-control-btn-pll:active, .zml-pll-button:active,
-                .zml-batch-lora-modal-container button:active,
-                .zml-weight-btn:active, /* Weight buttons active */
-                .zml-batch-lora-all-loras-btn:active /* "全部" Lora button active */
+                .zml-control-btn-pll:active:not(:disabled), .zml-pll-button:active:not(:disabled),
+                .zml-batch-lora-modal-container button:active:not(:disabled),
+                .zml-weight-btn:active:not(:disabled), /* Weight buttons active */
+                .zml-batch-lora-all-loras-btn:active:not(:disabled) /* "全部" Lora button active */
                 {
                     transform: translateY(1px);
                     box-shadow: 0 1px 4px rgba(0,0,0,0.2) inset;
                 }
                 /* Lock button specific feedback */
-                .zml-control-btn-pll[title*="锁定"]:hover { background-color: #754 !important; } /* If locked, hover is darker red */
-                .zml-control-btn-pll[title*="锁定"]:active { background-color: #865 !important; } 
+                .zml-control-btn-pll[title*="锁定"]:hover:not(:disabled) { background-color: #754 !important; } /* If locked, hover is darker red */
+                .zml-control-btn-pll[title*="锁定"]:active:not(:disabled) { background-color: #865 !important; } 
 
                 /* Delete buttons specific feedback */
-                .zml-pll-folder-delete:hover, .zml-lora-entry-delete:hover { 
+                .zml-pll-folder-delete:hover:not(:disabled), .zml-lora-entry-delete:hover:not(:disabled) { 
                     background-color: #f44336 !important; /* Red background on hover */
                     border-color: #da190b !important; 
                     color: white !important; 
                     box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4);
                 }
-                .zml-pll-folder-delete:active, .zml-lora-entry-delete:active { 
+                .zml-pll-folder-delete:active:not(:disabled), .zml-lora-entry-delete:active:not(:disabled) { 
                     background-color: #da190b !important; /* Darker red on click */
                     transform: translateY(1px);
                     box-shadow: 0 1px 4px rgba(244, 67, 54, 0.3) inset;
@@ -178,14 +181,15 @@ app.registerExtension({
                     border: 1px solid rgba(40, 80, 140, 0.8);
                 }
                 .zml-batch-lora-fetch-from-civitai-btn.fetching {
-                    background-color: rgba(100, 100, 100, 0.8); /* Grey out during fetching */
+                    background-color: rgba(100, 100, 100, 0.8) !important; /* Grey out during fetching */
                     cursor: wait;
+                    pointer-events: none; /* Disable clicks during fetch */
                 }
-                .zml-batch-lora-fetch-from-civitai-btn:hover:not(.fetching) {
+                .zml-batch-lora-fetch-from-civitai-btn:hover:not(.fetching):not(:disabled) {
                     background-color: rgba(70, 110, 180, 0.9) !important;
                     box-shadow: 0 2px 5px rgba(0,0,0,0.4);
                 }
-                .zml-batch-lora-fetch-from-civitai-btn:active:not(.fetching) {
+                .zml-batch-lora-fetch-from-civitai-btn:active:not(.fetching):not(:disabled) {
                     transform: translateY(1px);
                     box-shadow: 0 1px 3px rgba(0,0,0,0.3) inset;
                 }
@@ -234,26 +238,148 @@ app.registerExtension({
                 }
                 /* End Checkbox */
 
+                /* Input Styles */
                 .zml-lora-display-name-input, .zml-lora-weight-input, .zml-lora-custom-text-input {
                     transition: border-color 0.2s, box-shadow 0.2s;
-                    border: 1px solid #444; /* Ensure inputs have consistent border */
-                    background-color: #2b2b2b; /* Ensure inputs have consistent background */
+                    border: 1px solid #444;
+                    background-color: #2b2b2b;
                 }
                 .zml-lora-display-name-input:focus, .zml-lora-weight-input:focus, .zml-lora-custom-text-input:focus {
                     border-color: #5d99f2 !important;
                     box-shadow: 0 0 5px rgba(93, 153, 242, 0.4);
                     outline: none;
                 }
-            /* End of new CSS styles */
-			`,
+                .zml-lora-weight-input { /* Weight input specific style */
+                    background: none; /* Inherit from parent */
+                    border: none; /* Inherit from parent */
+                    color: #ddd;
+                    height: 100%;
+                    padding: 0;
+                    margin: 0;
+                    text-align: center;
+                    font-size: 12px;
+                }
+
+
+                .zml-lora-weight-btn {
+                    /* default styles merged with general button styles */
+                    background: none;
+                    border: none;
+                    color: #ccc;
+                    cursor: pointer;
+                    padding: 0 2px;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .zml-lora-weight-btn:hover { background-color: rgba(255,255,255,0.1); }
+                .zml-lora-weight-btn:active { background-color: rgba(255,255,255,0.2); transform: translateY(0); box-shadow: none; }
+
+
+                .zml-lora-custom-text-input {
+                    padding: var(--pll-current-input-padding);
+                    height: var(--pll-current-input-height);
+                    border-radius: 2px;
+                    color: #ccc;
+                    font-size: 12px;
+                    margin-right: 4px;
+                    box-sizing: border-box;
+                    resize: none;
+                    overflow: hidden; /* 防止原生滚动条出现 */
+                    min-height: 26px;
+                    flex-shrink: 0;
+                    cursor: pointer; /* 表示可点击 */
+                }
+                /* DND list for entries */
+                .zml-pll-entries-list {
+                    overflow-y: auto; /* Allow vertical scrolling within the list */
+                    flex: 1; /* Make it take available vertical space */
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    padding: 0;
+                    /* Consider a minimal height for the list if it could be empty,
+                       but flex:1 often handles this sufficiently when parent has min-height. */
+                }
+
+                /* 复用 SelectTextV3 的弹窗样式 */
+                .zml-st3-modal-overlay { /* 可以在此覆盖或补充样式 */ }
+                .zml-st3-modal-container { /* 可以在此覆盖或补充样式 */ }
+                .zml-st3-modal-title { /* 可以在此覆盖或补充样式 */ }
+                .zml-st3-modal-textarea { /* 可以在此覆盖或补充样式 */ }
+                .zml-st3-modal-buttons { /* 可以在此覆盖或补充样式 */ }
+                .zml-st3-modal-save {} /* 可以在此覆盖或补充样式 */
+                .zml-st3-modal-cancel {} /* 可以在此覆盖或补充样式 */
+
+                /* 批量添加 LoRA 弹窗的额外样式 */
+                .zml-batch-lora-modal-container {
+                    /* 注意：这里已经定义了min-width, max-width, height, flex-direction, box-shadow等 */
+                }
+                .zml-batch-lora-folder-nav > a:hover {
+                    text-decoration: underline !important;
+                }
+                .zml-batch-lora-item {
+                    position: relative;
+                    width: 120px;
+                    height: 120px;
+                    box-sizing: border-box;
+                    transition: border-color 0.2s, transform 0.1s;
+                }
+                .zml-batch-lora-item.selected {
+                    border-color: #4CAF50 !important;
+                }
+                .zml-batch-lora-item-image {
+                    display: block;
+                }
+                .zml-batch-lora-item-overlay {
+                    pointer-events: none; /* 允许点击穿透到下面的 itemEl */
+                    backdrop-filter: blur(1px); /* 轻微模糊背景 */
+                }
+                .zml-batch-lora-add-icon {
+                    pointer-events: auto; /* 确保图标可点击 */
+                    transition: background-color 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+                }
+                .zml-batch-lora-add-icon:hover {
+                    background-color: rgba(0, 150, 0, 0.9) !important;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+                }
+                .zml-batch-lora-add-icon:active {
+                    transform: translateY(1px);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.3) inset;
+                }
+                /* 调色板选择菜单样式 */
+                .zml-color-choose-menu {
+                    /* 基础样式在js中定义 */
+                }
+                .zml-color-choose-option:active {
+                    transform: translateY(1px);
+                }
+                /* 新增：LoRA 条目删除按钮的样式 */
+                .zml-lora-entry-delete { /* 对应 LoRA 条目右侧的 X 按钮 */
+                    padding: 0;
+                    border: 1px solid #666;
+                    border-radius: 2px;
+                    background: #444;
+                    color: #ccc;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                /* “全部”LoRA按钮样式，复用文件夹 item 的基础视觉 */
+                .zml-batch-lora-all-loras-btn {
+                    /* 避免 margin-right 与其他文件夹 item 影响布局，现在应该与文件夹item统一 */
+                }
+            `,
 			parent: document.body,
 		});
 
 		// 2. 注册设置项
-		const displayOptions = { "树状(子文件夹)": 1, "列表(原始)": 0 };
+		const displayOptions = {"树状(子文件夹)": 1, "列表(原始)": 0};
 		const displaySetting = app.ui.settings.addSetting({
 			id: "zml.LoraLoader.DisplayMode", name: "LORA文件夹显示样式", defaultValue: 1, type: "combo",
-			options: (value) => Object.entries(displayOptions).map(([k, v]) => ({ value: v, text: k, selected: v === +value })),
+			options: (value) => Object.entries(displayOptions).map(([k, v]) => ({ value: v, text: k, selected: v === +value})),
 		});
 		// 将设置项保存到 this，以便 setup 函数可以访问
 		this.zmlLoraDisplaySetting = displaySetting;
@@ -304,12 +430,8 @@ app.registerExtension({
 				// loraImages[text] would store "subdir/image.ext" if it exists.
 				if (text && loraImages[text]) {
 					item.addEventListener("mouseover", () => {
-						const imagePath = loraImages[text]; // This is like "subdir/zml/lora_name.png"
-						// The /view API expects "loras/subdir/image.ext" from the client.
-						// The imagePath from loraImages might already be adjusted by the backend (e.g. from get_images)
-						// So we remove "zml/" prefix if it's there for accurate path.
-						const cleanedImagePath = imagePath.startsWith('zml/') ? imagePath.substring(loraImages['zml/'.length]) : imagePath;
-						const fullViewPath = `loras/${cleanedImagePath}`; // Ensure correct path for /view API
+						const imagePath = loraImages[text]; // This is like "subdir/lora_name.png"
+						const fullViewPath = `loras/${imagePath}`; // Ensure correct path for /view API
 						this.imageHost.src = `${ZML_API_PREFIX}/view/${encodeRFC3986URIComponent(fullViewPath)}?${+new Date()}`;
 						this.showImage(item);
 					});
@@ -673,7 +795,7 @@ app.registerExtension({
             let zmlBatchLoraCurrentNodeInstance = null;
             
             // 使用特殊字符串作为“显示所有”的路径标识
-            const ALL_LORAS_VIEW_PATH = '__ALL_LORAS_VIEW__'; 
+            const ALL_LORAS_VIEW_PATH_IDENTIFIER = '__ALL_LORAS_VIEW__'; 
             let zmlBatchLoraCurrentPath = []; 
             let zmlBatchLoraSelected = new Set(); // 存储选中的 LoRA 的 fullpath
 
@@ -850,7 +972,7 @@ app.registerExtension({
                 zmlBatchLoraGridContainer.innerHTML = "";
 
                 // 判断是否是“全部显示”模式
-                const isShowingAllLoras = zmlBatchLoraCurrentPath.length === 1 && zmlBatchLoraCurrentPath[0] === ALL_LORAS_VIEW_PATH;
+                const isShowingAllLoras = zmlBatchLoraCurrentPath.length === 1 && zmlBatchLoraCurrentPath[0] === ALL_LORAS_VIEW_PATH_IDENTIFIER;
 
                 // --- 渲染面包屑导航 (路径) ---
                 if (!isShowingAllLoras && zmlBatchLoraCurrentPath.length > 0) { // 在非“全部显示”模式且不在根目录时显示返回按钮
@@ -871,6 +993,41 @@ app.registerExtension({
                     const separator = createEl("span", { textContent: " | ", style: "color:#4a515a;" });
                     zmlBatchLoraParentPathDisplay.appendChild(separator);
                 }
+                
+                // “全部” LoRA 按钮（放置在Root旁边）
+                const allLorasBtn = createEl("button", {
+                    className: "zml-batch-lora-all-loras-btn zml-batch-lora-folder-item", // 复用文件夹item样式
+                    textContent: "全部",
+                    title: "展示所有 LoRA 文件，无论所在文件夹",
+                    style: `
+                        display: flex;
+                        align-items: center;
+                        justify-content: center; /* 居中显示文本 */
+                        gap: 3px;
+                        cursor: pointer;
+                        padding: 3px 6px;
+                        border-radius: 4px;
+                        background-color: ${isShowingAllLoras ? '#5d99f2' : '#3f454d'}; /* 选中时高亮 */
+                        border: 1px solid ${isShowingAllLoras ? '#5d99f2' : '#555'};
+                        color: #ccc;
+                        font-size: 13px;
+                        white-space: nowrap;
+                        flex-shrink: 0; /* 防止被挤压 */
+                        transition: background-color 0.2s, border-color 0.2s;
+                    `
+                });
+                allLorasBtn.onmouseenter = (e) => e.target.style.backgroundColor = isShowingAllLoras ? '#5d99f2' : '#5a626d';
+                allLorasBtn.onmouseleave = (e) => e.target.style.backgroundColor = isShowingAllLoras ? '#5d99f2' : '#3f454d';
+                allLorasBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    zmlBatchLoraCurrentPath = [ALL_LORAS_VIEW_PATH_IDENTIFIER]; // 设置为“全部显示”模式
+                    renderBatchLoraContent();
+                };
+                zmlBatchLoraParentPathDisplay.appendChild(allLorasBtn); // 放在Root链接后，面包屑分隔符前
+
+                const separatorAfterAll = createEl("span", { textContent: " | ", style: "color:#4a515a;" });
+                zmlBatchLoraParentPathDisplay.appendChild(separatorAfterAll);
+
 
                 const rootLink = createEl("a", {
                     textContent: "Root",
@@ -886,9 +1043,13 @@ app.registerExtension({
                 };
                 zmlBatchLoraParentPathDisplay.appendChild(rootLink);
 
+
                 let currentPathAccumulate = [];
                 if (!isShowingAllLoras) { // 仅在非“全部显示”模式下渲染路径面包屑
                     zmlBatchLoraCurrentPath.forEach((part, index) => {
+                        // All LORAS view identifier should not be part of the navigable path breadcrumbs
+                        if (part === ALL_LORAS_VIEW_PATH_IDENTIFIER) return; 
+
                         currentPathAccumulate.push(part);
                         const separator = createEl("span", { textContent: " > ", style: "color:#888;" });
                         zmlBatchLoraParentPathDisplay.appendChild(separator);
@@ -900,7 +1061,7 @@ app.registerExtension({
                         });
                         pathLink.onmouseenter = (e) => e.target.style.textDecoration = 'underline';
                         pathLink.onmouseleave = (e) => e.target.style.textDecoration = 'none';
-                        const pathCopy = Array.from(currentPathAccumulate); // 复制一份
+                        const pathCopy = Array.from(currentPathAccumulate); // 复制一份，防止闭包问题
                         pathLink.onclick = (e) => {
                             e.preventDefault();
                             zmlBatchLoraCurrentPath = pathCopy;
@@ -908,15 +1069,9 @@ app.registerExtension({
                         };
                         zmlBatchLoraParentPathDisplay.appendChild(pathLink);
                     });
-                } else {
-                    const separator = createEl("span", { textContent: " > ", style: "color:#888;" });
-                    zmlBatchLoraParentPathDisplay.appendChild(separator);
-                    const allLorasText = createEl("span", { textContent: "全部 LoRA", style: "color:#e0e0e0;" });
-                    zmlBatchLoraParentPathDisplay.appendChild(allLorasText);
                 }
-
+                
                 // 获取当前要显示的内容
-                let foldersToDisplay = [];
                 let filesToDisplay = [];
                 let currentContent = null;
 
@@ -930,84 +1085,46 @@ app.registerExtension({
                         zmlBatchLoraGridContainer.textContent = "无效的LoRA路径。";
                         return;
                     }
-                    foldersToDisplay = Object.keys(currentContent.folders).sort();
+                    const foldersToDisplay = Object.keys(currentContent.folders).sort();
                     filesToDisplay = (currentContent.files || []).sort((a,b) => a.name.localeCompare(b.name));
 
                      // 仅在非“全部显示”模式下且存在子文件夹时才显示文件夹面板
                     if(foldersToDisplay.length > 0) {
                         zmlBatchLoraFoldersPanel.style.display = 'flex'; // 显示文件夹面板
                         zmlBatchLoraParentPathDisplay.style.borderBottom = 'none'; // 路径底部不需要线
+                        foldersToDisplay.forEach(folderName => { // 渲染子文件夹
+                            const folderEl = createEl("div", {
+                                className: "zml-batch-lora-folder-item",
+                                style: `
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 3px;
+                                    cursor: pointer;
+                                    padding: 3px 6px;
+                                    border-radius: 4px;
+                                    background-color: #3f454d; /* 稍亮的背景 */
+                                    border: 1px solid #555;
+                                    color: #ccc;
+                                    font-size: 13px;
+                                    white-space: nowrap;
+                                    transition: background-color 0.2s, border-color 0.2s;
+                                `
+                            });
+                            folderEl.onmouseenter = (e) => e.target.style.backgroundColor = '#5a626d';
+                            folderEl.onmouseleave = (e) => e.target.style.backgroundColor = '#3f454d';
+                            folderEl.onclick = () => {
+                                zmlBatchLoraCurrentPath.push(folderName);
+                                renderBatchLoraContent();
+                            };
+                            folderEl.innerHTML = `<span style="font-size: 14px;">📁</span><span>${folderName}</span>`;
+                            zmlBatchLoraFoldersPanel.appendChild(folderEl);
+                        });
                     } else {
                         zmlBatchLoraFoldersPanel.style.display = 'none'; // 如果没有文件夹，则隐藏这一行
                         zmlBatchLoraParentPathDisplay.style.borderBottom = '1px solid #3c3c3c'; // 如果隐藏文件夹栏，则路径底部加线
                     }
                 }
                 
-                // --- “全部” LoRA 按钮 ---
-                // 仅当不在“全部显示”模式时，才在文件夹列表中添加此按钮
-                if (!isShowingAllLoras) {
-                    const allLorasBtn = createEl("button", {
-                        className: "zml-batch-lora-all-loras-btn zml-batch-lora-folder-item", // 复用文件夹item样式
-                        textContent: "全部",
-                        title: "展示所有 LoRA 文件",
-                        style: `
-                            display: flex;
-                            align-items: center;
-                            gap: 3px;
-                            cursor: pointer;
-                            padding: 3px 6px;
-                            border-radius: 4px;
-                            background-color: #3f454d; /* 稍亮的背景 */
-                            border: 1px solid #555;
-                            color: #ccc;
-                            font-size: 13px;
-                            white-space: nowrap;
-                            transition: background-color 0.2s, border-color 0.2s;
-                        `
-                    });
-                    // allLorasBtn.innerHTML = `<span style="font-size: 14px;">☰</span><span>全部</span>`; // 可以用☰图标
-                    allLorasBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        zmlBatchLoraCurrentPath = [ALL_LORAS_VIEW_PATH]; // 设置为“全部显示”模式
-                        renderBatchLoraContent();
-                    };
-                    zmlBatchLoraFoldersPanel.appendChild(allLorasBtn); // 放在文件夹列表的前面
-                }
-
-
-                // --- 渲染子文件夹列表 (在路径下面) ---
-                if (!isShowingAllLoras) { // 仅在非“全部显示”模式下渲染子文件夹
-                    foldersToDisplay.forEach(folderName => {
-                        const folderEl = createEl("div", {
-                            className: "zml-batch-lora-folder-item",
-                            style: `
-                                display: flex;
-                                align-items: center;
-                                gap: 3px;
-                                cursor: pointer;
-                                padding: 3px 6px;
-                                border-radius: 4px;
-                                background-color: #3f454d; /* 稍亮的背景 */
-                                border: 1px solid #555;
-                                color: #ccc;
-                                font-size: 13px;
-                                white-space: nowrap;
-                                transition: background-color 0.2s, border-color 0.2s;
-                            `
-                        });
-                        folderEl.onmouseenter = (e) => e.target.style.backgroundColor = '#5a626d';
-                        folderEl.onmouseleave = (e) => e.target.style.backgroundColor = '#3f454d';
-                        folderEl.onclick = () => {
-                            zmlBatchLoraCurrentPath.push(folderName);
-                            renderBatchLoraContent();
-                        };
-                        folderEl.innerHTML = `<span style="font-size: 14px;">📁</span><span>${folderName}</span>`;
-                        zmlBatchLoraFoldersPanel.appendChild(folderEl);
-                    });
-                }
-                
-
-
                 // 渲染 LoRA 文件
                 filesToDisplay.forEach(file => {
                     const loraPath = file.fullpath; // This is the relative path, e.g., "Char/Char1.safetensors"
@@ -1296,7 +1413,7 @@ app.registerExtension({
                 if (!zmlBatchLoraModalOverlay) createBatchLoraModal();
 
                 zmlBatchLoraCurrentNodeInstance = nodeInstance;
-                zmlBatchLoraCurrentPath = []; // 重置路径到根
+                zmlBatchLoraCurrentPath = []; // 重置路径到根目录
                 zmlBatchLoraSelected.clear(); // 清空上次选择
 
                 // 首次打开或者图片列表为空时尝试重新加载图片列表
@@ -1551,7 +1668,7 @@ app.registerExtension({
 
 
                         .zml-pll-entries-list {
-                            overflow: auto;
+                            overflow-y: auto;
                             flex: 1;
                             display: flex;
                             flex-direction: column;
@@ -1571,7 +1688,6 @@ app.registerExtension({
                         /* 批量添加 LoRA 弹窗的额外样式 */
                         .zml-batch-lora-modal-container {
                             /* 注意：这里已经定义了min-width, max-width, height, flex-direction, box-shadow等 */
-                            /* 如果需要调整，请在这里修改或添加 */
                         }
                         .zml-batch-lora-folder-nav > a:hover {
                             text-decoration: underline !important;
@@ -1623,10 +1739,6 @@ app.registerExtension({
                             display: flex;
                             align-items: center;
                             justify-content: center;
-                        }
-                        /* “全部”LoRA按钮样式，复用文件夹 item 的基础视觉 */
-                        .zml-batch-lora-all-loras-btn {
-                            margin-right: 10px; /* 与其他文件夹项保持距离 */
                         }
                     `,
                     parent: document.body,
@@ -1706,7 +1818,7 @@ app.registerExtension({
                      topControls.appendChild(loraNameWidthGroup);
 
                      const customTextWidthGroup = createEl("div", { className: "zml-control-group-pll" });// <-- 这里会调用到局部定义的 createEl
-                     const customTextWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "文本宽度" });// <-- 这里会调用到局部定义的 createEl
+                     const customTextWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "文本宽度" });// <-- 这里会调用到局部定义 的 createEl
                      const customTextWidthInput = createEl("input", { className: "zml-control-input-pll" });// <-- 这里会调用到局部定义的 createEl
                      customTextWidthInput.type = "number";
                      customTextWidthInput.min = "10";
@@ -2195,31 +2307,29 @@ app.registerExtension({
 
                      const origOnResize = this.onResize;
                      this.onResize = function(size) {
+                        // Ensure minimum width
                          size[0] = Math.max(size[0], POWER_LORA_LOADER_MIN_WIDTH);
-                         let currentContentHeight = topControls.offsetHeight + bottomControls.offsetHeight + 12;
                          
-                         if (this.powerLoraLoader_data.entries.length === 0) {
-                             currentContentHeight += 50;
-                         } else {
-                             currentContentHeight += Math.max(entriesList.scrollHeight, entriesList.clientHeight);
-                         }
-
-                         currentContentHeight = Math.max(currentContentHeight, initialHeightFromWidgets);
-                         
-                         size[1] = Math.max(size[1] || 0, currentContentHeight); // 确保高度不会小于0
+                         // Apply a fixed minimum height for the node, allowing content scroll independently
+                         const minNodeHeight = POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST; // Or a slightly smaller absolute value if controls are compact
+                         size[1] = Math.max(size[1] || minNodeHeight, minNodeHeight);
 
                          this.size = size;
 
                          const domElement = this.domElement;
                          if (domElement) {
-                            // Only add scroll if content overflows, otherwise visible
-                            if (size[1] < domElement.scrollHeight || size[0] < domElement.scrollWidth) { // 修改这里，如果是domElement.scrollWidth 则出现横向滚动条
-                                domElement.style.overflow = "auto";
-                                entriesList.style.overflowY = "auto"; // 垂直滚动条
-                            } else {
-                                domElement.style.overflow = "hidden";
-                                entriesList.style.overflowY = "visible";
-                            }
+                             // Handle horizontal overflow for the entire domElement if content grows too wide
+                             if (this.content && size[0] < this.content.scrollWidth) { // Check if internal content (`container` element) overflows horizontally
+                                domElement.style.overflowX = 'auto';
+                             } else {
+                                domElement.style.overflowX = 'hidden';
+                             }
+                             // `entriesList` already has `overflow-y: auto` and `flex: 1`
+                             // so it will manage its own vertical scrolling within the space allocated by the node's current height.
+                           
+                             // For debugging (optional):
+                             // console.log(`[onResize] Node ID: ${this.id}, Current Size: [${this.size[0]}, ${this.size[1]}]`);
+                             // console.log(`[onResize] entriesList scrollHeight: ${entriesList.scrollHeight}, clientHeight: ${entriesList.clientHeight}`);
                          }
 
                          if (origOnResize) origOnResize.call(this, size);
@@ -2229,7 +2339,7 @@ app.registerExtension({
                      this.triggerSlotChanged = () => {
                          dataWidget.value = JSON.stringify(this.powerLoraLoader_data);
                          this.renderLoraEntries(); // 确保UI立即刷新
-                         setTimeout(() => this.onResize(this.size), 0); // 确保在渲染后重新计算大小
+                         this.onResize(this.size); // 立即重新计算并应用尺寸
                          this.setDirtyCanvas(true, true);
                      };
                      // --- 结束修改 ---
