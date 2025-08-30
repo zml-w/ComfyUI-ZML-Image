@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { $el } from "/scripts/ui.js";
+import { $el } from "/scripts/ui.js"; // 确保这里引入的是 ComfyUI 的 $el
 import { api } from "/scripts/api.js";
 
 const TARGET_LORA_LOADERS = ["ZmlLoraLoader", "ZmlLoraLoaderModelOnly", "ZmlLoraLoaderFive", "ZmlLoraMetadataParser"];
@@ -20,12 +20,12 @@ function encodeRFC3986URIComponent(str) {
 }
 const calculateImagePosition = (el, bodyRect) => {
 	let { top, left, right } = el.getBoundingClientRect();
-	const { width: bodyWidth, height: bodyHeight } = bodyRect;
+	const { width: bodyWidth, height: bodyRectHeight } = bodyRect; // Changed from bodyHeight to bodyRectHeight to avoid conflict
 	const isSpaceRight = right + IMAGE_WIDTH <= bodyWidth;
 	if (isSpaceRight) left = right;
 	else left -= IMAGE_WIDTH;
 	top = Math.max(0, top - IMAGE_HEIGHT / 2);
-	if (top + IMAGE_HEIGHT > bodyHeight) top = bodyHeight - IMAGE_HEIGHT;
+	if (top + IMAGE_HEIGHT > bodyRectHeight) top = bodyRectHeight - IMAGE_HEIGHT; // Use bodyRectHeight here
 	return { left: Math.round(left), top: Math.round(top), isLeft: !isSpaceRight };
 };
 let loraImages = {};
@@ -598,7 +598,7 @@ app.registerExtension({
             // --- 修复：重新添加 createEl 函数以确保局部作用域可见性 ---
             // 注意：这个 createEl 只有两个参数（tag, properties），与文件顶部全局的 createEl 不同
             // 但这符合 ZmlPowerLoraLoader 内部原有的使用方式。
-            function createEl(tag, properties = {}, text = "") {
+            function zmlCreateEl(tag, properties = {}, text = "") { // 重命名为 zmlCreateEl
                 const el = document.createElement(tag);
                 Object.assign(el, properties);
                 if (text) el.textContent = text;
@@ -615,7 +615,7 @@ app.registerExtension({
             function createPllEditContentModal() {
                 if (zmlPllModalOverlay) return; // 确保只创建一次
 
-                zmlPllModalOverlay = createEl("div", {
+                zmlPllModalOverlay = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-st3-modal-overlay", // 使用与文本节点相同的类名，保持样式一致
                     style: `
                         position: fixed;
@@ -630,7 +630,7 @@ app.registerExtension({
                     `
                 });
 
-                const modalContainer = createEl("div", {
+                const modalContainer = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-st3-modal-container", // 使用与文本节点相同的类名
                     style: `
                         background-color: #31353a;
@@ -648,7 +648,7 @@ app.registerExtension({
                     `
                 });
 
-                zmlPllModalTitle = createEl("h3", {
+                zmlPllModalTitle = zmlCreateEl("h3", { // 使用 zmlCreateEl
                     className: "zml-st3-modal-title", // 使用与文本节点相同的类名
                     style: `
                         color: #e0e0e0;
@@ -662,7 +662,7 @@ app.registerExtension({
                     textContent: "LoRA 自定义文本" // 默认标题，将在 showPllEditContentModal 中更新
                 });
 
-                zmlPllModalTextarea = createEl("textarea", {
+                zmlPllModalTextarea = zmlCreateEl("textarea", { // 使用 zmlCreateEl
                     className: "zml-st3-modal-textarea", // 使用与文本节点相同的类名
                     style: `
                         width: 100%;
@@ -689,7 +689,7 @@ app.registerExtension({
                     e.target.style.boxShadow = 'none';
                 };
 
-                const buttonGroup = createEl("div", {
+                const buttonGroup = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-st3-modal-buttons", // 使用与文本节点相同的类名
                     style: `
                         display: flex;
@@ -714,7 +714,7 @@ app.registerExtension({
                     white-space: nowrap;
                 `;
 
-                const saveButton = createEl("button", {
+                const saveButton = zmlCreateEl("button", { // 使用 zmlCreateEl
                     className: "zml-control-btn zml-st3-modal-save",
                     textContent: "保存",
                     style: `
@@ -725,7 +725,7 @@ app.registerExtension({
                     `
                 });
                 
-                const cancelButton = createEl("button", {
+                const cancelButton = zmlCreateEl("button", { // 使用 zmlCreateEl
                     className: "zml-control-btn zml-st3-modal-cancel",
                     textContent: "取消",
                     style: `
@@ -802,7 +802,7 @@ app.registerExtension({
             function createBatchLoraModal() {
                 if (zmlBatchLoraModalOverlay) return;
 
-                zmlBatchLoraModalOverlay = createEl("div", {
+                zmlBatchLoraModalOverlay = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-batch-lora-modal-overlay",
                     style: `
                         position: fixed;
@@ -817,7 +817,7 @@ app.registerExtension({
                     `
                 });
 
-                const modalContainer = createEl("div", {
+                const modalContainer = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-batch-lora-modal-container",
                     style: `
                         background-color: #31353a;
@@ -834,12 +834,12 @@ app.registerExtension({
                     `
                 });
 
-                const modalHeader = createEl("h3", {
+                const modalHeader = zmlCreateEl("h3", { // 使用 zmlCreateEl
                     textContent: "批量添加 LoRA",
                     style: `color: #e0e0e0; margin: 0 0 15px 0; font-size: 1.4em; text-align: center; border-bottom: 1px solid #4a515a; padding-bottom: 10px;`
                 });
 
-                zmlBatchLoraParentPathDisplay = createEl("div", { // 用于显示面包屑导航
+                zmlBatchLoraParentPathDisplay = zmlCreateEl("div", { // 使用 zmlCreateEl
                     style: `
                         display: flex;
                         align-items: center;
@@ -850,7 +850,7 @@ app.registerExtension({
                     `
                 });
 
-                zmlBatchLoraFoldersPanel = createEl("div", { // 用于显示子文件夹列表
+                zmlBatchLoraFoldersPanel = zmlCreateEl("div", { // 使用 zmlCreateEl
                     style: `
                         display: flex;
                         flex-wrap: wrap;
@@ -865,7 +865,7 @@ app.registerExtension({
                     `
                 });
 
-                zmlBatchLoraGridContainer = createEl("div", {
+                zmlBatchLoraGridContainer = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-batch-lora-grid",
                     style: `
                         flex: 1; /* 占据剩余空间 */
@@ -880,22 +880,22 @@ app.registerExtension({
                     `
                 });
 
-                const modalFooter = createEl("div", {
+                const modalFooter = zmlCreateEl("div", { // 使用 zmlCreateEl
                     style: `display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 15px; border-top: 1px solid #4a515a; margin-top: 15px;`
                 });
 
                 // 选中数量显示
-                zmlBatchLoraSelectedCountDisplay = createEl("span", {
+                zmlBatchLoraSelectedCountDisplay = zmlCreateEl("span", { // 使用 zmlCreateEl
                     textContent: `已选择 0 个 LoRA`,
                     style: `color: #e0e0e0; font-size: 14px;`
                 });
                 modalFooter.appendChild(zmlBatchLoraSelectedCountDisplay);
 
-                const buttonGroupRight = createEl("div", {
+                const buttonGroupRight = zmlCreateEl("div", { // 使用 zmlCreateEl
                     style: `display: flex; gap: 12px;`
                 });
 
-                const addSelectedBtn = createEl("button", {
+                const addSelectedBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                     textContent: "添加选中 LoRA",
                     className: "zml-control-btn zml-st3-modal-save", // 复用样式
                     style: `height: 38px; padding: 0 25px; font-size: 15px;`
@@ -904,7 +904,7 @@ app.registerExtension({
                     handleBatchAddLora(); // 调用新的处理函数
                 };
 
-                const closeBtn = createEl("button", {
+                const closeBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                     textContent: "关闭",
                     className: "zml-control-btn zml-st3-modal-cancel", // 复用样式
                     style: `height: 38px; padding: 0 25px; font-size: 15px;`
@@ -976,8 +976,8 @@ app.registerExtension({
 
                 // --- 渲染面包屑导航 (路径) ---
                 if (!isShowingAllLoras && zmlBatchLoraCurrentPath.length > 0) { // 在非“全部显示”模式且不在根目录时显示返回按钮
-                    const backButton = createEl("a", {
-                        textContent: "↩︎",
+                    const backButton = zmlCreateEl("a", { // 使用 zmlCreateEl
+                        textContent: ↩︎",
                         href: "#",
                         title: "返回上一级",
                         style: `color: #e0e0e0; text-decoration: none; padding: 4px; border-radius: 3px; background-color: #4a515a; cursor: pointer; transition: background-color 0.2s; font-size: 13px;`
@@ -990,12 +990,12 @@ app.registerExtension({
                         renderBatchLoraContent();
                     };
                     zmlBatchLoraParentPathDisplay.appendChild(backButton);
-                    const separator = createEl("span", { textContent: " | ", style: "color:#4a515a;" });
+                    const separator = zmlCreateEl("span", { textContent: " | ", style: "color:#4a515a;" }); // 使用 zmlCreateEl
                     zmlBatchLoraParentPathDisplay.appendChild(separator);
                 }
                 
                 // “全部” LoRA 按钮（放置在Root旁边）
-                const allLorasBtn = createEl("button", {
+                const allLorasBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                     className: "zml-batch-lora-all-loras-btn zml-batch-lora-folder-item", // 复用文件夹item样式
                     textContent: "全部",
                     title: "展示所有 LoRA 文件，无论所在文件夹",
@@ -1025,11 +1025,11 @@ app.registerExtension({
                 };
                 zmlBatchLoraParentPathDisplay.appendChild(allLorasBtn); // 放在Root链接后，面包屑分隔符前
 
-                const separatorAfterAll = createEl("span", { textContent: " | ", style: "color:#4a515a;" });
+                const separatorAfterAll = zmlCreateEl("span", { textContent: " | ", style: "color:#4a515a;" }); // 使用 zmlCreateEl
                 zmlBatchLoraParentPathDisplay.appendChild(separatorAfterAll);
 
 
-                const rootLink = createEl("a", {
+                const rootLink = zmlCreateEl("a", { // 使用 zmlCreateEl
                     textContent: "Root",
                     href: "#",
                     style: `color: ${zmlBatchLoraCurrentPath.length === 0 && !isShowingAllLoras ? '#e0e0e0' : '#5d99f2'}; text-decoration: none; cursor: pointer;`
@@ -1051,10 +1051,10 @@ app.registerExtension({
                         if (part === ALL_LORAS_VIEW_PATH_IDENTIFIER) return; 
 
                         currentPathAccumulate.push(part);
-                        const separator = createEl("span", { textContent: " > ", style: "color:#888;" });
+                        const separator = zmlCreateEl("span", { textContent: " > ", style: "color:#888;" }); // 使用 zmlCreateEl
                         zmlBatchLoraParentPathDisplay.appendChild(separator);
 
-                        const pathLink = createEl("a", {
+                        const pathLink = zmlCreateEl("a", { // 使用 zmlCreateEl
                             textContent: part,
                             href: "#",
                             style: `color: ${index === zmlBatchLoraCurrentPath.length - 1 ? '#e0e0e0' : '#5d99f2'}; text-decoration: none; cursor: pointer;`
@@ -1093,7 +1093,7 @@ app.registerExtension({
                         zmlBatchLoraFoldersPanel.style.display = 'flex'; // 显示文件夹面板
                         zmlBatchLoraParentPathDisplay.style.borderBottom = 'none'; // 路径底部不需要线
                         foldersToDisplay.forEach(folderName => { // 渲染子文件夹
-                            const folderEl = createEl("div", {
+                            const folderEl = zmlCreateEl("div", { // 使用 zmlCreateEl
                                 className: "zml-batch-lora-folder-item",
                                 style: `
                                     display: flex;
@@ -1133,7 +1133,7 @@ app.registerExtension({
                     // The /view API expects "loras/subdir/image.ext" from the client.
                     const civitaiPreviewUrl = loraImages[loraPath] ? `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(loraImages[loraPath])}?${+new Date()}` : '';
 
-                    const itemEl = createEl("div", {
+                    const itemEl = zmlCreateEl("div", { // 使用 zmlCreateEl
                         className: `zml-batch-lora-item ${isSelected ? 'selected' : ''}`,
                         style: `
                             position: relative;
@@ -1151,7 +1151,7 @@ app.registerExtension({
                     itemEl.onmouseleave = () => itemEl.style.borderColor = isSelected ? '#4CAF50' : '#555';
 
 
-                    const imageWrapper = createEl("div", {
+                    const imageWrapper = zmlCreateEl("div", { // 使用 zmlCreateEl
                         className: "zml-batch-lora-image-wrapper",
                         style: `
                             width: 100%;
@@ -1168,7 +1168,7 @@ app.registerExtension({
                     });
 
                     if (hasPreview) {
-                        const img = createEl("img", {
+                        const img = zmlCreateEl("img", { // 使用 zmlCreateEl
                             src: civitaiPreviewUrl, // Use the dynamically constructed URL
                             className: "zml-batch-lora-item-image",
                             style: `
@@ -1184,7 +1184,7 @@ app.registerExtension({
 
                     // --- 新增：Civitai获取元数据按钮 ---
                     if (!hasPreview) { // 只有在没有预览图时才显示此按钮
-                        const fetchMetadataBtn = createEl("button", {
+                        const fetchMetadataBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                             className: "zml-batch-lora-fetch-from-civitai-btn",
                             textContent: "☰", // Hamburger icon
                             title: `从Civitai获取 '${file.name}' 的预览图和元数据`,
@@ -1227,7 +1227,7 @@ app.registerExtension({
                     // --- 结束：Civitai获取元数据按钮 ---
 
 
-                    const overlay = createEl("div", {
+                    const overlay = zmlCreateEl("div", { // 使用 zmlCreateEl
                         className: "zml-batch-lora-item-overlay",
                         style: `
                             position: absolute;
@@ -1240,7 +1240,7 @@ app.registerExtension({
                         `
                     });
 
-                    const checkmark = createEl("div", {
+                    const checkmark = zmlCreateEl("div", { // 使用 zmlCreateEl
                         className: "zml-batch-lora-checkmark",
                         textContent: "✓",
                         style: `
@@ -1252,7 +1252,7 @@ app.registerExtension({
                     });
                     overlay.appendChild(checkmark);
                     
-                    const addIcon = createEl("div", {
+                    const addIcon = zmlCreateEl("div", { // 使用 zmlCreateEl
                         className: "zml-batch-lora-add-icon",
                         textContent: "+",
                         style: `
@@ -1272,7 +1272,7 @@ app.registerExtension({
                     });
 
                     // LoRA 名称显示在底部
-                    const nameDisplay = createEl("div", {
+                    const nameDisplay = zmlCreateEl("div", { // 使用 zmlCreateEl
                         style: `
                             position: absolute;
                             bottom: 0; left: 0;
@@ -1336,7 +1336,7 @@ app.registerExtension({
                 if (duplicates.length > 0) {
                     const confirmMessage = `检测到此次选择的 ${duplicates.length} 个 LoRA (共 ${lorasToAdd.length} 个) 在节点里已经添加，是否跳过它们？\n\n点击“是”跳过重复项，只添加新的。\n点击“否”添加所有选中的LoRA，包括重复项。`;
                     const shouldSkip = await new Promise(resolve => {
-                        const overlay = createEl("div", {
+                        const overlay = zmlCreateEl("div", { // 使用 zmlCreateEl
                             style: `
                                 position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                                 background-color: rgba(0, 0, 0, 0.8);
@@ -1345,7 +1345,7 @@ app.registerExtension({
                                 backdrop-filter: blur(2px);
                             `
                         });
-                        const modal = createEl("div", {
+                        const modal = zmlCreateEl("div", { // 使用 zmlCreateEl
                             style: `
                                 background-color: #31353a; border: 1px solid #4a515a; border-radius: 8px;
                                 padding: 20px; max-width: 400px; text-align: center;
@@ -1353,22 +1353,22 @@ app.registerExtension({
                                 box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
                             `
                         });
-                        const text = createEl("p", {
+                        const text = zmlCreateEl("p", { // 使用 zmlCreateEl
                             textContent: confirmMessage,
                             style: `color: #e0e0e0; font-size: 14px; line-height: 1.5; margin:0;`
                         });
-                        const buttonWrapper = createEl("div", {
+                        const buttonWrapper = zmlCreateEl("div", { // 使用 zmlCreateEl
                             style: `display: flex; justify-content: center; gap: 15px;`
                         });
 
-                        const yesButton = createEl("button", {
+                        const yesButton = zmlCreateEl("button", { // 使用 zmlCreateEl
                             textContent: "是 (跳过重复)",
                             className: "zml-control-btn zml-st3-modal-save",
                             style: `padding: 8px 15px;` // 调整按钮样式
                         });
                         yesButton.onclick = () => { overlay.remove(); resolve(true); };
 
-                        const noButton = createEl("button", {
+                        const noButton = zmlCreateEl("button", { // 使用 zmlCreateEl
                             textContent: "否 (添加所有)",
                             className: "zml-control-btn zml-st3-modal-cancel",
                             style: `padding: 8px 15px;` // 调整按钮样式
@@ -1451,7 +1451,7 @@ app.registerExtension({
             function createColorChooseMenu(x, y, onSelectFolder, onSelectLoraEntry) {
                 if (zmlColorChooseMenu) zmlColorChooseMenu.remove(); // 移除旧菜单
 
-                zmlColorChooseMenu = createEl("div", {
+                zmlColorChooseMenu = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-color-choose-menu",
                     style: `
                         position: absolute;
@@ -1468,7 +1468,7 @@ app.registerExtension({
                     `
                 });
 
-                const folderColorOption = createEl("div", {
+                const folderColorOption = zmlCreateEl("div", { // 使用 zmlCreateEl
                     textContent: "文件夹颜色",
                     className: "zml-color-choose-option",
                     style: `
@@ -1483,7 +1483,7 @@ app.registerExtension({
                 folderColorOption.onmouseleave = (e) => e.target.style.backgroundColor = 'transparent';
                 folderColorOption.onclick = () => { onSelectFolder(); zmlColorChooseMenu.remove(); zmlColorChooseMenu = null; };
 
-                const loraEntryColorOption = createEl("div", {
+                const loraEntryColorOption = zmlCreateEl("div", { // 使用 zmlCreateEl
                     textContent: "LoRA 框颜色",
                     className: "zml-color-choose-option",
                     style: `
@@ -1792,14 +1792,14 @@ app.registerExtension({
                      const dataWidget = this.addWidget("text", "lora_loader_data", JSON.stringify(this.powerLoraLoader_data), (v) => { try { if(v) this.powerLoraLoader_data = JSON.parse(v); } catch(e){} }, { serialize: true });
                      dataWidget.hidden = true; dataWidget.computeSize = () => [0, 0];
 
-                     const container = createEl("div"); // <-- 这里会调用到局部定义的 createEl
+                     const container = zmlCreateEl("div"); // <-- 这里会调用到局部定义的 zmlCreateEl
                      container.style.cssText = `background: #2b2b2b; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; display: flex; flex-direction: column; padding: 6px;`;
 
-                     const topControls = createEl("div", { className: "zml-pll-controls-top" }); // <-- 这里会调用到局部定义的 createEl
+                     const topControls = zmlCreateEl("div", { className: "zml-pll-controls-top" }); // <-- 这里会调用到局部定义的 zmlCreateEl
 
-                     const loraNameWidthGroup = createEl("div", { className: "zml-control-group-pll" });// <-- 这里会调用到局部定义的 createEl
-                     const loraNameWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "名称宽度" });// <-- 这里会调用到局部定义的 createEl
-                     const loraNameWidthInput = createEl("input", { className: "zml-control-input-pll" });// <-- 这里会调用到局部定义的 createEl
+                     const loraNameWidthGroup = zmlCreateEl("div", { className: "zml-control-group-pll" });// <-- 这里会调用到局部定义的 zmlCreateEl
+                     const loraNameWidthLabel = zmlCreateEl("span", { className: "zml-control-label-pll", textContent: "名称宽度" });// <-- 这里会调用到局部定义的 zmlCreateEl
+                     const loraNameWidthInput = zmlCreateEl("input", { className: "zml-control-input-pll" });// <-- 这里会调用到局部定义的 zmlCreateEl
                      loraNameWidthInput.type = "number";
                      loraNameWidthInput.min = "10";
                      loraNameWidthInput.max = "300";
@@ -1817,9 +1817,9 @@ app.registerExtension({
                      loraNameWidthGroup.append(loraNameWidthLabel, loraNameWidthInput);
                      topControls.appendChild(loraNameWidthGroup);
 
-                     const customTextWidthGroup = createEl("div", { className: "zml-control-group-pll" });// <-- 这里会调用到局部定义的 createEl
-                     const customTextWidthLabel = createEl("span", { className: "zml-control-label-pll", textContent: "文本宽度" });// <-- 这里会调用到局部定义 的 createEl
-                     const customTextWidthInput = createEl("input", { className: "zml-control-input-pll" });// <-- 这里会调用到局部定义的 createEl
+                     const customTextWidthGroup = zmlCreateEl("div", { className: "zml-control-group-pll" });// <-- 这里会调用到局部定义的 zmlCreateEl
+                     const customTextWidthLabel = zmlCreateEl("span", { className: "zml-control-label-pll", textContent: "文本宽度" });// <-- 这里会调用到局部定义 的 zmlCreateEl
+                     const customTextWidthInput = zmlCreateEl("input", { className: "zml-control-input-pll" });// <-- 这里会调用到局部定义的 zmlCreateEl
                      customTextWidthInput.type = "number";
                      customTextWidthInput.min = "10";
                      customTextWidthInput.max = "300";
@@ -1838,7 +1838,7 @@ app.registerExtension({
                      topControls.appendChild(customTextWidthGroup);
                      
                      // === 新建文件夹按钮 ===
-                     const newFolderBtn = createEl("button", { className: "zml-control-btn-pll", textContent: "📁+" });// <-- 这里会调用到局部定义的 createEl
+                     const newFolderBtn = zmlCreateEl("button", { className: "zml-control-btn-pll", textContent: "📁+" });// <-- 这里会调用到局部定义的 zmlCreateEl
                      newFolderBtn.title = "新建文件夹";
                      newFolderBtn.onclick = () => {
                          this.powerLoraLoader_data.entries.push({
@@ -1855,8 +1855,8 @@ app.registerExtension({
                      // =======================
 
                      // === 文件夹/LoRA 颜色按钮 (修改) ===
-                     const folderColorInput = createEl("input", { type: "color", value: this.folderColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" });
-                     const loraEntryColorInput = createEl("input", { type: "color", value: this.loraEntryColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" });
+                     const folderColorInput = zmlCreateEl("input", { type: "color", value: this.folderColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" }); // 使用 zmlCreateEl
+                     const loraEntryColorInput = zmlCreateEl("input", { type: "color", value: this.loraEntryColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" }); // 使用 zmlCreateEl
                     
                      folderColorInput.onchange = (e) => {
                          this.folderColor = e.target.value;
@@ -1869,7 +1869,7 @@ app.registerExtension({
                          this.triggerSlotChanged();
                      };
 
-                     const colorPickerBtn = createEl("button", { 
+                     const colorPickerBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                         className: "zml-control-btn-pll zml-color-btn-trigger", 
                         textContent: "🎨" 
                      });
@@ -1887,7 +1887,7 @@ app.registerExtension({
                      // =============================
 
 
-                     const lockToggleButton = createEl("button", { className: "zml-control-btn-pll", textContent: this.isLocked ? "🔒" : "🔓" });// <-- 这里会调用到局部定义的 createEl
+                     const lockToggleButton = zmlCreateEl("button", { className: "zml-control-btn-pll", textContent: this.isLocked ? "🔒" : "🔓" });// <-- 这里会调用到局部定义的 zmlCreateEl
                      lockToggleButton.title = "锁定/解锁 LoRA 排序";
                      lockToggleButton.style.cssText += `${this.isLocked ? 'background: #644;' : 'background: #333;'}`;
                      lockToggleButton.onmouseenter = (e) => e.target.style.background = this.isLocked ? '#754' : '#555'; // 悬停反馈
@@ -1901,7 +1901,7 @@ app.registerExtension({
                      };
                      topControls.appendChild(lockToggleButton);
 
-                     const sizeToggleButton = createEl("button", { className: "zml-control-btn-pll", textContent: "↕" });// <-- 这里会调用到局部定义的 createEl
+                     const sizeToggleButton = zmlCreateEl("button", { className: "zml-control-btn-pll", textContent: "↕" });// <-- 这里会调用到局部定义的 zmlCreateEl
                      sizeToggleButton.title = "切换紧凑/普通视图";
                      sizeToggleButton.onmouseenter = (e) => e.target.style.background = '#555';
                      sizeToggleButton.onmouseleave = (e) => e.target.style.background = '#444';
@@ -1912,12 +1912,12 @@ app.registerExtension({
                      };
                      topControls.appendChild(sizeToggleButton);
 
-                     const entriesList = createEl("div", { className: "zml-pll-entries-list" });// <-- 这里会调用到局部定义的 createEl
+                     const entriesList = zmlCreateEl("div", { className: "zml-pll-entries-list" });// <-- 这里会调用到局部定义的 zmlCreateEl
 
-                     const bottomControls = createEl("div", { className: "zml-pll-controls-bottom" });// <-- 这里会调用到局部定义的 createEl
+                     const bottomControls = zmlCreateEl("div", { className: "zml-pll-controls-bottom" });// <-- 这里会调用到局部定义的 zmlCreateEl
 
                      // --- 新增：批量添加 LoRA 按钮 ---
-                     const batchAddLoraBtn = createEl("button", { className: "zml-pll-button zml-pll-button-lg", textContent: "批量添加 LoRA" });
+                     const batchAddLoraBtn = zmlCreateEl("button", { className: "zml-pll-button zml-pll-button-lg", textContent: "批量添加 LoRA" }); // 使用 zmlCreateEl
                      batchAddLoraBtn.title = "从文件系统批量选择 LoRA";
                      batchAddLoraBtn.onclick = async () => {
                          // 在每次打开批量添加模态框前确保 loraImages 是最新的
@@ -1928,7 +1928,7 @@ app.registerExtension({
                      bottomControls.appendChild(batchAddLoraBtn);
                      // --- 结束：批量添加 LoRA 按钮 ---
                      
-                     const newLoraBtn = createEl("button", { className: "zml-pll-button zml-pll-button-lg", textContent: "＋ 添加 Lora" });// <-- 这里会调用到局部定义的 createEl
+                     const newLoraBtn = zmlCreateEl("button", { className: "zml-pll-button zml-pll-button-lg", textContent: "＋ 添加 Lora" });// <-- 这里会调用到局部定义的 zmlCreateEl
                      newLoraBtn.onclick = () => {
                         this.powerLoraLoader_data.entries.push({
                             id: "lora" + Date.now(),
@@ -1963,20 +1963,20 @@ app.registerExtension({
 
                      this.createLoraEntryDOM = (entry) => { // Removed index parameter as it's not strictly needed for rendering
                          const s = this.compactView ? this.stylesPLL.compact : this.stylesPLL.normal;
-                         const entryCard = createEl("div", { // <-- 这里会调用到局部定义的 createEl
+                         const entryCard = zmlCreateEl("div", { // <-- 这里会调用到局部定义的 zmlCreateEl
                              className: "zml-pll-entry-card",
                              style: `display: flex; align-items: center; gap: 4px; padding: ${s.cardPadding}; background: ${entry.enabled ? this.loraEntryColor : adjustBrightness(this.loraEntryColor, -10, -15)}; border-radius: 2px;` // Adjust disabled color
                          });
                          entryCard.dataset.id = entry.id;
                          entryCard.dataset.type = "lora";
 
-                         const checkbox = createEl("input", { type: "checkbox", checked: entry.enabled, style: `transform: scale(${s.checkboxScale}); flex-shrink: 0; margin-right: 4px;` });// <-- 这里会调用到局部定义的 createEl
+                         const checkbox = zmlCreateEl("input", { type: "checkbox", checked: entry.enabled, style: `transform: scale(${s.checkboxScale}); flex-shrink: 0; margin-right: 4px;` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          checkbox.onchange = (e) => { entry.enabled = e.target.checked; this.renderLoraEntries(); this.triggerSlotChanged(); };
 
-                         const dragHandle = createEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; display: flex; align-items: center; justify-content: center; width: 20px; color: ${this.isLocked ? '#666' : '#888'}; flex-shrink: 0; user-select: none; font-size: 14px;` });// <-- 这里会调用到局部定义的 createEl
+                         const dragHandle = zmlCreateEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; display: flex; align-items: center; justify-content: center; width: 20px; color: ${this.isLocked ? '#666' : '#888'}; flex-shrink: 0; user-select: none; font-size: 14px;` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          dragHandle.draggable = !this.isLocked;
 
-                         const displayNameInput = createEl("input", { className: "zml-lora-display-name-input", type: "text", value: entry.display_name, placeholder: "输入名称...", title: "自定义此LoRA条目的显示名称", style: `width: ${this.loraNameWidth}px;` });// <-- 这里会调用到局部定义的 createEl
+                         const displayNameInput = zmlCreateEl("input", { className: "zml-lora-display-name-input", type: "text", value: entry.display_name, placeholder: "输入名称...", title: "自定义此LoRA条目的显示名称", style: `width: ${this.loraNameWidth}px;` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          // --- 修改开始：oninput 不再触发 triggerSlotChanged，改为 onblur 触发 ---
                          displayNameInput.oninput = (e) => {
                              entry.display_name = e.target.value;
@@ -1987,23 +1987,23 @@ app.registerExtension({
                          };
                          // --- 修改结束 ---
 
-                         const loraSelectorBtn = createEl("button", { style: `flex-grow: 1; min-width: 100px; padding: ${s.inputPadding}; background: #222; border: 1px solid #555; border-radius: 2px; color: #ccc; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: ${s.inputHeight};`, textContent: entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop() });// <-- 这里会调用到局部定义的 createEl
+                         const loraSelectorBtn = zmlCreateEl("button", { style: `flex-grow: 1; min-width: 100px; padding: ${s.inputPadding}; background: #222; border: 1px solid #555; border-radius: 2px; color: #ccc; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: ${s.inputHeight};`, textContent: entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop() });// <-- 这里会调用到局部定义的 zmlCreateEl
                          loraSelectorBtn.onclick = () => { if (activeLoraMenu) activeLoraMenu.close(); activeLoraMenu = this.createLoraTreeMenu(loraSelectorBtn, entry, () => { loraSelectorBtn.textContent = entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop(); this.triggerSlotChanged(); }); };
 
-                         const weightWidget = createEl("div", { style: `display: flex; align-items: center; background: #222; border: 1px solid #555; border-radius: 2px; height: ${s.inputHeight};` });// <-- 这里会调用到局部定义的 createEl
+                         const weightWidget = zmlCreateEl("div", { style: `display: flex; align-items: center; background: #222; border: 1px solid #555; border-radius: 2px; height: ${s.inputHeight};` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          
                          // 实心三角形按钮 (新增 class)
-                         const decBtn = createEl("button", { 
+                         const decBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                              className: "zml-weight-btn", // New class
                              style: `background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%; display: flex; align-items: center; justify-content: center;`
                          }, "◀");
-                         const incBtn = createEl("button", { 
+                         const incBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                              className: "zml-weight-btn", // New class
                              style: `background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%; display: flex; align-items: center; justify-content: center;`
                          }, "▶");
 
                          // 权重输入框 (宽度改为 25px)
-                         const weightInput = createEl("input", {
+                         const weightInput = zmlCreateEl("input", { // 使用 zmlCreateEl
                             className: "zml-lora-weight-input",
                             type: "text", // 改为文本输入，允许任意字符，失去焦点时再校验
                             value: entry.weight.toFixed(2),
@@ -2045,7 +2045,7 @@ app.registerExtension({
                          weightWidget.append(decBtn, weightInput, incBtn);
 
 
-                         const customTextInput = createEl("textarea", { // <-- 这里会调用到局部定义的 createEl
+                         const customTextInput = zmlCreateEl("textarea", { // <-- 这里会调用到局部定义的 zmlCreateEl
                             className: "zml-lora-custom-text-input",
                             value: entry.custom_text || "",
                             placeholder: "输入文本",
@@ -2062,7 +2062,7 @@ app.registerExtension({
 
                          // === 移出文件夹按钮 (新增) ===
                          if (entry.parent_id) { // Only show if Lora is in a folder
-                            const moveOutBtn = createEl("button", { // <-- 这里会调用到局部定义的 createEl
+                            const moveOutBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
                                 style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #4a6a4a; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;`,
                                 title: "移出文件夹"
                             }, "⬆️");
@@ -2077,7 +2077,7 @@ app.registerExtension({
                          }
                          // ===========================
 
-                         const deleteBtn = createEl("button", { // <-- 这里会调用到局部定义的 createEl
+                         const deleteBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
                             className: "zml-lora-entry-delete", // 添加新 class
                             style: `width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;` // 简化的行内样式
                          }, "X");
@@ -2096,21 +2096,21 @@ app.registerExtension({
                      };
 
                      this.createFolderDOM = (entry) => { // Removed index parameter
-                         const folderCard = createEl("div", {  // <-- 这里会调用到局部定义的 createEl
+                         const folderCard = zmlCreateEl("div", {  // <-- 这里会调用到局部定义的 zmlCreateEl
                             className: "zml-pll-folder-card",
                             style: `background: ${this.folderColor}; border: 1px solid ${adjustBrightness(this.folderColor, -15)};` // Apply custom color
                          });
                          folderCard.dataset.id = entry.id;
                          folderCard.dataset.type = "folder";
 
-                         const header = createEl("div", { className: "zml-pll-folder-header" }); // <-- 这里会调用到局部定义的 createEl
-                         const toggle = createEl("div", { className: "zml-pll-folder-toggle", textContent: entry.is_collapsed ? "▶" : "▼" });// <-- 这里会调用到局部定义的 createEl
-                         const nameInput = createEl("input", { className: "zml-pll-folder-name-input", type: "text", value: entry.name });// <-- 这里会调用到局部定义的 createEl
-                         const deleteBtn = createEl("button", { className: "zml-pll-folder-delete", textContent: "🗑️" });// <-- 这里会调用到局部定义的 createEl
-                         const dragHandle = createEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; color: ${this.isLocked ? '#666' : '#ccc'}; user-select: none; font-size: 14px; padding: 0 5px;` });// <-- 这里会调用到局部定义的 createEl
+                         const header = zmlCreateEl("div", { className: "zml-pll-folder-header" }); // <-- 这里会调用到局部定义的 zmlCreateEl
+                         const toggle = zmlCreateEl("div", { className: "zml-pll-folder-toggle", textContent: entry.is_collapsed ? "▶" : "▼" });// <-- 这里会调用到局部定义的 zmlCreateEl
+                         const nameInput = zmlCreateEl("input", { className: "zml-pll-folder-name-input", type: "text", value: entry.name });// <-- 这里会调用到局部定义的 zmlCreateEl
+                         const deleteBtn = zmlCreateEl("button", { className: "zml-pll-folder-delete", textContent: "🗑️" });// <-- 这里会调用到局部定义的 zmlCreateEl
+                         const dragHandle = zmlCreateEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; color: ${this.isLocked ? '#666' : '#ccc'}; user-select: none; font-size: 14px; padding: 0 5px;` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          dragHandle.draggable = !this.isLocked;
 
-                         const content = createEl("div", { className: `zml-pll-folder-content ${entry.is_collapsed ? 'hidden' : ''}` });// <-- 这里会调用到局部定义的 createEl
+                         const content = zmlCreateEl("div", { className: `zml-pll-folder-content ${entry.is_collapsed ? 'hidden' : ''}` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          // Apply the same border color as the folder card header for consistency
                          content.style.borderColor = adjustBrightness(this.folderColor, -15);
 
@@ -2386,7 +2386,7 @@ app.registerExtension({
 
             nodeType.prototype.createLoraTreeMenu = function(button, entry, onSelect) {
                 // This function remains largely the same
-                const menu = createEl("div", { className: "zml-lora-tree-menu" }); // <-- 这里会调用到局部定义的 createEl
+                const menu = zmlCreateEl("div", { className: "zml-lora-tree-menu" }); // <-- 这里会调用到局部定义的 zmlCreateEl
                 const closeMenu = () => { menu.remove(); document.removeEventListener("click", clickOutside, true); activeLoraMenu = null; };
 
                 const ext = app.extensions.find(e => e.name === "zml.LoraLoader.Final.v9");
@@ -2396,7 +2396,7 @@ app.registerExtension({
 
                 const buildMenuLevel = (parent, treeLevel) => {
                     treeLevel.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
-                        const fileEl = createEl("div", { className: "zml-lora-file", textContent: file.name }); // <-- 这里会调用到局部定义的 createEl
+                        const fileEl = zmlCreateEl("div", { className: "zml-lora-file", textContent: file.name }); // <-- 这里会调用到局部定义的 zmlCreateEl
                         fileEl.onclick = () => { entry.lora_name = file.fullpath; onSelect(); hideImage?.(); closeMenu(); };
 
                         if (loraImages[file.fullpath] && imageHost && showImage && hideImage) {
@@ -2413,15 +2413,15 @@ app.registerExtension({
                     });
 
                     Object.keys(treeLevel.folders).sort().forEach(folderName => {
-                        const folderEl = createEl("div", { className: "zml-lora-folder", innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}` }); // <-- 这里会调用到局部定义的 createEl
-                        const contentEl = createEl("div", { className: "zml-lora-folder-content" }); // <-- 这里会调用到局部定义的 createEl
+                        const folderEl = zmlCreateEl("div", { className: "zml-lora-folder", innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}` }); // <-- 这里会调用到局部定义的 zmlCreateEl
+                        const contentEl = zmlCreateEl("div", { className: "zml-lora-folder-content" }); // <-- 这里会调用到局部定义的 zmlCreateEl
                         folderEl.onclick = (e) => { e.stopPropagation(); const isHidden = contentEl.style.display === "none"; contentEl.style.display = isHidden ? "block" : "none"; folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶"; };
                         buildMenuLevel(contentEl, treeLevel.folders[folderName]);
                         parent.append(folderEl, contentEl);
                     });
                 };
 
-                const noneEl = createEl("div", { className: "zml-lora-file", textContent: "None" }); // <-- 这里会调用到局部定义的 createEl
+                const noneEl = zmlCreateEl("div", { className: "zml-lora-file", textContent: "None" }); // <-- 这里会调用到局部定义的 zmlCreateEl
                 noneEl.onclick = () => { entry.lora_name = "None"; onSelect(); hideImage?.(); closeMenu(); };
                 menu.appendChild(noneEl);
                 buildMenuLevel(menu, this.loraTree);
