@@ -106,4 +106,4 @@ class ZML_ImageDeform:
             return (图像,)
 
 NODE_CLASS_MAPPINGS = {"ZML_ImageDeform": ZML_ImageDeform}
-NODE_DISPLAY_NAME_MAPPINGS = {"ZML_ImageDeform": "ZML_图像形变"}
+NODE_DISPLAY_NAME_MAPPINGS = {"ZML_ImageDeform": "ZML_图像形变（有bug）"}

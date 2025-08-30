@@ -563,13 +563,14 @@ class ZML_VisualCropImage:
             }
         }
     
-    RETURN_TYPES = ("IMAGE", "MASK",)
-    RETURN_NAMES = ("图像", "遮罩",)
+    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK",) # 添加了第二个 IMAGE 类型
+    RETURN_NAMES = ("图像", "裁剪掉的图像", "遮罩",) # 添加了对应的名称
     FUNCTION = "crop_visually"
     CATEGORY = "image/ZML_图像/图像"
 
     def tensor_to_pil(self, t): 
-        return Image.fromarray(np.clip(255. * t.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
+        # 确保转换为RGBA以正确处理透明度
+        return Image.fromarray(np.clip(255. * t.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)).convert("RGBA")
 
     def pil_to_tensor(self, p): 
         return torch.from_numpy(np.array(p).astype(np.float32) / 255.0).unsqueeze(0)
@@ -579,15 +580,19 @@ class ZML_VisualCropImage:
         try:
             data = json.loads(crop_data)
         except:
+            # 如果JSON解析失败，返回原始图像，一个全透明图像和一个全黑遮罩
+            h, w = 图像.shape[1:3]
             black_mask = torch.zeros_like(图像[:, :, :, 0])
-            return (图像, black_mask,)
+            transparent_image = torch.zeros_like(图像) # 全透明图像，假设图像是RGBA
+            return (图像, transparent_image, black_mask,)
         
         cropped_images_list = []
+        discarded_images_list = [] # 用于存储裁剪掉的图像
         mask_list = []
 
         for img_tensor in 图像:
-            pil_image = self.tensor_to_pil(img_tensor)
-            full_size_mask = Image.new("L", pil_image.size, 0)
+            pil_image_rgba = self.tensor_to_pil(img_tensor).convert("RGBA") # 确保始终以RGBA处理
+            full_size_mask = Image.new("L", pil_image_rgba.size, 0)
             draw = ImageDraw.Draw(full_size_mask)
 
             image_to_append = None 
@@ -596,16 +601,37 @@ class ZML_VisualCropImage:
             if 模式 in ["路径选择", "画笔"]:
                 points = data.get("points")
                 bbox_data = data.get("bbox")
-                if not points or not bbox_data: return (图像, torch.zeros_like(图像[:,:,:,0]))
+                if not points or not bbox_data:
+                    # 如果数据无效，返回原始图像，全透明图像和全黑遮罩
+                    black_mask = torch.zeros_like(img_tensor[:, :, 0])
+                    transparent_image = torch.zeros_like(img_tensor)
+                    cropped_images_list.append(img_tensor)
+                    discarded_images_list.append(transparent_image)
+                    mask_list.append(black_mask)
+                    continue
 
                 pts = [(p['x'], p['y']) for p in points]
                 final_bbox = (int(bbox_data["x"]), int(bbox_data["y"]), int(bbox_data["x"]) + int(bbox_data["width"]), int(bbox_data["y"]) + int(bbox_data["height"]))
-                if not pts: return (图像, torch.zeros_like(图像[:,:,:,0]))
+                if not pts:
+                    # 如果数据无效，返回原始图像，全透明图像和全黑遮罩
+                    black_mask = torch.zeros_like(img_tensor[:, :, 0])
+                    transparent_image = torch.zeros_like(img_tensor)
+                    cropped_images_list.append(img_tensor)
+                    discarded_images_list.append(transparent_image)
+                    mask_list.append(black_mask)
+                    continue
                 draw.polygon(pts, fill=255)
 
             else: # 矩形或圆形模式
                 x, y, w, h = int(data.get("x",0)), int(data.get("y",0)), int(data.get("width",0)), int(data.get("height",0))
-                if w == 0 or h == 0: return (图像, torch.zeros_like(图像[:,:,:,0]))
+                if w == 0 or h == 0:
+                    # 如果数据无效，返回原始图像，全透明图像和全黑遮罩
+                    black_mask = torch.zeros_like(img_tensor[:, :, 0])
+                    transparent_image = torch.zeros_like(img_tensor)
+                    cropped_images_list.append(img_tensor)
+                    discarded_images_list.append(transparent_image)
+                    mask_list.append(black_mask)
+                    continue
                 final_bbox = (x, y, x + w, y + h)
 
                 if 模式 == "圆形":
@@ -613,21 +639,40 @@ class ZML_VisualCropImage:
                 else: # 矩形模式
                     draw.rectangle(final_bbox, fill=255)
             
+            # --- 处理“保留”部分图像 ---
             if 保持图像大小:
-                output_image = Image.new("RGBA", pil_image.size, (0, 0, 0, 0))
-                pil_image_rgba = pil_image.convert("RGBA")
+                output_image = Image.new("RGBA", pil_image_rgba.size, (0, 0, 0, 0))
                 output_image.paste(pil_image_rgba, mask=full_size_mask)
                 image_to_append = output_image
             else:
                 if final_bbox:
-                    if 模式 != "矩形":
-                        img_rgba = pil_image.convert("RGBA")
-                        masked_output = Image.new("RGBA", img_rgba.size)
-                        masked_output.paste(img_rgba, mask=full_size_mask) 
-                        image_to_append = masked_output.crop(final_bbox)
-                    else: # 矩形模式
-                        image_to_append = pil_image.crop(final_bbox)
+                    # 创建一个临时的RGBA图像，将原图按遮罩粘贴，然后裁剪最小外接矩形
+                    masked_output = Image.new("RGBA", pil_image_rgba.size, (0,0,0,0))
+                    masked_output.paste(pil_image_rgba, mask=full_size_mask) 
+                    image_to_append = masked_output.crop(final_bbox)
+                else:
+                    image_to_append = Image.new("RGBA", (1,1), (0,0,0,0)) # 默认一个透明像素
+
+            # --- 处理“裁剪掉的”部分图像 ---
+            # 反转遮罩
+            inverted_mask = ImageOps.invert(full_size_mask)
             
+            if 保持图像大小:
+                discarded_image_full_size = Image.new("RGBA", pil_image_rgba.size, (0, 0, 0, 0))
+                discarded_image_full_size.paste(pil_image_rgba, mask=inverted_mask)
+                discarded_images_list.append(self.pil_to_tensor(discarded_image_full_size))
+            else:
+                # 裁剪掉的部分的图像，也可能是不规则的
+                # 这里我们直接用inverted_mask将原图非裁剪区域置为透明，然后计算其边界进行裁剪
+                discarded_masked_output = Image.new("RGBA", pil_image_rgba.size, (0,0,0,0))
+                discarded_masked_output.paste(pil_image_rgba, mask=inverted_mask)
+                discarded_bbox = discarded_masked_output.getbbox() # 获取裁剪掉部分的实际边界
+                
+                if discarded_bbox:
+                    discarded_images_list.append(self.pil_to_tensor(discarded_masked_output.crop(discarded_bbox)))
+                else:
+                    discarded_images_list.append(self.pil_to_tensor(Image.new("RGBA", (1,1), (0,0,0,0)))) # 没有裁剪掉的部分，返回透明像素
+
             if image_to_append:
                 cropped_images_list.append(self.pil_to_tensor(image_to_append))
                 
@@ -635,14 +680,18 @@ class ZML_VisualCropImage:
                 mask_tensor = torch.from_numpy(mask_np).unsqueeze(0)
                 mask_list.append(mask_tensor)
 
-        if not cropped_images_list or not mask_list:
+        if not cropped_images_list or not mask_list or not discarded_images_list:
+             # 如果列表为空，返回原图和全透明/黑色的默认值
+             h, w = 图像.shape[1:3]
              black_mask = torch.zeros_like(图像[:, :, :, 0])
-             return (图像, black_mask,)
+             transparent_image = torch.zeros_like(图像) # 全透明图像，假设图像是RGBA
+             return (图像, transparent_image, black_mask,)
 
         final_cropped_tensors = torch.cat(cropped_images_list, dim=0)
+        final_discarded_tensors = torch.cat(discarded_images_list, dim=0) # 新增
         final_mask_tensors = torch.cat(mask_list, dim=0)
         
-        return (final_cropped_tensors, final_mask_tensors)
+        return (final_cropped_tensors, final_discarded_tensors, final_mask_tensors) # 调整返回顺序
 
 # ============================== 合并图像节点==============================
 class ZML_MergeImages:

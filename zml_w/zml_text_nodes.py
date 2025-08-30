@@ -54,7 +54,7 @@ class ZML_WriteText:
         self.type = "output"
         node_dir = os.path.dirname(os.path.abspath(__file__))
         self.default_save_path = os.path.join(node_dir, "txt", "Text input", "文本输入.txt")
-        self.help_text = "你好，欢迎使用ZML节点~\n本节点会将文本A和文本B结合后写入指定的TXT文件。如果你不指定路径，它会自动保存在插件的 'zml_/txt/Text input' 文件夹中。\n如果路径为文件夹，则会写入该文件夹下的“文本输入.txt”里，没有此文件会自动创建。\n也可以指定路径为一个txt文件，但仅支持txt格式。/n祝你使用愉快~天天开心~"
+        self.help_text = "你好，欢迎使用ZML节点~\n本节点会将文本A和文本B结合后写入指定的TXT文件。如果你不指定路径，它会自动保存在插件的 'zml_w/txt/Text input' 文件夹中。\n如果路径为文件夹，则会写入该文件夹下的“文本输入.txt”里，没有此文件会自动创建。\n也可以指定路径为一个txt文件，但仅支持txt格式。/n祝你使用愉快~天天开心~"
         
     @classmethod
     def INPUT_TYPES(cls):
@@ -133,95 +133,123 @@ class ZML_WriteText:
             raise e
 
 # ============================== 预设文本节点==============================
-# 定义预设文件的路径
-PRESET_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset text", "Preset text.txt")
+# 定义预设文件的路径 (JSON格式)
+PRESET_TEXT_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset text", "Preset text.json")
+# 定义固定的类别名称
+FIXED_TEXT_CATEGORIES = ["预设1", "预设2", "预设3", "预设4", "预设5"]
 
 class ZML_PresetText:
     """
     ZML 预设文本节点
-    从预设文件中加载文本选项
+    从JSON预设文件中加载五个固定分类的文本选项
     """
-    _presets_map = {}
-    _preset_names = []
+    _categories_data = {cat: [] for cat in FIXED_TEXT_CATEGORIES} # 存储 { "分类名": [{"name": "预设名", "value": "预设内容"}, ...] }
+    _indexed_category_preset_names = [[] for _ in range(5)] # 对应五个下拉列表的预设名称列表
 
     def __init__(self):
-        """
-        构造函数，仅在节点实例被创建时（即拖动到画布上时）执行。
-        我们在这里检查并创建默认的预设文件。
-        """
-        preset_dir = os.path.dirname(PRESET_FILE_PATH)
+        preset_dir = os.path.dirname(PRESET_TEXT_FILE_PATH)
         if not os.path.exists(preset_dir):
             os.makedirs(preset_dir, exist_ok=True)
-        if not os.path.exists(PRESET_FILE_PATH):
-            with open(PRESET_FILE_PATH, 'w', encoding='utf-8') as f:
-                f.write("# 这是注释行，将被忽略\n")
-                f.write("001 #-# 1girl, solo, best quality\n")
-                f.write("002 #-# 1boy, safe, masterpiece\n")
+        
+        # 如果文件不存在，创建空JSON文件并初始化五个固定分类
+        if not os.path.exists(PRESET_TEXT_FILE_PATH):
+            initial_data = {cat: [] for cat in FIXED_TEXT_CATEGORIES}
+            with open(PRESET_TEXT_FILE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(initial_data, f, ensure_ascii=False, indent=4) 
 
     @classmethod
     def _load_presets(cls):
-        """
-        从文本文件中加载、解析和准备预设。
-        这个方法现在只负责读取文件，不再创建文件。
-        """
-        # 每次加载前清空旧数据
-        cls._presets_map.clear()
-        cls._preset_names.clear()
+        """从JSON文件中加载、解析和准备预设。"""
+        # 初始化 _categories_data 为空（或者默认结构），并清空 _indexed_category_preset_names
+        cls._categories_data = {cat: [] for cat in FIXED_TEXT_CATEGORIES}
+        for i in range(5):
+            cls._indexed_category_preset_names[i] = []
 
-        if not os.path.exists(PRESET_FILE_PATH):
-            # 如果文件不存在，只在下拉菜单中给一个提示
-            cls._preset_names.append("预设文件不存在 (请添加节点到画布以自动创建)")
-            cls._presets_map["预设文件不存在 (请添加节点到画布以自动创建)"] = ""
+        if not os.path.exists(PRESET_TEXT_FILE_PATH):
+            # 如果文件不存在，提供默认空状态
+            for i in range(5):
+                cls._indexed_category_preset_names[i].append("")
             return
 
         try:
-            with open(PRESET_FILE_PATH, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
+            with open(PRESET_TEXT_FILE_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             
-            for line in lines:
-                line = line.strip()
-                # 跳过空行或以'#'开头的注释行
-                if not line or line.startswith('#'):
-                    continue
-                
-                parts = line.split('#-#', 1)
-                if len(parts) == 2:
-                    name = parts[0].strip()
-                    value = parts[1].strip()
-                    if name:  # 确保名称不为空
-                        cls._presets_map[name] = value
-                        cls._preset_names.append(name)
-            
-            # 如果加载后列表仍为空，提供一个提示选项
-            if not cls._preset_names:
-                cls._preset_names.append("文件为空或格式错误")
-                cls._presets_map["文件为空或格式错误"] = ""
+            if not isinstance(data, dict):
+                raise ValueError("JSON文件根目录不是一个字典。")
 
-        except Exception as e:
+            # 将加载的数据填充到cls._categories_data，并确保包含所有固定分类
+            for cat_name in FIXED_TEXT_CATEGORIES:
+                cls._categories_data[cat_name] = data.get(cat_name, [])
+
+            # 填充 _indexed_category_preset_names
+            for i, cat_name in enumerate(FIXED_TEXT_CATEGORIES):
+                presets_list = cls._categories_data.get(cat_name, [])
+                preset_names_for_category = [p.get("name") for p in presets_list if isinstance(p, dict) and "name" in p]
+                
+                if not preset_names_for_category:
+                    cls._indexed_category_preset_names[i].append("无")
+                else:
+                    cls._indexed_category_preset_names[i] = sorted(preset_names_for_category)
+
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
             print(f"ZML_PresetText 错误: 无法加载预设文件: {e}")
-            cls._preset_names = ["错误：无法加载文件"]
-            cls._presets_map = {"错误：无法加载文件": ""}
+            for i in range(5):
+                cls._indexed_category_preset_names[i] = ["错误：无法加载文件"]
     
     @classmethod
     def INPUT_TYPES(cls):
-        # 加载预设以填充下拉菜单
-        cls._load_presets()
-        return {
+        # 每次 INPUT_TYPES 调用时重新加载预设，以确保下拉列表最新
+        cls._load_presets() 
+        
+        # 为五个预设类别创建输入
+        inputs = {
             "required": {
-                "预设": (cls._preset_names, ),
+                FIXED_TEXT_CATEGORIES[0]: (cls._indexed_category_preset_names[0],),
+                FIXED_TEXT_CATEGORIES[1]: (cls._indexed_category_preset_names[1],),
+                FIXED_TEXT_CATEGORIES[2]: (cls._indexed_category_preset_names[2],),
+                FIXED_TEXT_CATEGORIES[3]: (cls._indexed_category_preset_names[3],),
+                FIXED_TEXT_CATEGORIES[4]: (cls._indexed_category_preset_names[4],),
             }
         }
+        return inputs
     
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("文本", "help")
-    FUNCTION = "get_text"
+    # 只有一个输出接口 "合并文本"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("合并文本",)
+    FUNCTION = "get_combined_text"
     CATEGORY = "image/ZML_图像/文本"
 
-    def get_text(self, 预设):
-        # 从已加载的映射中获取输出文本
-        output_text = self._presets_map.get(预设, "")
-        help_text = "你好~欢迎使用ZML节点~\n此节点会读取‘ComfyUI-ZML-Image\\zml_w\\txt\\Preset text\\Preset text.txt’文件，会将文本的每一行都算为一个选项，文本由‘#-#’分割，前面的作为下拉选项的显示名称，后面的作为输出的文本，随便试试应该就可以搞明白了。\n祝你生活愉快，天天开心~"
-        return (output_text, help_text)
+    def get_combined_text(self, 预设1, 预设2, 预设3, 预设4, 预设5):
+        combined_texts = []
+        selected_preset_names_by_category = {
+            "预设1": 预设1,
+            "预设2": 预设2,
+            "预设3": 预设3,
+            "预设4": 预设4,
+            "预设5": 预设5,
+        }
+
+        # 遍历每个固定分类，获取其选中的预设值
+        for category_idx, category_name in enumerate(FIXED_TEXT_CATEGORIES):
+            selected_preset_name = selected_preset_names_by_category[category_name]
+            
+            if selected_preset_name.startswith(("没有预设", "错误：无法加载")):
+                continue # 跳过占位符或错误项
+            
+            # 在对应分类下找到预设内容
+            found_value = ""
+            presets_in_category = self._categories_data.get(category_name, [])
+            for preset_item in presets_in_category:
+                if isinstance(preset_item, dict) and preset_item.get("name") == selected_preset_name:
+                    found_value = preset_item.get("value", "")
+                    break
+            
+            if found_value:
+                combined_texts.append(found_value)
+        
+        return (" ".join(combined_texts).strip(),) # 将所有文本用空格连接，并去除首尾空格
+
 
 # ============================== 图片转HTML节点 ==============================
 class ZML_ImageToHTML:
@@ -251,8 +279,8 @@ class ZML_ImageToHTML:
     def INPUT_TYPES(cls):
         return {
             "optional": {
-                "图像": ("IMAGE", {}),  # 图像作为可选输入
-                "附加图像": ("IMAGE", {}),  # 附加图像作为可选输入
+                "图像": ("IMAGE", {}), # 图像作为可选输入
+                "附加图像": ("IMAGE", {}), # 附加图像作为可选输入
             },
             "required": {
                 "文件名": ("STRING", {"default": "", "placeholder": "HTML文件名（不带扩展名）"}),
@@ -346,9 +374,9 @@ class ZML_ImageToHTML:
             image_array = image_array.transpose(1, 2, 0)
         
         # 转换为PIL图像
-        if image_array.shape[-1] == 4:  # RGBA
+        if image_array.shape[-1] == 4: # RGBA
             return Image.fromarray(image_array, 'RGBA')
-        else:  # RGB
+        else: # RGB
             return Image.fromarray(image_array, 'RGB')
     
     def create_gif(self, image_tensors, duration, max_size=0):
@@ -429,19 +457,11 @@ class ZML_ImageToHTML:
             print(f"图像转换失败: {str(e)}")
             return ""
     
-    def convert_to_html(self, 图像=None, **kwargs):
+    def convert_to_html(self, 图像=None, 附加图像=None, 文件名="", 保存路径="", 纯图片输出="禁用", 标题="", 附加图像分辨率="200*200", GIF帧率=16):
         """将图像转换为HTML文件（支持GIF合成）"""
-        # 从kwargs中获取其他参数
-        文件名 = kwargs.get("文件名", "")
-        保存路径 = kwargs.get("保存路径", "")
-        纯图片输出 = kwargs.get("纯图片输出", "禁用")
-        标题 = kwargs.get("标题", "")
-        附加图像 = kwargs.get("附加图像", None)
-        附加图像分辨率 = kwargs.get("附加图像分辨率", "200*200")
-        gif帧率 = kwargs.get("GIF帧率", 16)  # 获取GIF帧率
         
         # 计算帧间隔时间（毫秒）
-        frame_duration = int(1000 / gif帧率) if gif帧率 > 0 else 100
+        frame_duration = int(1000 / GIF帧率) if GIF帧率 > 0 else 100
         
         # 解析附加图像分辨率
         try:
@@ -463,7 +483,6 @@ class ZML_ImageToHTML:
         
         # 确定文件名
         if not sanitized_filename:
-            # 使用当前时间作为文件名
             sanitized_filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         html_filename = sanitized_filename + ".html"
         full_path = os.path.join(save_path, html_filename)
@@ -477,11 +496,9 @@ class ZML_ImageToHTML:
             is_gif = False
             
             if 图像.size(0) > 1:
-                # 多张图像 - 创建GIF
                 base64_str = self.create_gif(图像, frame_duration)
                 is_gif = True
             else:
-                # 单张图像
                 image_tensor = 图像[0]
                 base64_str = self.image_to_base64(image_tensor, max_size=0)
             
@@ -489,21 +506,17 @@ class ZML_ImageToHTML:
             extra_image_html = ""
             if 附加图像 is not None and 附加图像.size(0) > 0 and 纯图片输出 == "禁用":
                 if 附加图像.size(0) > 1:
-                    # 多张附加图像 - 创建GIF
                     extra_base64 = self.create_gif(附加图像, frame_duration, max_size=max_logo_size)
                 else:
-                    # 单张附加图像
                     extra_image_tensor = 附加图像[0]
                     extra_base64 = self.image_to_base64(extra_image_tensor, max_size=max_logo_size)
                 
-                # 创建附加图像HTML
                 extra_image_html = f"""
         <div class="logo-container">
             <img src="data:image/{'gif' if 附加图像.size(0) > 1 else 'png'};base64,{extra_base64}" alt="附加图像">
         </div>"""
             
             if 纯图片输出 == "启用":
-                # 纯图片模式 - 只有图片
                 html_content = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -514,10 +527,8 @@ class ZML_ImageToHTML:
 </body>
 </html>"""
             else:
-                # 处理标题（限制30字符，转义特殊字符）
                 sanitized_title = html.escape(标题[:30]) if 标题 else ""
                 
-                # 包含提示信息的模式
                 html_content = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -598,11 +609,9 @@ class ZML_ImageToHTML:
 </body>
 </html>"""
             
-            # 保存HTML文件
             with open(final_path, "w", encoding="utf-8") as f:
                 f.write(html_content)
             
-            # 返回输出接口值
             return {"result": (help_output,)}
         
         except Exception as e:
@@ -633,7 +642,6 @@ class ZML_GIFLoader:
         """加载GIF文件并分解为图像序列"""
         help_output = "你好，欢迎使用ZML节点~\n你需要使用文件路径而非文件夹路径来指定GIF文件，此节点会自动拆分指定的GIF文件并输出图像和帧率，且会自动处理透明通道，此节点与图片转HTML节点一起使用效果最佳~\n祝你生活愉快~天天开心~"
         
-        # 清理文件路径
         文件路径 = 文件路径.strip().strip('"').strip("'")
         
         if not 文件路径:
@@ -643,50 +651,39 @@ class ZML_GIFLoader:
             return (torch.zeros(0), 0, help_output)
         
         try:
-            # 打开GIF文件
             gif = Image.open(文件路径)
             
-            # 获取帧率信息
             frame_duration = 100
             try:
-                # 尝试获取第一帧的持续时间
                 frame_duration = gif.info.get('duration', 100)
                 if frame_duration == 0:
                     frame_duration = 100
             except:
                 frame_duration = 100
             
-            # 计算帧率 (帧/秒)
             fps = max(1, min(60, int(1000 / frame_duration)))
             
-            # 提取所有帧
             frames = []
             frame_count = 0
             while True:
                 try:
-                    # 转换为RGBA模式以处理透明度
                     frame = gif.convert("RGBA")
                     
-                    # 转换为RGB模式（去除透明度）
                     rgb_frame = Image.new("RGB", frame.size, (255, 255, 255))
-                    rgb_frame.paste(frame, mask=frame.split()[3])  # 使用alpha通道作为mask
+                    rgb_frame.paste(frame, mask=frame.split()[3]) 
                     
-                    # 转换为numpy数组
                     frame_array = np.array(rgb_frame).astype(np.float32) / 255.0
                     frame_tensor = torch.from_numpy(frame_array)[None,]
                     frames.append(frame_tensor)
                     
-                    # 移动到下一帧
                     frame_count += 1
                     gif.seek(frame_count)
                 except EOFError:
                     break
             
-            # 如果没有提取到帧
             if not frames:
                 return (torch.zeros(0), fps, help_output)
             
-            # 合并所有帧
             images = torch.cat(frames, dim=0)
             
             return (images, fps, help_output)
@@ -750,7 +747,6 @@ class ZML_DualIntegerV2:
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
-        # 强制节点在每次执行时都重新运行，以确保随机性
         return float("nan")
 
     def get_dimensions(self, 预设宽, 预设高, 索引值, 随机宽高对应):
@@ -771,34 +767,26 @@ class ZML_DualIntegerV2:
             except ValueError:
                 pass
 
-        # 提供一个默认的回退值
         preset_width = 1024
         preset_height = 1024
         
         use_random = True
-        # --- 根据索引值决定是索引还是随机 ---
         if 索引值 > 0 and valid_widths and valid_heights:
-            # 将1-based索引转换为0-based
             actual_index = 索引值 - 1
             
-            # 检查索引是否在两个列表的有效范围内
             if actual_index < len(valid_widths) and actual_index < len(valid_heights):
                 preset_width = valid_widths[actual_index]
                 preset_height = valid_heights[actual_index]
-                use_random = False # 找到了有效索引，不再随机
+                use_random = False
 
-        # --- 如果需要随机 (索引为0或超出范围) ---
         if use_random:
             if 随机宽高对应 and valid_widths and valid_heights:
-                # 开启对应模式，且两个列表都有效
-                # 使用较短的列表长度作为随机范围，以避免索引越界
                 min_len = min(len(valid_widths), len(valid_heights))
                 if min_len > 0:
                     rand_index = random.randint(0, min_len - 1)
                     preset_width = valid_widths[rand_index]
                     preset_height = valid_heights[rand_index]
             else:
-                # 独立随机模式（或当任一列表无效时的后备模式）
                 if valid_widths:
                     preset_width = random.choice(valid_widths)
                 if valid_heights:
@@ -853,21 +841,18 @@ class ZML_DualIntegerV3:
 
         # -- 新的判断逻辑 --
         if abs(宽 - 高) <= 阈值:
-            # 当宽高差小于等于阈值时，视为“相等”
             out_w = widths[1]
             out_h = heights[1]
             out_int = 2
             out_float = 2.0
             out_bool = True
         elif 宽 < 高:
-            # 视为“小于”
             out_w = widths[0]
             out_h = heights[0]
             out_int = 1
             out_float = 1.0
             out_bool = True
         else: # 宽 > 高
-            # 视为“大于”
             out_w = widths[2]
             out_h = heights[2]
             out_int = 3
@@ -883,9 +868,7 @@ class ZML_SequentialIntegerLoader:
     按顺序、间隔和范围加载一个整数，并在达到终点时循环。
     """
     def __init__(self):
-        # 找到包含 'zml_w' 的父目录，即 'ComfyUI-ZML-Image'
         node_dir = os.path.dirname(os.path.abspath(__file__))
-        # 在 'ComfyUI-ZML-Image' 根目录下创建 'zml_w/counter'
         self.counter_dir = os.path.join(node_dir, "counter")
         os.makedirs(self.counter_dir, exist_ok=True)
         self.counter_file = os.path.join(self.counter_dir, "顺序加载整数.txt")
@@ -907,20 +890,16 @@ class ZML_SequentialIntegerLoader:
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
-        # 强制每次都运行
         return float("nan")
 
     def load_sequentially(self, 起始数, 最终数, 间隔):
-        # 确保起始数不大于最终数
         if 起始数 > 最终数:
             起始数, 最终数 = 最终数, 起始数
         
-        # 确保间隔是正数
         间隔 = max(1, 间隔)
 
         current_params = {"start": 起始数, "end": 最终数, "step": 间隔}
         
-        # 尝试读取旧状态
         try:
             with open(self.counter_file, 'r', encoding='utf-8') as f:
                 state = json.load(f)
@@ -930,22 +909,16 @@ class ZML_SequentialIntegerLoader:
             last_value = None
             last_params = None
             
-        # 检查参数是否变化，如果变化则重置
         if current_params != last_params:
             next_value = 起始数
         else:
-            # 参数未变，继续计算
             if last_value is None or last_value >= 最终数:
-                # 如果没有记录或已达到终点，则从头开始
                 next_value = 起始数
             else:
-                # 加上间隔
                 next_value = last_value + 间隔
-                # 如果超过最终数，则取最终数
                 if next_value > 最终数:
                     next_value = 最终数
         
-        # 保存新状态
         new_state = {"current_value": next_value, "last_params": current_params}
         try:
             with open(self.counter_file, 'w', encoding='utf-8') as f:
@@ -979,113 +952,211 @@ class ZML_DualFloat:
         return (A, B)
 
 # ============================== 预设分辨率节点==============================
-# 定义预设分辨率文件的路径
 PRESET_RESOLUTION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset integer", "Preset integer.txt")
 
 class ZML_PresetResolution:
     """
     ZML 预设分辨率节点
-    从预设文件中加载分辨率选项 (宽,高)
+    从预设文件中加载分辨率选项 (名称_宽,高 或 宽,高)
     """
-    _resolutions_map = {}
-    _resolution_names = []
+    _resolutions_map = {} 
+    _resolution_display_names = [] 
+
+    def __init__(self):
+        preset_dir = os.path.dirname(PRESET_RESOLUTION_PATH)
+        if not os.path.exists(preset_dir):
+            os.makedirs(preset_dir, exist_ok=True)
+        # 如果文件不存在，创建只包含注释的空文件
+        if not os.path.exists(PRESET_RESOLUTION_PATH):
+            with open(PRESET_RESOLUTION_PATH, 'w', encoding='utf-8') as f:
+                f.write("# 这是注释行，将被忽略\n")
 
     @classmethod
     def _load_resolutions(cls):
         """从文本文件中加载、解析分辨率预设。"""
-        preset_dir = os.path.dirname(PRESET_RESOLUTION_PATH)
-        # 如果目录或文件不存在，则创建它们并填入默认内容
-        if not os.path.exists(preset_dir):
-            os.makedirs(preset_dir, exist_ok=True)
+        cls._resolutions_map.clear()
+        cls._resolution_display_names.clear()
+
         if not os.path.exists(PRESET_RESOLUTION_PATH):
-            with open(PRESET_RESOLUTION_PATH, 'w', encoding='utf-8') as f:
-                f.write("# 这是注释行，将被忽略\n")
-                f.write("1024,768\n")
-                f.write("768,1024\n")
+            cls._resolution_display_names.append("没有预设 (请添加)")
+            cls._resolutions_map["没有预设 (请添加)"] = (1024, 1024, "没有预设 (请添加)")
+            return
 
         try:
             with open(PRESET_RESOLUTION_PATH, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
-
-            # 每次加载前清空旧数据
-            cls._resolutions_map.clear()
-            cls._resolution_names.clear()
-
-            for line in lines:
-                line = line.strip()
-                # 跳过空行或以'#'开头的注释行
+            
+            for original_line in lines:
+                line = original_line.strip()
                 if not line or line.startswith('#'):
                     continue
+                
+                width = None
+                height = None
+                display_name = None
+                raw_file_string = line 
 
-                parts = line.split(',')
-                if len(parts) == 2:
+                match_named = re.match(r"(?P<name>[^_]+)_(?P<width>\d+),(?P<height>\d+)", line)
+                if match_named:
                     try:
-                        # 将字符串转换为整数
-                        width = int(parts[0].strip())
-                        height = int(parts[1].strip())
-                        # 创建显示名称，例如 "1024x768"
-                        name = f"{width}x{height}"
-                        # 存储预设
-                        if name not in cls._resolution_names: # 避免重复名称
-                            cls._resolutions_map[name] = (width, height)
-                            cls._resolution_names.append(name)
+                        name = match_named.group("name").strip()
+                        width = int(match_named.group("width"))
+                        height = int(match_named.group("height"))
+                        display_name = f"{name}_{width}x{height}"
                     except ValueError:
-                        # 如果转换失败，则忽略此行
-                        print(f"ZML_PresetResolution 警告: 忽略格式错误的行: {line}")
+                        print(f"ZML_PresetResolution 警告: 忽略格式错误的行 (非整数宽高): {line}")
                         continue
+                else:
+                    parts = line.split(',', 1) 
+                    if len(parts) == 2:
+                        try:
+                            width = int(parts[0].strip())
+                            height = int(parts[1].strip())
+                            display_name = f"{width}x{height}" 
+                        except ValueError:
+                            print(f"ZML_PresetResolution 警告: 忽略格式错误的行 (非整数宽高): {line}")
+                            continue
+                    else:
+                        print(f"ZML_PresetResolution 警告: 忽略无法解析的行: {line}")
+                        continue
+                
+                if width is not None and height is not None and display_name is not None:
+                    if display_name not in cls._resolution_display_names: 
+                        cls._resolutions_map[display_name] = (width, height, raw_file_string)
+                        cls._resolution_display_names.append(display_name)
 
-            # 如果加载后列表仍为空，提供一个提示选项
-            if not cls._resolution_names:
-                cls._resolution_names.append("文件为空或格式错误")
-                cls._resolutions_map["文件为空或格式错误"] = (1024, 1024)
+            if not cls._resolution_display_names:
+                cls._resolution_display_names.append("没有预设 (请添加)")
+                cls._resolutions_map["没有预设 (请添加)"] = (1024, 1024, "没有预设 (请添加)")
 
         except Exception as e:
             print(f"ZML_PresetResolution 错误: 无法加载预设文件: {e}")
-            cls._resolution_names = ["错误：无法加载文件"]
-            cls._resolutions_map = {"错误：无法加载文件": (1024, 1024)}
+            cls._resolution_display_names = ["错误：无法加载文件"]
+            cls._resolutions_map = {"错误：无法加载文件": (1024, 1024, "错误：无法加载文件")}
 
     @classmethod
     def INPUT_TYPES(cls):
-        # 加载预设以填充下拉菜单
         cls._load_resolutions()
         return {
             "required": {
-                "预设": (cls._resolution_names, ),
+                "预设": (cls._resolution_display_names, {"default": cls._resolution_display_names[0] if cls._resolution_display_names else "没有预设 (请添加)"}),
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "STRING")
-    RETURN_NAMES = ("宽", "高", "help")
+    RETURN_TYPES = ("INT", "INT", "LATENT")
+    RETURN_NAMES = ("宽", "高", "latent")
     FUNCTION = "get_resolution"
     CATEGORY = "image/ZML_图像/整数"
 
     def get_resolution(self, 预设):
-        # 从已加载的映射中获取宽和高
-        width, height = self._resolutions_map.get(预设, (1024, 1024))
-        help_text = "你好~欢迎使用ZML节点~\n此节点会读取 ‘/txt/Preset integer/Preset integer.txt’ 的文件。\n文件格式为“宽,高”，例如“1024,768”，每行一个分辨率。\n你可以通过点击“添加预设”按钮来快捷添加新的分辨率。\n祝你生活愉快，天天开心~"
-        return (width, height, help_text)
+        width, height, _ = self._resolutions_map.get(预设, (1024, 1024, "没有预设 (请添加)"))
+        
+        latent = torch.zeros([1, 4, height // 8, width // 8], device="cpu") 
+        latent_dict = {"samples": latent}
+        
+        return (width, height, latent_dict)
 
 # ============================== API 路由（用于处理前端的添加预设请求）==============================
-@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/add_preset")
-async def add_preset_route(request):
-    """处理前端的文本预设添加请求"""
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/get_fixed_text_categories")
+async def get_fixed_text_categories_route(request):
+    """获取所有固定文本预设分类名"""
+    return web.json_response({"categories": FIXED_TEXT_CATEGORIES}, status=200)
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/get_text_presets_in_category")
+async def get_text_presets_in_category_route(request):
+    """获取指定分类下的预设名"""
     try:
         data = await request.json()
-        name = data.get("name")
-        value = data.get("value")
-        separator = data.get("separator", "#-#")
-        
-        if not name or not value:
-            return web.Response(status=400, text="名称和内容不能为空")
+        category_name = data.get("category_name")
+        if not category_name or category_name not in FIXED_TEXT_CATEGORIES:
+            return web.json_response({"presets": ["选择无效分类"]}, status=400)
 
-        new_preset_line = f"\n{name} {separator} {value}"
+        ZML_PresetText._load_presets() # 重新加载以确保最新
+        presets_list = ZML_PresetText._categories_data.get(category_name, [])
+        preset_names = [p.get("name") for p in presets_list if p.get("name")]
         
-        # 写入预设文件
-        with open(PRESET_FILE_PATH, 'a', encoding='utf-8') as f:
-            f.write(new_preset_line)
+        if not preset_names :
+             preset_names = ["没有预设 (请添加)"]
 
-        return web.Response(status=200, text="预设已成功添加")
+        return web.json_response({"presets": preset_names}, status=200)
     except Exception as e:
+        return web.Response(status=500, text=f"无法获取分类预设: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/add_text_preset")
+async def add_text_preset_route(request):
+    """处理前端的文本预设添加请求 (针对固定分类)"""
+    try:
+        data = await request.json()
+        category_name = data.get("category_name").strip()
+        preset_name = data.get("preset_name").strip()
+        preset_value = data.get("preset_value").strip()
+        
+        if not category_name or category_name not in FIXED_TEXT_CATEGORIES or not preset_name or not preset_value:
+            return web.Response(status=400, text="分类名、预设名称和内容不能为空，且分类名必须是固定类别之一。")
+
+        # 确保目录存在
+        preset_dir = os.path.dirname(PRESET_TEXT_FILE_PATH)
+        os.makedirs(preset_dir, exist_ok=True)
+
+        ZML_PresetText._load_presets() # 确保加载最新数据
+        current_data = ZML_PresetText._categories_data # 获取当前数据
+
+        if category_name not in current_data: # 这不应该发生，因为我们初始化了所有固定分类
+            current_data[category_name] = [] 
+        
+        # 检查预设名称是否已存在于该分类下
+        existing_names = {p.get("name") for p in current_data[category_name] if p.get("name")}
+        if preset_name in existing_names:
+            return web.Response(status=409, text=f"该分类下已存在名为 '{preset_name}' 的预设。")
+
+        current_data[category_name].append({"name": preset_name, "value": preset_value})
+
+        with open(PRESET_TEXT_FILE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(current_data, f, ensure_ascii=False, indent=4)
+
+        return web.Response(status=200, text="文本预设已成功添加")
+    except Exception as e:
+        print(f"添加文本预设错误: {e}")
+        return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/delete_text_preset")
+async def delete_text_preset_route(request):
+    """处理前端的文本预设删除请求 (针对固定分类)"""
+    try:
+        data = await request.json()
+        category_name = data.get("category_name").strip()
+        preset_name = data.get("preset_name").strip()
+
+        if not category_name or category_name not in FIXED_TEXT_CATEGORIES or not preset_name:
+            return web.Response(status=400, text="分类名和预设名称不能为空，且分类名必须是固定类别之一。")
+        
+        # 确保目录存在
+        preset_dir = os.path.dirname(PRESET_TEXT_FILE_PATH)
+        os.makedirs(preset_dir, exist_ok=True)
+
+        ZML_PresetText._load_presets() # 确保加载最新数据
+        current_data = ZML_PresetText._categories_data # 获取当前数据
+
+        if category_name not in current_data:
+            return web.Response(status=404, text=f"未找到分类: '{category_name}'")
+        
+        original_length = len(current_data[category_name])
+        # 过滤掉要删除的预设
+        current_data[category_name] = [
+            p for p in current_data[category_name] 
+            if not (isinstance(p, dict) and p.get("name") == preset_name)
+        ]
+
+        if len(current_data[category_name]) == original_length: # 如果列表长度没变，说明没找到
+            return web.Response(status=404, text=f"在分类 '{category_name}' 中未找到名为 '{preset_name}' 的预设。")
+            
+        with open(PRESET_TEXT_FILE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(current_data, f, ensure_ascii=False, indent=4)
+
+        return web.Response(status=200, text="文本预设已成功删除")
+    except Exception as e:
+        print(f"删除文本预设错误: {e}")
         return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
 
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/add_resolution_preset")
@@ -1093,29 +1164,95 @@ async def add_resolution_preset_route(request):
     """处理前端的分辨率预设添加请求"""
     try:
         data = await request.json()
+        preset_name = data.get("preset_name") 
         width = data.get("width")
         height = data.get("height")
 
         if not width or not height:
             return web.Response(status=400, text="宽度和高度不能为空")
 
-        # 验证输入是否为有效的整数
         try:
             int(width)
             int(height)
         except ValueError:
             return web.Response(status=400, text="宽度和高度必须是整数")
-
-        new_resolution_line = f"\n{width},{height}"
         
-        # 写入分辨率预设文件
+        # 确保目录存在
+        preset_dir = os.path.dirname(PRESET_RESOLUTION_PATH)
+        os.makedirs(preset_dir, exist_ok=True)
+
+        if preset_name:
+            new_resolution_line = f"\n{preset_name}_{width},{height}" 
+        else:
+            new_resolution_line = f"\n{width},{height}" 
+        
         with open(PRESET_RESOLUTION_PATH, 'a', encoding='utf-8') as f:
             f.write(new_resolution_line)
 
         return web.Response(status=200, text="分辨率预设已成功添加")
     except Exception as e:
         return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/delete_resolution_preset")
+async def delete_resolution_preset_route(request):
+    """处理前端的分辨率预设删除请求"""
+    try:
+        data = await request.json()
+        display_name_to_delete = data.get("display_name") 
+
+        if not display_name_to_delete:
+            return web.Response(status=400, text="要删除的预设名称不能为空")
         
+        # 确保目录存在
+        preset_dir = os.path.dirname(PRESET_RESOLUTION_PATH)
+        os.makedirs(preset_dir, exist_ok=True)
+
+        ZML_PresetResolution._load_resolutions()
+        
+        original_entry_tuple = ZML_PresetResolution._resolutions_map.get(display_name_to_delete)
+        if not original_entry_tuple:
+            return web.Response(status=404, text=f"未找到预设: {display_name_to_delete}")
+        
+        raw_file_string_to_delete = original_entry_tuple[2] 
+
+        updated_lines = []
+        found = False
+        with open(PRESET_RESOLUTION_PATH, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            stripped_line = line.strip()
+            if stripped_line == raw_file_string_to_delete:
+                found = True
+                continue 
+            updated_lines.append(line)
+        
+        if not found:
+            return web.Response(status=404, text=f"在文件中未找到匹配项: '{display_name_to_delete}' (原始文件行: '{raw_file_string_to_delete}')")
+
+        if not updated_lines:
+            with open(PRESET_RESOLUTION_PATH, 'w', encoding='utf-8') as f:
+                 f.write("# 这是注释行，将被忽略\n") 
+        else:
+            cleaned_lines = []
+            for i, line in enumerate(updated_lines):
+                if line.strip() or i == 0 or (i > 0 and cleaned_lines and cleaned_lines[-1].strip()):
+                    cleaned_lines.append(line.rstrip('\n'))
+            
+            final_output = []
+            for i, line in enumerate(cleaned_lines):
+                if i < len(cleaned_lines) - 1 and line.strip(): 
+                    final_output.append(line + '\n')
+                else: 
+                    final_output.append(line) 
+
+            with open(PRESET_RESOLUTION_PATH, 'w', encoding='utf-8') as f:
+                 f.writelines(final_output)
+
+        return web.Response(status=200, text="分辨率预设已成功删除")
+    except Exception as e:
+        return web.Response(status=500, text=f"处理删除请求时发生错误: {str(e)}")
+
 
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
