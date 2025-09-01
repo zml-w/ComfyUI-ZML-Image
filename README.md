@@ -4,12 +4,16 @@
 
 </div>
 
-# 🥰 简单介绍一下节点：
+# 💕简单介绍一下节点：
 **这是一个功能丰富的COMFYUI自定义节点，主要和“图像、文本、整数、LoRA加载器、遮罩”相关，还有一些杂七杂八的小工具。目前节点总数共有50+，一般情况下每隔两天都会有新的节点增加。**
 
 `我是按照自己的需求来开发的`
 
-## 版本更新介绍
+`部分节点有“help”输出接口，里面写着节点的详细介绍，没有help的还不知道怎么用的可以看以前的版本更新介绍。`
+
+ `节点名称全部以“ZML_”开头，并且全部放在“图像/ZML_图像”分类下。`
+
+## ✨版本更新文字介绍
 
 > ### 最新更新日期： **2025.09.02**
 
@@ -212,38 +216,24 @@
 
 </details>
 
+## ✨图像展示更新节点
+
 <details>
 <summary>点击查看更新节点图像</summary>
 
 > ### 更新日期： **2025.09.02**
 
-> - <img width="1782" height="869" alt="2" src="https://github.com/user-attachments/assets/54bd9449-4034-4b1b-abdc-87dfefb1a3c4" />
+> <img width="1782" height="869" alt="2" src="https://github.com/user-attachments/assets/54bd9449-4034-4b1b-abdc-87dfefb1a3c4" />
+> 
+> <img width="1048" height="925" alt="4" src="https://github.com/user-attachments/assets/1607ebfc-0e33-4818-9845-9aa366a19ee1" />
+> 
+> <img width="1722" height="912" alt="3" src="https://github.com/user-attachments/assets/1ff2e9ce-0d44-473d-bf42-2c9b14366265" />
+> 
+> <img width="1356" height="865" alt="1" src="https://github.com/user-attachments/assets/e4b1370b-130a-419c-b0c4-d94ada5283df" />
+>
 
-> - <img width="1048" height="925" alt="4" src="https://github.com/user-attachments/assets/1607ebfc-0e33-4818-9845-9aa366a19ee1" />
+> #### 早期的节点截图（小部分）
 
-> - <img width="1722" height="912" alt="3" src="https://github.com/user-attachments/assets/1ff2e9ce-0d44-473d-bf42-2c9b14366265" />
-
-> - <img width="1356" height="865" alt="1" src="https://github.com/user-attachments/assets/e4b1370b-130a-419c-b0c4-d94ada5283df" />
-
-</details>
-
-### `节点名称全部以“ZML_”开头，并且全部放在“图像/ZML_图像”分类下。`
-
-## 视频介绍：[点击访问](https://www.bilibili.com/video/BV1i4twzDELr/?spm_id_from=333.1007.0.0&vd_source=0134812498ce59b7f53810ad84889d12)
-
-### 附属脚本仓库：
-
-`这里放的是我做的一些小工具，有的是辅助节点使用，有的是提取的节点功能`
-
-`脚本都是独立运行的，而不是在comfyui中使用`
-
-- **https://github.com/zml-w/ZML-Image-Script/tree/main**
-
-#### 大部分节点都有“help”输出接口，里面写着节点的详细介绍，没写的基本上都是随便试试就知道怎么用的。
-
-<details>
-<summary>点击展开部分节点截图</summary>
-  
 > <img width="1632" height="875" alt="1" src="https://github.com/user-attachments/assets/77ccda88-1851-4948-a45b-2f42b46d7f53" />
 >
 > <img width="1601" height="784" alt="2" src="https://github.com/user-attachments/assets/21f9d0aa-834e-48dd-9384-584e0a215284" />
@@ -275,6 +265,21 @@
 > <img width="1290" height="760" alt="15" src="https://github.com/user-attachments/assets/5a520228-fe42-49c9-a43d-e545474254f4" />
 
 </details>
+
+
+## ✨视频介绍：[点击访问](https://www.bilibili.com/video/BV1i4twzDELr/?spm_id_from=333.1007.0.0&vd_source=0134812498ce59b7f53810ad84889d12)
+
+`介绍少，没更新视频`
+
+### 附属脚本仓库：
+
+`这里放的是我做的一些小工具，有的是辅助节点使用，有的是提取的节点功能`
+
+`脚本都是独立运行的，而不是在comfyui中使用`
+
+- **https://github.com/zml-w/ZML-Image-Script/tree/main**
+  
+
 
 ## 有一部分节点和功能是借鉴的别人的
 
