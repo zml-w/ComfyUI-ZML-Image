@@ -9,7 +9,7 @@ const IMAGE_HEIGHT = 384;
 // 定义强力LORA加载器推荐的最小宽度
 const POWER_LORA_LOADER_MIN_WIDTH = 460;
 
-// 新增：定义强力LORA加载器推荐的最小高度（仅当lora列表为空时使用）
+// 定义强力LORA加载器推荐的最小高度
 const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 300; // 根据实际测试调整，确保底部按钮不被裁切
 
 // 特殊路径标识符，用于表示“全部显示”模式
@@ -194,9 +194,8 @@ app.registerExtension({
                     box-shadow: 0 1px 3px rgba(0,0,0,0.3) inset;
                 }
 
-
-                /* Checkbox visual feedback */
-                input[type="checkbox"] {
+                /* --- 修正后的 Checkbox visual feedback: 选择器前添加 .zml-power-lora-loader-container 限制作用域 --- */
+                .zml-power-lora-loader-container input[type="checkbox"] {
                     cursor: pointer;
                     --checkbox-background: #444;
                     --checkbox-border: #666;
@@ -212,7 +211,7 @@ app.registerExtension({
                     transition: all 0.15s ease;
                     position: relative;
                 }
-                input[type="checkbox"]::before {
+                .zml-power-lora-loader-container input[type="checkbox"]::before {
                     content: "";
                     width: 0.65em;
                     height: 0.65em;
@@ -221,18 +220,18 @@ app.registerExtension({
                     box-shadow: inset 1em 1em var(--checkbox-checkmark);
                     clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
                 }
-                input[type="checkbox"]:checked::before {
+                .zml-power-lora-loader-container input[type="checkbox"]:checked::before {
                     transform: scale(1);
                 }
-                input[type="checkbox"]:hover {
+                .zml-power-lora-loader-container input[type="checkbox"]:hover {
                     border-color: #5d99f2;
                     box-shadow: 0 0 5px rgba(93, 153, 242, 0.4);
                 }
-                input[type="checkbox"]:checked:hover {
+                .zml-power-lora-loader-container input[type="checkbox"]:checked:hover {
                     border-color: #4CAF50;
                     box-shadow: 0 0 5px rgba(76, 175, 80, 0.4);
                 }
-                input[type="checkbox"]:checked {
+                .zml-power-lora-loader-container input[type="checkbox"]:checked {
                     background-color: #4CAF50;
                     border-color: #4CAF50;
                 }
@@ -977,7 +976,7 @@ app.registerExtension({
                 // --- 渲染面包屑导航 (路径) ---
                 if (!isShowingAllLoras && zmlBatchLoraCurrentPath.length > 0) { // 在非“全部显示”模式且不在根目录时显示返回按钮
                     const backButton = zmlCreateEl("a", { // 使用 zmlCreateEl
-                        textContent: "↩",
+                        textContent: "返回", // ✅ 修正：添加缺失的引号
                         href: "#",
                         title: "返回上一级",
                         style: `color: #e0e0e0; text-decoration: none; padding: 4px; border-radius: 3px; background-color: #4a515a; cursor: pointer; transition: background-color 0.2s; font-size: 13px;`
@@ -1792,7 +1791,8 @@ app.registerExtension({
                      const dataWidget = this.addWidget("text", "lora_loader_data", JSON.stringify(this.powerLoraLoader_data), (v) => { try { if(v) this.powerLoraLoader_data = JSON.parse(v); } catch(e){} }, { serialize: true });
                      dataWidget.hidden = true; dataWidget.computeSize = () => [0, 0];
 
-                     const container = zmlCreateEl("div"); // <-- 这里会调用到局部定义的 zmlCreateEl
+                     // *** 修改：为 container 添加 className，使其 CSS 样式被限定作用域 ***
+                     const container = zmlCreateEl("div", { className: "zml-power-lora-loader-container" }); 
                      container.style.cssText = `background: #2b2b2b; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; display: flex; flex-direction: column; padding: 6px;`;
 
                      const topControls = zmlCreateEl("div", { className: "zml-pll-controls-top" }); // <-- 这里会调用到局部定义的 zmlCreateEl
