@@ -1,4 +1,4 @@
-# custom_nodes/zml_w/zml_image_nodes.py
+# custom_nodes/ComfyUI-ZML-Image/zml_w/zml_image_nodes.py
 
 import server
 from aiohttp import web
@@ -13,6 +13,8 @@ import re
 import json
 import random
 import urllib.parse
+from pathlib import Path
+
 
 # ZML节点用于存储文本块的特定键名 (所有相关节点统一使用此常量)
 DEFAULT_TEXT_BLOCK_KEY = "comfy_text_block"
@@ -23,6 +25,10 @@ if hasattr(folder_paths, 'supported_image_extensions'):
 else:
     # 兼容旧版本ComfyUI
     supported_image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp']
+
+# 获取ComfyUI的根目录 (用于处理相对路径)
+COMFYUI_ROOT = Path(folder_paths.base_path).resolve()
+
 
 # ============================== 保存图像节点 (使用PNG文本块存储) ==============================
 class ZML_SaveImage:
@@ -117,18 +123,18 @@ class ZML_SaveImage:
         if not path:
             return self.output_dir
         
-        if os.path.isabs(path):
-            return path
+        # 使用 pathlib 规范化路径处理
+        full_path = Path(path)
+        if not full_path.is_absolute():
+            full_path = COMFYUI_ROOT / full_path # 相对于ComfyUI根目录
         
-        comfyui_root = os.path.dirname(self.output_dir)
-        full_path = os.path.join(comfyui_root, path)
-        return full_path
+        return str(full_path.resolve()) # 返回解析后的绝对路径字符串
     
     def ensure_directory(self, path):
         """确保目录存在"""
         try:
-            if not os.path.exists(path):
-                os.makedirs(path, exist_ok=True)
+            # 使用 pathlib.Path().mkdir
+            Path(path).mkdir(parents=True, exist_ok=True)
             return path
         except Exception:
             return self.output_dir
@@ -208,7 +214,7 @@ class ZML_SaveImage:
             except Exception:
                 total_count = 0
 
-        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n默认的保存路径是在output文件夹下新建一个‘ZML’文件夹，然后根据当前的日期再创建一个子文件夹来保存图像。如果清空路径，则默认保存在output文件里。自定义路径支持保存到comfyui外的文件夹里。\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#000001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
+        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n默认的保存路径是在output文件夹下新建一个‘ZML’文件夹，然后根据当前的日期再创建一个子文件夹来保存图像。如果清空路径，则默认保存在output文件里。自定义路径支持保存到comfyui外的文件夹里。\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#00001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
         
         # 定义一个占位图像，用于不保存时的返回
         placeholder_image = torch.ones((1, 1, 1, 3), dtype=torch.float32)
@@ -242,11 +248,17 @@ class ZML_SaveImage:
         
         # 根据操作模式设置保存路径和UI类型
         if 操作模式 == "仅预览图像":
-            save_path = folder_paths.get_temp_directory()
+            # 预览图像也需要确保路径在ComfyUI根目录下，否则前端无法根据相对路径请求
+            temp_dir = folder_paths.get_temp_directory()
+            # 确保 temp_dir 是在 COMFYUI_ROOT 下的
+            if not Path(temp_dir).resolve().is_relative_to(COMFYUI_ROOT):
+                temp_dir = str(COMFYUI_ROOT / "temp") # 如果temp不在ComfyUI根下，将其设定到根下的temp
+                Path(temp_dir).mkdir(parents=True, exist_ok=True)
+            save_path = temp_dir
             ui_type = "temp"
         else:
             save_path = self.ensure_directory(self.format_path(保存路径))
-            ui_type = "output"
+            ui_type = "output" # 这里假定 output/temp 作为基准目录
 
         result_paths = []
         saved_txt_files = []  # 保存的txt文件列表
@@ -366,44 +378,35 @@ class ZML_SaveImage:
                     with open(unique_txt_path, "w", encoding="utf-8") as f:
                         f.write(txt_content_to_save)
                     
+                    # 计算txt文件的相对路径
+                    txt_rel_path = Path(unique_txt_path).relative_to(COMFYUI_ROOT)
                     saved_txt_files.append({
-                        "filename": os.path.basename(unique_txt_path),
-                        "subfolder": os.path.relpath(os.path.dirname(unique_txt_path), self.output_dir).replace("\\", "/"),
-                        "type": "output"
+                        "filename": txt_rel_path.name,
+                        "subfolder": str(txt_rel_path.parent).replace("\\", "/"),
+                        "type": "custom" # 表示是用户自定义路径，但最终会通过ComfyUI的serve_file接口处理
                     })
                 
-                # 计算预览路径
+                # 计算图片预览路径
                 try:
-                    # 获取文件的基本信息
-                    file_basename = os.path.basename(final_image_path)
-                    file_dir = os.path.dirname(final_image_path)
-                    
-                    # 计算相对路径
-                    base_dir_for_relpath = self.output_dir if ui_type == "output" else folder_paths.get_temp_directory()
-                    
-                    # 确保路径是绝对的，以进行安全比较
-                    abs_file_dir = os.path.abspath(file_dir)
-                    abs_base_dir = os.path.abspath(base_dir_for_relpath)
-
-                    rel_dir = ""
-                    if abs_file_dir.startswith(abs_base_dir):
-                        rel_dir = os.path.relpath(abs_file_dir, abs_base_dir)
-
-                    # 标准化路径分隔符
-                    rel_dir = rel_dir.replace("\\", "/")
-                    if rel_dir == ".":
-                        rel_dir = ""
-                    
-                    # 添加到结果列表
-                    result_paths.append({
-                        "filename": file_basename,
-                        "subfolder": rel_dir,
-                        "type": ui_type
-                    })
-                except Exception:
+                    # 为了让 ComfyUI 的前端能够正确显示，需要将路径转换为相对于 COMFYUI_ROOT 的路径。
+                    # 如果存储路径不在 COMFYUI_ROOT 及其内部，则无法通过标准的 ComfyUI 接口预览。
+                    # 这里假设我们只预览在 COMFYUI_ROOT 内部的图片
+                    abs_file_path = Path(final_image_path).resolve()
+                    if abs_file_path.is_relative_to(COMFYUI_ROOT):
+                        rel_path_from_comfy = abs_file_path.relative_to(COMFYUI_ROOT)
+                        result_paths.append({
+                            "filename": rel_path_from_comfy.name,
+                            "subfolder": str(rel_path_from_comfy.parent).replace("\\", "/"),
+                            "type": "custom" # 指示前端这是自定义路径
+                        })
+                    else:
+                        print(f"警告: 图像 '{final_image_path}' 不在ComfyUI根目录内，无法通过标准接口预览。")
+                except Exception as e:
+                    print(f"无法计算图像预览路径: {e}")
                     pass
                 
-            except Exception:
+            except Exception as e:
+                print(f"保存图像失败: {e}")
                 pass
         
         # 返回输出接口值
@@ -425,7 +428,7 @@ class ZML_SaveImage:
                     {
                         "filename": t["filename"],
                         "subfolder": t["subfolder"],
-                        "type": "output"
+                        "type": "custom" # txt文件也作为custom类型返回
                     } for t in saved_txt_files
                 ]
             
@@ -519,17 +522,18 @@ class ZML_SimpleSaveImage:
             path = path[2:]
         if not path:
             return self.output_dir
-        if os.path.isabs(path):
-            return path
-        comfyui_root = os.path.dirname(self.output_dir)
-        full_path = os.path.join(comfyui_root, path)
-        return full_path
+        
+        # 使用 pathlib 规范化路径处理
+        full_path = Path(path)
+        if not full_path.is_absolute():
+            full_path = COMFYUI_ROOT / full_path # 相对于ComfyUI根目录
+        
+        return str(full_path.resolve()) # 返回解析后的绝对路径字符串
 
     def ensure_directory(self, path):
         """确保目录存在"""
         try:
-            if not os.path.exists(path):
-                os.makedirs(path, exist_ok=True)
+            Path(path).mkdir(parents=True, exist_ok=True)
             return path
         except Exception:
             return self.output_dir
@@ -593,11 +597,15 @@ class ZML_SimpleSaveImage:
 
         # 根据操作模式设置保存路径和UI类型
         if 操作模式 == "仅预览图像":
-            save_path = folder_paths.get_temp_directory()
+            temp_dir = folder_paths.get_temp_directory()
+            if not Path(temp_dir).resolve().is_relative_to(COMFYUI_ROOT):
+                temp_dir = str(COMFYUI_ROOT / "temp")
+                Path(temp_dir).mkdir(parents=True, exist_ok=True)
+            save_path = temp_dir
             ui_type = "temp"
         else:
             save_path = self.ensure_directory(self.format_path(full_save_path_str))
-            ui_type = "output"
+            ui_type = "output" # 这里假定 output/temp 作为基准目录
 
         result_paths = []
         filename_prefix = "ZML"
@@ -648,20 +656,17 @@ class ZML_SimpleSaveImage:
                 pil_image.save(final_image_path, pnginfo=metadata, compress_level=4)
                 
                 # 准备用于UI预览的结果
-                file_basename = os.path.basename(final_image_path)
-                file_dir = os.path.dirname(final_image_path)
-                base_dir_for_relpath = self.output_dir if ui_type == "output" else folder_paths.get_temp_directory()
-                abs_file_dir = os.path.abspath(file_dir)
-                abs_base_dir = os.path.abspath(base_dir_for_relpath)
-                rel_dir = os.path.relpath(abs_file_dir, abs_base_dir) if abs_file_dir.startswith(abs_base_dir) else ""
-                rel_dir = rel_dir.replace("\\", "/")
-                if rel_dir == ".": rel_dir = ""
-                
-                result_paths.append({
-                    "filename": file_basename,
-                    "subfolder": rel_dir,
-                    "type": ui_type
-                })
+                abs_file_path = Path(final_image_path).resolve()
+                if abs_file_path.is_relative_to(COMFYUI_ROOT):
+                    rel_path_from_comfy = abs_file_path.relative_to(COMFYUI_ROOT)
+                    result_paths.append({
+                        "filename": rel_path_from_comfy.name,
+                        "subfolder": str(rel_path_from_comfy.parent).replace("\\", "/"),
+                        "type": "custom"
+                    })
+                else:
+                    print(f"警告: 图像 '{final_image_path}' 不在ComfyUI根目录内，无法通过标准接口预览。")
+
             except Exception as e:
                 print(f"ZML_SimpleSaveImage Error: Failed to save image {final_image_path}, error: {e}")
                 pass
@@ -669,6 +674,7 @@ class ZML_SimpleSaveImage:
         # 为UI预览准备返回数据
         ui_output = { "images": result_paths }
         return {"ui": ui_output, "node_id": unique_id} if unique_id is not None else {"ui": ui_output}
+
 
 # ============================== 加载图像节点 (读取PNG文本块)==============================
 class ZML_LoadImage:
@@ -873,15 +879,35 @@ class ZML_LoadImageFromPath:
             parts = base_name.split("#-#")
             return parts[-1].strip() if len(parts) > 0 else base_name
 
-    def scan_directory(self, folder_path):
-        if not os.path.isdir(folder_path): return []
-        files = [f for f in os.listdir(folder_path) if os.path.splitext(f)[1].lower() in supported_image_extensions]
+    def scan_directory(self, folder_path_str):
+        if not folder_path_str: # 如果路径为空，返回空列表
+            return []
+
+        # 使用 pathlib 处理路径
+        folder_path = Path(folder_path_str)
+
+        # 检查是否为绝对路径，如果不是，则相对于ComfyUI根目录
+        if not folder_path.is_absolute():
+            folder_path = COMFYUI_ROOT / folder_path
+        
+        real_folder_path = folder_path.resolve() # 解析为真实的绝对路径
+
+        # 安全检查: 确保路径在 COMFYUI_ROOT 内部或是一个明确允许的外部路径
+        # 这里简单检查是否在 ComfyUI 根目录内，更严格的应该有白名单机制
+        # if not real_folder_path.is_relative_to(COMFYUI_ROOT):
+        #     print(f"警告: 尝试访问ComfyUI根目录外的路径: {real_folder_path}")
+        #     return [] # 禁止访问外部路径
+
+        if not real_folder_path.is_dir(): return []
+
+        files = [f.name for f in real_folder_path.iterdir() if f.is_file() and f.suffix.lower() in supported_image_extensions]
         files.sort()
         return files
 
     def load_image(self, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
         current_time = time.time()
-        if (not self.cached_files or 文件夹路径 != self.cached_path or current_time - self.cache_time > 60):
+        # 优化缓存逻辑: 只有当路径改变或缓存过期时才重新扫描
+        if (文件夹路径 != self.cached_path or current_time - self.cache_time > 60):
             self.cached_files = self.scan_directory(文件夹路径)
             self.cached_path = 文件夹路径
             self.cache_time = current_time
@@ -891,6 +917,13 @@ class ZML_LoadImageFromPath:
         # 如果找不到文件，返回空的列表和0数量
         if not self.cached_files:
             return ([], "未找到图像", "没有找到图像", 0, 0, [], 0) # 图像路径也返回空列表，数量为0
+
+        # 解析实际的文件夹路径，用于构建完整的图片路径
+        actual_folder_path = Path(文件夹路径)
+        if not actual_folder_path.is_absolute():
+            actual_folder_path = COMFYUI_ROOT / actual_folder_path
+        actual_folder_path = actual_folder_path.resolve()
+
 
         if 索引模式 == "全部":
             image_tensors = []
@@ -904,7 +937,7 @@ class ZML_LoadImageFromPath:
             first_height = 0
 
             for filename in self.cached_files:
-                image_path = os.path.join(文件夹路径, filename)
+                image_path = str(actual_folder_path / filename) # 使用 pathlib 拼接路径
                 try:
                     (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
                     image_tensors.append(tensor)
@@ -939,7 +972,7 @@ class ZML_LoadImageFromPath:
             self.increment_sequential_count(unique_id)
 
         selected_filename = self.cached_files[index]
-        image_path = os.path.join(文件夹路径, selected_filename)
+        image_path = str(actual_folder_path / selected_filename) # 使用 pathlib 拼接路径
 
         try:
             (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
@@ -951,10 +984,14 @@ class ZML_LoadImageFromPath:
             return ([], "加载失败", f"加载失败: {selected_filename}, {e}", 0, 0, [], num_files) 
     
     @classmethod
-    def IS_CHANGED(cls, **kwargs):
+    def IS_CHANGED(cls, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
         # 确保每次运行时都更新文件列表，因为文件夹内容可能变化。
         # 依赖于 load_image 内部的缓存机制来避免频繁的磁盘扫描。
-        return float("nan")
+        # 对于 "顺序" 模式，每次执行都会改变内部计数器，因此总是返回 nan 强制执行
+        if 索引模式 == "顺序":
+            return float("nan")
+        # 对于其他模式，只要路径或索引改变，就重新加载
+        return (文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块)
 
 # ============================== 文本块加载器 ==============================
 class ZML_TextBlockLoader:
@@ -982,28 +1019,64 @@ class ZML_TextBlockLoader:
 
 # ============================== API 路由设置 ==============================
 
-# API 1: 获取 output 文件夹中的所有图片 (支持子文件夹)
+def get_base_path(custom_path_str: str | None = None) -> Path:
+    """
+    根据 custom_path_str 获取文件操作的基准路径。
+    如果 custom_path_str 为空，则回退到 ComfyUI 的 output 目录。
+    支持相对路径 (相对于 ComfyUI 根目录) 和绝对路径。
+    """
+    if custom_path_str:
+        # 使用 pathlib 处理自定义路径
+        path_obj = Path(custom_path_str)
+        if not path_obj.is_absolute():
+            path_obj = COMFYUI_ROOT / path_obj # 相对于 ComfyUI 根目录
+        
+        final_path = path_obj.resolve() # 解析真实路径
+        
+        # 验证路径是否存在且是目录，如果不是，则返回 None 或抛出错误
+        if not final_path.is_dir():
+            print(f"警告: 提供的自定义路径不是有效目录: {final_path}")
+            return None # 返回None表示路径无效
+        
+        return final_path
+    else:
+        return Path(folder_paths.get_output_directory()).resolve()
+
+
 @server.PromptServer.instance.routes.get("/zml/get_output_images")
 async def get_output_images(request):
-    output_dir = folder_paths.get_output_directory()
-    image_files = []
+    # 从请求中获取 custom_path 参数
+    custom_path_str = request.query.get("custom_path", "")
     
-    for root, dirs, files in os.walk(output_dir, followlinks=True):
+    # 动态获取 base_dir
+    base_dir = get_base_path(custom_path_str)
+    
+    if base_dir is None or not base_dir.is_dir():
+        # 返回一个带有错误信息的结构，前端可以据此更新UI
+        return web.json_response({"files": [], "base_path_display": f"无效路径: {custom_path_str or 'output'}"})
+
+    image_files_list = []
+    
+    for root, dirs, files in os.walk(base_dir, followlinks=True):
         for file in files:
             if os.path.splitext(file)[1].lower() in supported_image_extensions:
-                subfolder = os.path.relpath(root, output_dir)
-                if subfolder == '.':
-                    subfolder = ''
-                image_files.append({
+                # 计算图片相对于 base_dir 的子文件夹路径
+                subfolder = Path(root).relative_to(base_dir)
+                image_files_list.append({
                     "filename": file,
-                    "subfolder": subfolder.replace("\\", "/") # 统一路径分隔符
+                    "subfolder": str(subfolder).replace("\\", "/") # 统一路径分隔符
                 })
 
     # 按完整路径排序
-    image_files.sort(key=lambda x: os.path.join(x['subfolder'], x['filename']))
-    return web.json_response(image_files)
+    image_files_list.sort(key=lambda x: os.path.join(x['subfolder'], x['filename']))
 
-# API 2: 根据文件名获取图片中的文本块
+    # 返回包含文件列表和实际解析路径的字典
+    return web.json_response({
+        "files": image_files_list,
+        "base_path_display": str(base_dir.relative_to(COMFYUI_ROOT)) if base_dir.is_relative_to(COMFYUI_ROOT) else str(base_dir)
+    })
+
+# API 2: 根据文件名获取图片中的文本块 (此API目前只用于TextBlockLoader，仍从Output读取)
 @server.PromptServer.instance.routes.get("/zml/get_image_text_block")
 async def get_image_text_block(request):
     if "filename" not in request.query:
@@ -1016,6 +1089,7 @@ async def get_image_text_block(request):
     if ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
         return web.Response(status=400, text="Invalid filename or subfolder")
 
+    # 注意：ZML_TextBlockLoader 仍然只从 output 目录加载，所以这里仍然使用 folder_paths.get_output_directory()
     image_path = os.path.join(folder_paths.get_output_directory(), subfolder, filename)
 
     if not os.path.exists(image_path):
@@ -1036,23 +1110,71 @@ async def view_image(request):
 
     filename = request.query.get("filename")
     subfolder = request.query.get("subfolder", "")
+    custom_path_str = request.query.get("custom_path", "") # 获取自定义路径参数
+
+    # 安全检查
+    if ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
+        return web.Response(status=400, text="Invalid filename or subfolder")
+    
+    # 动态获取 base_dir
+    base_dir = get_base_path(custom_path_str)
+    
+    if base_dir is None: # 如果 base_dir 无效
+        return web.Response(status=404, text=f"Directory not found for preview: {custom_path_str}")
+
+    # 构建安全的文件路径
+    image_path = base_dir / subfolder / filename
+    image_path = image_path.resolve() # 转换为绝对路径
+
+    # 再次确认文件存在且是文件
+    if image_path.is_file(): # 使用 Path().is_file() 检查文件是否存在
+        return web.FileResponse(image_path)
+    else:
+        return web.Response(status=404, text="Image not found")
+
+# API 4: 用于获取缩略图 (新增)
+@server.PromptServer.instance.routes.get("/zml/view_image_thumb")
+async def view_image_thumb(request):
+    if "filename" not in request.query:
+        return web.Response(status=400, text="Filename parameter is missing")
+
+    filename = request.query.get("filename")
+    subfolder = request.query.get("subfolder", "")
+    custom_path_str = request.query.get("custom_path", "")
     
     # 安全检查
     if ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
         return web.Response(status=400, text="Invalid filename or subfolder")
     
-    # 构建安全的文件路径
-    image_path = os.path.join(folder_paths.get_output_directory(), subfolder, filename)
-    image_path = os.path.abspath(image_path)
+    base_dir = get_base_path(custom_path_str)
     
-    # 再次确认路径在允许的目录内
-    if not image_path.startswith(os.path.abspath(folder_paths.get_output_directory())):
-        return web.Response(status=403, text="Forbidden")
+    if base_dir is None:
+        return web.Response(status=404, text=f"Directory not found for thumbnail: {custom_path_str}")
 
-    if os.path.exists(image_path):
-        return web.FileResponse(image_path)
-    else:
-        return web.Response(status=404, text="Image not found")
+    image_path = base_dir / subfolder / filename
+    image_path = image_path.resolve()
+
+    if not image_path.is_file():
+        return web.Response(status=404, text="Image not found for thumbnail")
+
+    try:
+        with Image.open(image_path) as img:
+            img = ImageOps.exif_transpose(img).convert('RGB')
+            # 缩略图大小
+            thumb_size = (120, 120) 
+            img.thumbnail(thumb_size)
+            
+            # 使用BytesIO将图片输出到内存
+            from io import BytesIO
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG", quality=85) # 以JPEG格式保存，提高加载速度
+            buffer.seek(0)
+            
+            return web.Response(body=buffer.getvalue(), content_type="image/jpeg", status=200)
+
+    except Exception as e:
+        print(f"Error generating thumbnail for {image_path}: {e}")
+        return web.Response(status=500, text=f"Error generating thumbnail: {e}")
 
 
 # ============================== 标签化图片加载器 ==============================
@@ -1064,7 +1186,8 @@ class ZML_TagImageLoader:
     - 新增文本块加载状态的验证输出。
     """
     def __init__(self):
-        self.output_dir = folder_paths.get_output_directory()
+        # 默认使用ComfyUI的output目录作为基准，但会由get_base_path函数动态决定
+        pass
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1072,6 +1195,7 @@ class ZML_TagImageLoader:
             "required": {
                 "selected_files_json": ("STRING", {"multiline": True, "default": "[]"}),
             },
+            # 移除 '自定义路径' 节点输入口
             "hidden": {
                 "prompt": "PROMPT",
                 "unique_id": "UNIQUE_ID",
@@ -1085,43 +1209,69 @@ class ZML_TagImageLoader:
 
     OUTPUT_IS_LIST = (True, False, False,)
 
-    def load_images_by_tags(self, selected_files_json="[]", **kwargs):
+    def load_images_by_tags(self, selected_files_json="[]", **kwargs): # 自定义路径不再作为参数
+        # ==================== START: FIXED CODE ====================
         if not selected_files_json or selected_files_json == "[]":
-            return ([], "", "")
+            return ([], "", "未选择任何文件。")
 
         try:
-            file_list = json.loads(selected_files_json)
+            data = json.loads(selected_files_json)
         except json.JSONDecodeError:
-            # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
             print("ZML_TagImageLoader: JSON解析失败。")
             return ([], "", "JSON解析失败")
 
-        if not isinstance(file_list, list) or not file_list:
-            return ([], "", "选择列表为空或格式不正确")
+        file_list = []
+        current_custom_base_path = ""
+
+        # 智能判断数据格式，兼容新旧两种格式
+        if isinstance(data, dict) and "files" in data:
+            # 这是新格式: {"files": [...], "_base_path": "..."}
+            file_list = data.get("files", [])
+            current_custom_base_path = data.get("_base_path", "")
+        elif isinstance(data, list):
+            # 这是旧格式: [...]
+            file_list = data
+
+        if not file_list:
+            return ([], "", "选择列表为空或格式不正确。")
 
         image_tensors = []
         text_blocks = []
-        validation_messages = [] 
+        validation_messages = []
+
+        base_dir = get_base_path(current_custom_base_path)
+        # ===================== END: FIXED CODE =====================
+        
+        if base_dir is None or not base_dir.is_dir():
+            print(f"ZML_TagImageLoader: 基准目录无效或不存在: {current_custom_base_path or 'output'}")
+            return ([], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}")
+
 
         for item in file_list:
+            # 忽略内部 base_path 字段，只处理实际的文件信息
+            if item.get("filename") is None:
+                continue
+
             subfolder = item.get("subfolder", "")
             filename = item.get("filename", "")
 
+            # 尽管前端和API有校验，这里仍然进行最终的安全检查
             if ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
                 validation_messages.append(f"{filename}：无效路径，已跳过")
                 continue
             
-            image_path = os.path.join(self.output_dir, subfolder, filename)
+            # 使用 pathlib 更安全地拼接路径
+            image_path = base_dir / subfolder / filename
+            image_path = image_path.resolve() # 解析为最终的绝对路径
 
-            if not os.path.exists(image_path):
+            if not image_path.is_file(): # 使用 Path().is_file() 检查文件是否存在
                 validation_messages.append(f"{filename}：文件不存在，已跳过")
                 continue
 
             try:
                 with Image.open(image_path) as img:
                     has_text_block = False
-                    
-                    text_content = ","
+                    text_content = "" # 默认空，如果没找到文本块
                     
                     if hasattr(img, 'text') and DEFAULT_TEXT_BLOCK_KEY in img.text:
                         text_content = img.text[DEFAULT_TEXT_BLOCK_KEY]
@@ -1143,9 +1293,8 @@ class ZML_TagImageLoader:
                     image_tensors.append(image_tensor)
                     
             except Exception as e:
-                # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
                 validation_messages.append(f"{filename}：加载失败 ({e})")
-                print(f"ZML_TagImageLoader: 加载图片 '{filename}' 失败: {e}")
+                print(f"ZML_TagImageLoader: 加载图片 '{image_path}' 失败: {e}")
 
         if not image_tensors:
             final_validation_output = "\n".join(validation_messages)
@@ -1160,8 +1309,10 @@ class ZML_TagImageLoader:
         return (image_tensors, final_text_output, final_validation_output)
 
     @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        return float("nan")
+    def IS_CHANGED(cls, selected_files_json, **kwargs):
+        # 只有当 selected_files_json 改变时才强制执行
+        return (selected_files_json,)
+
 
 # ============================== ZML_分类图像 节点 ==============================
 class ZML_ClassifyImage:
@@ -1203,14 +1354,18 @@ class ZML_ClassifyImage:
         has_info = False
         has_text_block_content = False
         
-        if 图像路径 and os.path.isfile(图像路径):
+        # 使用 pathlib 进行路径解析和检查
+        image_path_obj = Path(图像路径).resolve()
+        
+        if image_path_obj.is_file():
             try:
-                with Image.open(图像路径) as img:
+                with Image.open(image_path_obj) as img:
                     has_info = bool(img.info)
                     if has_info:
                         has_text_block_content = DEFAULT_TEXT_BLOCK_KEY in img.info
             except Exception as e:
-                # 移除 print 语句，但考虑到错误调试，这里可以改为更静默的错误处理，例如记录到日志文件而非控制台
+                print(f"ZML_ClassifyImage: 读取图像元数据失败 '{图像路径}': {e}")
+                # 这里的 print 语句用于真正的加载错误
                 pass
 
         if not has_info:
@@ -1222,7 +1377,7 @@ class ZML_ClassifyImage:
 
         return (output_no_data, output_metadata, output_text_block,)
 
-# ============================== 节点注册 (更新) ==============================
+# ============================== 节点注册==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_SaveImage": ZML_SaveImage,
     "ZML_SimpleSaveImage": ZML_SimpleSaveImage,
