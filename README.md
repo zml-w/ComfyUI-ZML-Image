@@ -17,7 +17,13 @@
 >
 > - #### 新增了限制遮罩形状节点。
 >
-> - #### 修复了桌宠无法正常加载的bug，Manager暂时还没有更新，因为还有其它节点在开发测试。
+> - #### 修复了桌宠无法正常加载的bug。
+>
+> - #### 优化了标签化提示词加载器。
+>
+> - #### 画画节点新加了几个预设颜色，并且优化了UI和使用体验。
+>
+> - #### 优化了标签化图像加载器节点。
 >
 
 <details>
@@ -203,6 +209,21 @@
 > 16、画画节点，就是一个画笔随意在图像上涂抹。
 > 
 > 17、图像暂停节点，节点会卡住15s，让你选择这次的图像输出哪个管道，只做了三个输出接口，未选中的接口只会输出占位图像，而不会输出输入的图像。可以接在采样器后面，图像满意就保存，不满意就仅预览，一般的图像保存节点会将占位图像也保存了，即使它只有1\\\*1像素，但用ZML\\\_保存图像节点就不会，专门做了优化。
+
+</details>
+
+<details>
+<summary>点击查看更新节点图像</summary>
+
+> ### 更新日期： **2025.09.02**
+
+> - <img width="1782" height="869" alt="2" src="https://github.com/user-attachments/assets/54bd9449-4034-4b1b-abdc-87dfefb1a3c4" />
+
+> - <img width="1048" height="925" alt="4" src="https://github.com/user-attachments/assets/1607ebfc-0e33-4818-9845-9aa366a19ee1" />
+
+> - <img width="1722" height="912" alt="3" src="https://github.com/user-attachments/assets/1ff2e9ce-0d44-473d-bf42-2c9b14366265" />
+
+> - <img width="1356" height="865" alt="1" src="https://github.com/user-attachments/assets/e4b1370b-130a-419c-b0c4-d94ada5283df" />
 
 </details>
 
