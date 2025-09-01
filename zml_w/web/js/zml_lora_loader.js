@@ -10,7 +10,7 @@ const IMAGE_HEIGHT = 384;
 const POWER_LORA_LOADER_MIN_WIDTH = 460;
 
 // 新增：定义强力LORA加载器推荐的最小高度（仅当lora列表为空时使用）
-const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 280; // 根据实际测试调整，确保底部按钮不被裁切
+const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 300; // 根据实际测试调整，确保底部按钮不被裁切
 
 // 特殊路径标识符，用于表示“全部显示”模式
 const ALL_LORAS_VIEW_PATH_IDENTIFIER = '__ALL_LORAS_VIEW__';
@@ -977,7 +977,7 @@ app.registerExtension({
                 // --- 渲染面包屑导航 (路径) ---
                 if (!isShowingAllLoras && zmlBatchLoraCurrentPath.length > 0) { // 在非“全部显示”模式且不在根目录时显示返回按钮
                     const backButton = zmlCreateEl("a", { // 使用 zmlCreateEl
-                        textContent: ↩︎",
+                        textContent: "↩",
                         href: "#",
                         title: "返回上一级",
                         style: `color: #e0e0e0; text-decoration: none; padding: 4px; border-radius: 3px; background-color: #4a515a; cursor: pointer; transition: background-color 0.2s; font-size: 13px;`
