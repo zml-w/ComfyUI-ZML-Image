@@ -5,7 +5,7 @@ import folder_paths
 import comfy.utils
 import comfy.sd
 from aiohttp import web
-from nodes import LoraLoader, LoraLoaderModelOnly
+# from nodes import LoraLoader, LoraLoaderModelOnly # 实际上原始节点并未在此直接实例化，可以移除
 import torch
 import numpy as np
 from PIL import Image
@@ -20,7 +20,10 @@ import re # 导入正则表达式模块
 ZML_API_PREFIX = "/zml/lora"
 
 # 定义一个用于LORA列表的自定义类型字符串
-ZML_LORA_STACK_TYPE = "ZML_LORA_STACK"
+# ComfyUI 的自定义类型需要以一个已注册的类型来表示，例如 STRING, IMAGE, MODEL 等
+# 但为了清晰，我们定义一个字符串字面量作为类型名，并在 INPUT_TYPES 中直接使用
+# 这里我们用一个元组来表示数据结构，尽管它内部还是字符串，但这向节点图表示了更复杂的数据。
+ZML_LORA_STACK_TYPE = ( "LORA_STACK", ) # 使用元组来定义一个自定义类型名
 
 # --- 辅助函数：查找LoRA根路径 ---
 def find_lora_root_path_for_file(lora_filename):
@@ -99,51 +102,63 @@ def download_file(url, destination_path):
         with urllib.request.urlopen(req) as response, open(destination_path, 'wb') as out_file:
             if response.status == 200:
                 shutil.copyfileobj(response, out_file)
-                # print(f"[ZML_Parser] 文件已保存: {destination_path}") # Suppress excessive logs
                 return True
             else:
-                print(f"[ZML_Parser] 下载文件前响应状态码不为200: {response.status} (URL: {url})")
+                print(f"[ZML_Parser] 下载文件前 Civitai 响应状态码不为200: {response.status} (URL: {url})")
     except Exception as e:
         print(f"[ZML_Parser] 下载文件时出错 {url}: {e}")
     return False
 
 # --- API 路由 ---
 @server.PromptServer.instance.routes.get(ZML_API_PREFIX + "/view/{name:.*}")
-async def view(request):
-    name = request.match_info["name"]
+async def view_lora_preview(request):
+    """
+    接收来自前端的预览图请求，如 /zml/lora/view/loras/subdir/image.png
+    """
+    name = request.match_info["name"] # name will be like "loras/subdir/image.png"
     pos = name.find("/")
-    type = name[0:pos]
-    relative_path = name[pos+1:]
+    file_type_str = name[0:pos] # "loras"
+    relative_path_within_type = name[pos+1:] # "subdir/image.png"
     
-    lora_filename_no_ext = os.path.splitext(relative_path.replace("zml/", ""))[0]
+    # 从请求的路径中提取LoRA的“基础文件名”，不带路径和扩展名 (e.g. "image")
+    lora_basename_no_ext = os.path.splitext(os.path.basename(relative_path_within_type))[0]
     
-    # Iterate through potential extensions to find the original lora file
+    # 尝试在所有ComfyUI的loras路径中找到原始LoRA文件（.safetensors, .ckpt等）的绝对路径
     found_lora_full_path = None
-    for ext in [".safetensors", ".pt", ".bin", ".ckpt"]:
-        lora_file_stem = os.path.splitext(os.path.basename(relative_path))[0] # Get just the filename (no path, no ext) from the /view path
-        possible_lora_filename = os.path.join(os.path.dirname(relative_path.replace("zml/", "")), f"{lora_file_stem}{ext}") # Reconstruct original lora relative path
-        found_lora_full_path = folder_paths.get_full_path(type, possible_lora_filename)
-        if found_lora_full_path:
+    # 从传递的"subdir/image.png"中获取LoRA文件所在的逻辑目录，例如"subdir"
+    lora_logic_dir = os.path.dirname(relative_path_within_type)
+    
+    for ext in [".safetensors", ".pt", ".bin", ".ckpt"]: # 遍历可能的LoRA文件扩展名
+        # 构造原始LoRA的相对路径: "subdir/lora_basename_no_ext.ext"
+        possible_lora_relative_filename = os.path.join(lora_logic_dir, f"{lora_basename_no_ext}{ext}")
+        found_lora_full_path = folder_paths.get_full_path("loras", possible_lora_relative_filename)
+        if found_lora_full_path and os.path.exists(found_lora_full_path):
             break
 
     if not found_lora_full_path:
-        return web.Response(status=404, text=f"LoRA文件未找到. (Requested path: {relative_path})")
+        return web.Response(status=404, text=f"相关LoRA文件未找到. (Requested path: {relative_path_within_type})")
 
-    lora_dir = os.path.dirname(found_lora_full_path)
-    preview_filename_with_ext = os.path.basename(relative_path) # The original image file requested
-    target_path = os.path.join(lora_dir, "zml", preview_filename_with_ext) # Construct actual path to zml preview
+    # 根据找到的LoRA文件的绝对路径，构建其对应的zml预览图的绝对路径
+    actual_lora_dir = os.path.dirname(found_lora_full_path)
+    # 请求的预览图文件名，包含扩展名 (e.g., "image.png")
+    preview_filename_with_ext = os.path.basename(relative_path_within_type) 
+    target_path = os.path.join(actual_lora_dir, "zml", preview_filename_with_ext) # 构建zml预览图的绝对路径
 
     if os.path.isfile(target_path):
         return web.FileResponse(target_path, headers={"Content-Disposition": f"filename=\"{os.path.basename(target_path)}\""})
 
     return web.Response(status=404, text=f"预览图未找到: {target_path}")
 
+
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/save/{name:.*}")
 async def save_preview(request):
-    name = request.match_info["name"]
-    pos = name.find("/")
-    type = name[0:pos]
-    lora_relative_path = name[pos+1:]
+    """
+    保存用户生成的图像作为LoRA的预览图。
+    name参数示例: "loras/subdir/mylora.safetensors"
+    """
+    name = request.match_info["name"] # 例如 "loras/subdir/mylora.safetensors"
+    # file_type_str = name[0:name.find("/")] # "loras"
+    lora_relative_path = name[name.find("/")+1:] # "subdir/mylora.safetensors"
     body = await request.json()
 
     source_dir = folder_paths.get_directory_by_type(body.get("type", "output"))
@@ -155,7 +170,6 @@ async def save_preview(request):
 
     lora_root_dir = find_lora_root_path_for_file(lora_relative_path)
     if not lora_root_dir:
-         # Fallback to the first lora root if the specific one cannot be determined
          lora_root_dir = folder_paths.get_folder_paths("loras")[0] if folder_paths.get_folder_paths("loras") else None
          if not lora_root_dir:
              return web.Response(status=500, text="无法确定LoRA根目录来保存预览图。")
@@ -166,27 +180,29 @@ async def save_preview(request):
     destination_path = os.path.join(zml_dir, f"{lora_path_no_ext}{source_ext}")
     os.makedirs(os.path.dirname(destination_path), exist_ok=True)
     shutil.copyfile(source_filepath, destination_path)
-    relative_image_path = os.path.join("zml", f"{lora_path_no_ext}{source_ext}").replace("\\", "/") # This assumes zml is directly under the lora_root_dir, which it is.
-                                                                                                    # But for frontend to reconstruct URL, it needs the full Lora relative path + "zml/" + image_basename
-    
-    # The existing image retrieval in JS uses loraImages[lora_filename] = relative_path_for_frontend
-    # where relative_path_for_frontend is like "subdir/zml/image.png" and lora_filename is "subdir/lora.safetensors"
-    # So we need to return something similar.
+
+    # 返回给前端的图片路径应是其在LoRA根目录下的相对路径，不包含“zml/”，因为/view API会处理
+    # 例如：`subdir/mylora.png`
     lora_dir_relative_path = os.path.dirname(lora_relative_path)
-    final_relative_image_path_for_frontend = os.path.join(lora_dir_relative_path, "zml", f"{lora_path_no_ext}{source_ext}").replace("\\", "/")
+    saved_image_basename = os.path.basename(destination_path) # e.g. "mylora.png"
+    final_relative_image_path_for_frontend = os.path.join(lora_dir_relative_path, saved_image_basename).replace("\\", "/")
 
     return web.json_response({"image": final_relative_image_path_for_frontend})
 
+
 @server.PromptServer.instance.routes.get(ZML_API_PREFIX + "/images/{type}")
 async def get_images(request):
-    type = request.match_info["type"]
-    if type != "loras":
+    """
+    获取所有LoRA文件及其对应的预览图的映射。
+    """
+    file_type_str = request.match_info["type"]
+    if file_type_str != "loras":
         return web.json_response({})
         
-    lora_files = folder_paths.get_filename_list(type)
+    lora_files = folder_paths.get_filename_list(file_type_str)
     images = {}
     
-    for lora_filename in lora_files:
+    for lora_filename in lora_files: # lora_filename is like "subdir/mylora.safetensors"
         lora_full_path = folder_paths.get_full_path("loras", lora_filename)
         if not lora_full_path:
             continue
@@ -197,22 +213,20 @@ async def get_images(request):
             continue
             
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_filename))[0]
-        # Look for existing preview images in zml subfolder
+        # Look for existing preview images in zml subfolder (e.g., lora_dir/zml/mylora.png)
         for ext in [".png", ".jpg", ".jpeg", ".webp"]:
             preview_path_abs = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
             if os.path.isfile(preview_path_abs):
-                lora_dir_relative = os.path.dirname(lora_filename)
-                preview_basename = os.path.basename(preview_path_abs)
-                # The path for frontend to dynamically load the image via /view API
-                # Example: "some_dir/lora_model.safetensors" -> "some_dir/zml/lora_model.png"
-                relative_path_for_frontend = os.path.join(lora_dir_relative, preview_basename).replace("\\", "/") # Note: doesn't include "zml/" here, as /view API handles it.
+                lora_dir_relative = os.path.dirname(lora_filename) # e.g. "subdir"
+                preview_basename = os.path.basename(preview_path_abs) # e.g. "mylora.png"
+                relative_path_for_frontend = os.path.join(lora_dir_relative, preview_basename).replace("\\", "/")
                 images[lora_filename] = relative_path_for_frontend
                 break
         
     return web.json_response(images)
 
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/fetch_civitai_metadata")
-async def fetch_civitai_metadata(request):
+async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内部辅助函数fetch_civitai_data_by_hash混淆
     """
     通过Civitai API为指定的LoRA文件获取并保存元数据和预览图。
     期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors"}
@@ -220,7 +234,7 @@ async def fetch_civitai_metadata(request):
     """
     try:
         body = await request.json()
-        lora_relative_filename = body.get("lora_filename")
+        lora_relative_filename = body.get("lora_filename") # 例如 "subdir/mylora.safetensors"
         
         if not lora_relative_filename:
             return web.json_response({"status": "error", "message": "缺少 'lora_filename' 参数"}, status=400)
@@ -235,7 +249,7 @@ async def fetch_civitai_metadata(request):
         os.makedirs(zml_dir, exist_ok=True)
         
         lora_hash = calculate_sha256(lora_full_path)
-        civitai_data = fetch_civitai_data_by_hash(lora_hash)
+        civitai_data = fetch_civitai_data_by_hash(lora_hash) # 调用辅助函数
         
         downloaded_image_path = None
         message_parts = []
@@ -252,6 +266,7 @@ async def fetch_civitai_metadata(request):
                     img_ext = '.jpg' # Fallback to JPG
                 img_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{img_ext}")
                 if download_file(img_url, img_dest_path):
+                    # 返回的路径应是其在LoRA根目录下的相对路径，不包含“zml/”
                     downloaded_image_path = os.path.join(os.path.dirname(lora_relative_filename), os.path.basename(img_dest_path)).replace("\\", "/")
                     message_parts.append("预览图已下载。")
                 else:
@@ -333,6 +348,7 @@ class ZmlLoraMetadataParser:
     RETURN_NAMES = ("图像", "txt", "log", "解析", "help")
     FUNCTION = "parse_and_save_metadata"
     CATEGORY = "图像/ZML_图像/lora加载器"
+    COLOR = "#446699" # 一个更柔和的蓝色
     
     def parse_and_save_metadata(self, lora_名称, 保存首张图像=False, 保存触发词为txt=False, 保存介绍为log=False):
         lora_full_path = folder_paths.get_full_path("loras", lora_名称)
@@ -429,7 +445,6 @@ class ZmlLoraMetadataParser:
         preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         txt_content, log_content = "", ""
         for ext in ['.png', '.jpg', '.jpeg', '.webp']:
-            # Adjust path construction for preview_path to be relative to zml_dir
             preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
             if os.path.isfile(preview_path):
                 try:
@@ -450,7 +465,7 @@ class ZmlLoraMetadataParser:
         help_content = "此节点用于解析LoRA模型文件，并从Civitai.com获取关联的元数据。\n1. 选择一个LoRA模型。\n2. 勾选需要保存的项目（图像、触发词、介绍）。\n3. 运行节点。\n4. 节点会自动计算文件哈希，访问Civitai API，并将获取到的文件保存到LoRA所在目录的 'zml' 子文件夹中。"
         return (preview_image_tensor, txt_content, log_content, parsed_info_str, help_content)
 
-# --- ZML LoraLoader 节点 (保持不变，其CLIP已在optional) ---
+# --- ZML LoraLoader 节点 ---
 class ZmlLoraLoader:
     def __init__(self):
         pass
@@ -469,33 +484,42 @@ class ZmlLoraLoader:
             }
         }
 
-    RETURN_TYPES = ("MODEL", "CLIP", "IMAGE", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("输出_模型", "输出_CLIP", "预览_图", "txt_内容", "log_内容", "help")
+    OUTPUT_IS_LIST = (False, False, False, False, False, False, False) # 标记 lora_名称 和 lora_权重 为非列表
+    
+    RETURN_TYPES = ("MODEL", "CLIP", "IMAGE", "STRING", "STRING", "STRING", "STRING", "FLOAT") # 新增 lora名称 和 lora权重
+    RETURN_NAMES = ("输出_模型", "输出_CLIP", "预览_图", "txt_内容", "log_内容", "help", "lora名称", "lora权重") # 新增 lora名称 和 lora权重
     FUNCTION = "zml_load_lora"
     CATEGORY = "图像/ZML_图像/lora加载器"
+    COLOR = "#446699" # 一个更柔和的蓝色
 
     def zml_load_lora(self, lora_名称, 模型=None, CLIP=None, 模型_强度=1.0, CLIP_强度=1.0):
         model_out, clip_out = 模型, CLIP
 
+        current_lora_name_out = "None"
+        current_lora_weight_out = 0.0
+
         if 模型 is not None and lora_名称 != "None":
             lora_path = folder_paths.get_full_path("loras", lora_名称)
-            if lora_path:
+            if lora_path and os.path.exists(lora_path): # 确保文件存在
                 lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
                 model_out, clip_out = comfy.sd.load_lora_for_models(模型, CLIP, lora, 模型_强度, CLIP_强度)
+                current_lora_name_out = lora_名称
+                current_lora_weight_out = 模型_强度 # 通常模型强度和CLIP强度是相同的，这里输出模型强度即可
         
         txt_content = ""
         log_content = ""
-        help_content = "你好~\n加载lora的节点是基于ComfyUI-Custom-Scripts里的lora节点进行二次修改的，GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。\n感谢作者的付出~\n在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。\n文件夹结构应该是这样的：lora/zml。lora里放着lora文件，比如111.safetensors，zml文件夹里放着111.png、111.txt、111.log。\n这真是一个伟大的创意，再次感谢原作者的付出。"
+        help_content = "你好~\n加载lora的节点是基于ComfyUI-Custom-Scripts里的lora节点进行二次修改的，GitHub链接：https://github.com/pythongosssss/ComfyUI-Custom-Scripts。\n感谢作者的付出~\n在lora目录创建一个子文件夹‘zml’，里面放上和lora文件同名的图片、txt、log文件即可使用节点读取对应信息，选择lora时鼠标悬停可以预览图片，且会根据文件夹来分类lora文件。\n文件夹结构应该是这样的：lora的根目录（例如ComfyUI/models/loras）下，有一个lora文件（例如my_lora_dir/my_lora.safetensors），在my_lora_dir下会有一个名为‘zml’的子文件夹，里面放着my_lora.png、my_lora.txt、my_lora.log。\n这真是一个伟大的创意，再次感谢原作者的付出。"
         preview_image_tensor = None
         
         if lora_名称 != "None":
             lora_full_path = folder_paths.get_full_path("loras", lora_名称)
-            if lora_full_path:
+            if lora_full_path and os.path.exists(lora_full_path): # 确保文件存在
                 lora_basename_no_ext = os.path.splitext(os.path.basename(lora_名称))[0]
                 lora_dir = os.path.dirname(lora_full_path)
+                zml_dir = os.path.join(lora_dir, "zml")
                 
                 for ext in ['.png', '.jpg', '.jpeg', '.webp']:
-                    preview_path = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}{ext}")
+                    preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
                     if os.path.isfile(preview_path):
                         try:
                             img = Image.open(preview_path)
@@ -506,7 +530,7 @@ class ZmlLoraLoader:
                         except Exception as e:
                             print(f"ZmlLoraLoader: 读取预览图时出错 {preview_path}: {e}")
                 
-                txt_filepath = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}.txt")
+                txt_filepath = os.path.join(zml_dir, f"{lora_basename_no_ext}.txt")
                 if os.path.isfile(txt_filepath):
                     try:
                         with open(txt_filepath, 'r', encoding='utf-8') as f:
@@ -525,7 +549,7 @@ class ZmlLoraLoader:
         if preview_image_tensor is None:
             preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         
-        return (model_out, clip_out, preview_image_tensor, txt_content, log_content, help_content)
+        return (model_out, clip_out, preview_image_tensor, txt_content, log_content, help_content, current_lora_name_out, current_lora_weight_out)
 
 # --- ZML 原始 LoraLoaderModelOnly 节点 ---
 class ZmlLoraLoaderModelOnly:
@@ -548,6 +572,8 @@ class ZmlLoraLoaderModelOnly:
     RETURN_NAMES = ("输出_模型", "txt_内容", "log_内容", "help")
     FUNCTION = "zml_load_lora_model_only"
     CATEGORY = "图像/ZML_图像/lora加载器"
+    COLOR = "#446699" # 一个更柔和的蓝色
+
 
     def zml_load_lora_model_only(self, lora_名称, 模型=None, 模型_强度=1.0):
         model_out = 模型
@@ -609,6 +635,7 @@ class ZmlLoraLoaderFive:
     RETURN_NAMES = ("输出_模型", "输出_CLIP", "txt_内容")
     FUNCTION = "load_five_loras"
     CATEGORY = "图像/ZML_图像/lora加载器"
+    COLOR = "#446699" # 一个更柔和的蓝色
 
     def load_five_loras(self, 模型=None, CLIP=None, **kwargs):
         model_out = 模型
@@ -673,19 +700,25 @@ class ZmlPowerLoraLoader:
             },
         }
 
-    OUTPUT_IS_LIST = (False, False, False, True, False, False) # 新增的 lora名称列表 也不是列表输出，因为它自己就是一个列表对象
+    # OUTPUT_IS_LIST 决定了 RETURN_TYPES 中的每个项目是否是一个列表。
+    # 对于 `lora名称列表` (ZML_LORA_STACK_TYPE)，它本身就是一个列表（字典的列表），
+    # 所以在这个层面上它不是一个“列表的列表”，所以对应的布尔值是 False。
+    # 图像输出仍然是列表 (OUTPUT_IS_LIST 的第三个元素，索引为2)。
+    OUTPUT_IS_LIST = (False, False, False, True, False, False) # 新增的 lora名称列表 也不是列表输出，因为它自己就是一个列表对象 (字典列表)。
     
-    RETURN_TYPES = ("MODEL", "CLIP", ZML_LORA_STACK_TYPE, "IMAGE", "STRING", "STRING") # 增加 ZML_LORA_STACK_TYPE
-    RETURN_NAMES = ("MODEL", "CLIP", "lora名称列表", "预览_图", "触发词", "自定义文本") # 增加 "lora名称列表"
+    RETURN_TYPES = ("MODEL", "CLIP", ZML_LORA_STACK_TYPE, "IMAGE", "STRING", "STRING") # 增加 ZML_LORA_STACK_TYPE 类型
+    RETURN_NAMES = ("MODEL", "CLIP", "lora名称列表", "预览_图", "触发词", "自定义文本") # 增加 "lora名称列表" 的名称
     FUNCTION = "load_loras"
     CATEGORY = "图像/ZML_图像/lora加载器"
+    COLOR = "#446699" # 一个更柔和的蓝色
+
 
     def load_loras(self, lora_loader_data, model=None, clip=None, lora_names_hidden=None):
         try:
             data = json.loads(lora_loader_data)
             entries = data.get("entries", [])
         except (json.JSONDecodeError, TypeError):
-            # 如果JSON解析失败，也应该返回一个占位图列表避免下游节点报错
+            # 如果JSON解析失败，返回占位图列表避免下游节点报错
             # 同时确保 lora名称列表 返回空列表
             return (model, clip, [], [torch.zeros((1, 64, 64, 3), dtype=torch.float32)], "", "") 
 
@@ -717,9 +750,9 @@ class ZmlPowerLoraLoader:
             # 仅在条目启用且选定了 LoRA 名称时处理
             if is_enabled and lora_name and lora_name != "None":
                 lora_path = folder_paths.get_full_path("loras", lora_name)
-                # LoRA文件未找到的警告也移除，但在遇到实际错误时会打印
-                if not lora_path:
-                    # print(f"ZML_PowerLoraLoader: 警告: LoRA文件 '{lora_name}' 未找到，跳过处理。", file=sys.stderr) # 打印到stderr
+                
+                if not lora_path or not os.path.exists(lora_path): # 确保文件存在
+                    # print(f"ZML_PowerLoraLoader: 警告: LoRA文件 '{lora_name}' 未找到或不存在，跳过处理。", file=sys.stderr) # 打印到stderr
                     continue
                 
                 try:
@@ -806,7 +839,7 @@ class ZmlNameLoraLoader:
             "required": {
                 "模型": ("MODEL",),
                 "CLIP": ("CLIP",),
-                "名称列表": (ZML_LORA_STACK_TYPE, {"default": []}), # 接收 ZML_LORA_STACK_TYPE 类型
+                "lora名称列表": (ZML_LORA_STACK_TYPE,), # 接收 ZML_LORA_STACK_TYPE 类型
             }
         }
 
@@ -814,18 +847,19 @@ class ZmlNameLoraLoader:
     RETURN_NAMES = ("输出_模型", "输出_CLIP")
     FUNCTION = "load_named_loras"
     CATEGORY = "图像/ZML_图像/lora加载器"
+    COLOR = "#446699" # 一个更柔和的蓝色
     
-    def load_named_loras(self, 模型, CLIP, 名称列表):
+    def load_named_loras(self, 模型, CLIP, lora名称列表):
         current_model = 模型
         current_clip = CLIP
 
-        if not isinstance(名称列表, list):
-            print(f"ZML_名称加载lora: '名称列表' 输入不是一个有效的列表类型，跳过LoRA加载。")
+        if not isinstance(lora名称列表, list):
+            print(f"ZML_名称加载lora: 'lora名称列表' 输入不是一个有效的列表类型，跳过LoRA加载。")
             return (模型, CLIP) # 返回原始模型和CLIP，不报错
 
-        for lora_info in 名称列表:
+        for lora_info in lora名称列表: # 遍历包含字典的列表
             if not isinstance(lora_info, dict) or "lora_name" not in lora_info or "weight" not in lora_info:
-                print(f"ZML_名称加载lora: '名称列表' 中的LoRA信息格式不正确: {lora_info}，跳过。")
+                print(f"ZML_名称加载lora: 'lora名称列表' 中的LoRA信息格式不正确: {lora_info}，跳过。")
                 continue
 
             lora_name = lora_info["lora_name"]
@@ -835,8 +869,8 @@ class ZmlNameLoraLoader:
                 continue
 
             lora_path = folder_paths.get_full_path("loras", lora_name)
-            if not lora_path:
-                print(f"ZML_名称加载lora: LoRA文件 '{lora_name}' 未找到，跳过。")
+            if not lora_path or not os.path.exists(lora_path): # 确保文件存在
+                print(f"ZML_名称加载lora: LoRA文件 '{lora_name}' 未找到或不存在，跳过。")
                 continue
 
             try:

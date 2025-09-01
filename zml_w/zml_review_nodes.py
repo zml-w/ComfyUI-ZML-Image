@@ -167,7 +167,7 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
         return {
             "required": {
                 "图像": ("IMAGE",),
-                "YOLO模型": (model_list,), 
+                "YOLO模型": (model_list,),
                 "置信度阈值": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}),
                 "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),
@@ -182,11 +182,11 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
     CATEGORY = "image/ZML_图像/遮罩"
 
     def process_yolo_to_mask(self, 图像, YOLO模型, 置信度阈值, 遮罩缩放系数, 遮罩膨胀, 描边颜色, 描边厚度, 外扩描边像素):
-        if not YOLO模型: 
+        if not YOLO模型:
             _, h, w, _ = 图像.shape
             # 返回空遮罩、全白反转遮罩和原始图像
-            return (torch.zeros((1, h, w), dtype=torch.float32), 
-                    torch.ones((1, h, w), dtype=torch.float32), 
+            return (torch.zeros((1, h, w), dtype=torch.float32),
+                    torch.ones((1, h, w), dtype=torch.float32),
                     图像)
 
         model_path = folder_paths.get_full_path("ultralytics", YOLO模型)
@@ -437,12 +437,6 @@ class ZML_PauseNode:
 
         if not interrupted:
             selected_path = 0
-
-        if os.path.exists(signal_file):
-            try:
-                os.remove(signal_file)
-            except Exception as e:
-                pass
 
         outputs = [dummy_image, dummy_image, dummy_image]
 
@@ -981,6 +975,137 @@ class ZML_UnifyImageResolution:
         return (final_output_batch, 宽度, 高度) # 返回处理后的图像和输出宽高
 
 
+# ============================== 限制遮罩形状节点 (最终精确边界检测版) ==============================
+class ZML_LimitMaskShape:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "遮罩": ("MASK",), # 输入接口名称更改为“遮罩”
+                "形状": (["方形", "矩形"], {"default": "方形"}),
+                "膨胀系数": ("FLOAT", { # 膨胀系数保持FLOAT，数字输入框
+                    "default": 1.0,
+                    "min": 0.1,
+                    "max": 5.0,
+                    "step": 0.1,
+                    "display": "number",
+                }),
+                "最小面积比例": ("FLOAT", {
+                    "default": 0.01,
+                    "min": 0.0,
+                    "max": 1.0,
+                    "step": 0.001,
+                    "display": "slider",
+                }),
+                # 删除了"阈值"选项
+            }
+        }
+
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("形状遮罩",) # 输出接口名称更改为“形状遮罩”
+    FUNCTION = "limit_mask_shape"
+    CATEGORY = "image/ZML_图像/遮罩"
+
+    def _mask_to_numpy_uint8(self, mask_tensor: torch.Tensor) -> np.ndarray:
+        """将 ComfyUI MASK 张量 (B, H, W) 转换为 (H, W) uint8 numpy 数组，并进行二值化（固定阈值127）。"""
+        mask_np_float = mask_tensor.squeeze(0).cpu().numpy()
+        mask_np_uint8 = (mask_np_float * 255).astype(np.uint8)
+        _, binary_mask = cv2.threshold(mask_np_uint8, 127, 255, cv2.THRESH_BINARY)
+        return binary_mask
+
+    def _numpy_uint8_to_mask(self, mask_np: np.ndarray) -> torch.Tensor:
+        """将 (H, W) uint8 numpy 数组转换为 ComfyUI MASK 张量 (B, H, W)。"""
+        return torch.from_numpy(mask_np.astype(np.float32) / 255.0).unsqueeze(0)
+
+    def limit_mask_shape(self, 遮罩: torch.Tensor, 形状: str, 膨胀系数: float, 最小面积比例: float):
+        mask_np_binary = self._mask_to_numpy_uint8(遮罩)
+        h, w = mask_np_binary.shape
+
+        # ----------------- 新的局部有效区域过滤和全局边界计算 -----------------
+        # Step 1: 过滤掉小的连通组件
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_np_binary, 8, cv2.CV_32S)
+        
+        filtered_mask = np.zeros_like(mask_np_binary)
+        total_image_pixels = h * w
+        has_valid_pixel = False
+
+        if num_labels > 1: # 确保存在除了背景以外的连通组件
+            for i in range(1, num_labels): # 跳过背景 (标签0)
+                area = stats[i, cv2.CC_STAT_AREA]
+                if area >= total_image_pixels * 最小面积比例:
+                    filtered_mask[labels == i] = 255
+                    has_valid_pixel = True
+        # ----------------- ------------------------------------- -----------------
+
+        output_mask_np = np.zeros((h, w), dtype=np.uint8)
+
+        if not has_valid_pixel:
+            # 如果没有找到任何符合最小面积的有效像素，返回全黑遮罩
+            return (self._numpy_uint8_to_mask(output_mask_np),)
+
+        # Step 2: 找到所有有效白色像素的全局边界
+        # 找到所有非零（白色）像素的行和列索引
+        white_pixels_y, white_pixels_x = np.where(filtered_mask == 255)
+
+        if white_pixels_x.size == 0 or white_pixels_y.size == 0:
+            # 如果过滤后没有任何白色像素，返回全黑遮罩
+            return (self._numpy_uint8_to_mask(output_mask_np),)
+
+        base_x = np.min(white_pixels_x)
+        base_y = np.min(white_pixels_y)
+        base_w = np.max(white_pixels_x) - base_x + 1 # +1 是因为max/min是索引，宽度是包含两端点的
+        base_h = np.max(white_pixels_y) - base_y + 1 # +1 同上
+
+        # 计算联合边界框的中心
+        center_x = base_x + base_w // 2
+        center_y = base_y + base_h // 2
+
+        final_w, final_h = base_w, base_h # 默认值
+
+        if 形状 == "方形":
+            # 取联合边界框的最长边作为基础边长
+            base_side = max(base_w, base_h)
+            # 应用膨胀系数到边长
+            final_side = int(base_side * 膨胀系数)
+            if final_side < 1: final_side = 1 # 确保最小边长
+            final_w = final_side
+            final_h = final_side
+        elif 形状 == "矩形":
+            # 应用膨胀系数到原始宽度和高度
+            final_w = int(base_w * 膨胀系数)
+            final_h = int(base_h * 膨胀系数)
+            if final_w < 1: final_w = 1 # 确保最小宽度
+            if final_h < 1: final_h = 1 # 确保最小高度
+
+        # 计算最终形状的左上角坐标
+        # 根据中心点和新的宽高计算左上角
+        final_x = center_x - final_w // 2
+        final_y = center_y - final_h // 2
+
+
+        # 确保最终矩形完全在图像边界内
+        # 调整左上角坐标，使其不小于0
+        final_x = max(0, final_x)
+        final_y = max(0, final_y)
+
+        # 调整宽度和高度，使其不超出图像右下边界
+        final_w = min(final_w, w - final_x)
+        final_h = min(final_h, h - final_y)
+        
+        # 防止调整后宽度或高度变为负数（如果原图太小或x/y过大）
+        if final_w < 0: final_w = 0
+        if final_h < 0: final_h = 0
+
+
+        final_x_end = final_x + final_w
+        final_y_end = final_y + final_h
+        
+        # 在输出遮罩上绘制最终的形状
+        cv2.rectangle(output_mask_np, (final_x, final_y), (final_x_end, final_y_end), 255, -1)
+        
+        return (self._numpy_uint8_to_mask(output_mask_np),)
+
+
 # ============================== MAPPINGS ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_AutoCensorNode": ZML_AutoCensorNode,
@@ -995,6 +1120,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MaskSeparateDistance": ZML_MaskSeparateDistance,
     "ZML_MaskSeparateThree": ZML_MaskSeparateThree,
     "ZML_UnifyImageResolution": ZML_UnifyImageResolution,
+    "ZML_LimitMaskShape": ZML_LimitMaskShape, # 新增节点映射
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1010,4 +1136,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MaskSeparateDistance": "ZML_遮罩分离-二",
     "ZML_MaskSeparateThree": "ZML_遮罩分离-三",
     "ZML_UnifyImageResolution": "ZML_统一图像分辨率",
+    "ZML_LimitMaskShape": "ZML_限制遮罩形状", # 新增节点显示名称
 }
