@@ -1,11 +1,28 @@
-// zml_floating_ball.js
-
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { $el } from "/scripts/ui.js";
 
+// === 辅助函数：获取当前扩展的 basePath ===
+// 这个函数会从当前JS文件的URL自动推断出 /extensions/YourExtensionName/ 的路径
+function get_extension_base_path() {
+    // 获取当前JS文件的URL
+    const scriptUrl = import.meta.url;
+    // 假设URL格式为 /extensions/YourExtensionName/js/zml_floating_ball.js
+    // 我们需要提取 /extensions/YourExtensionName/
+    const parts = scriptUrl.split('/');
+    // 找到 "extensions" 的索引
+    const extensionsIndex = parts.indexOf("extensions");
+    if (extensionsIndex !== -1 && parts.length > extensionsIndex + 1) {
+        // 拼接路径到扩展名之后（包含斜杠）
+        return "/" + parts.slice(extensionsIndex, extensionsIndex + 2).join('/') + "/";
+    }
+    console.error("ZML Floating Ball: 无法自动推断扩展基础路径。脚本URL:", scriptUrl);
+    return "/extensions/ComfyUI-ZML-Image/"; // 回退到硬编码，以防万一
+}
+// ===========================================
+
 app.registerExtension({
-	name: "ZML.FunFloatingBall.V35_AnimationDisplayDurationFix", // 更新版本号以示区别
+	name: "ZML.FunFloatingBall.V36_SmartPath", // 更新版本号以示区别
 	async setup(app) {
 		// --- 设置项 ---
 		const visibilitySetting = app.ui.settings.addSetting({ id: "zml.floatingBall.show", name: "悬浮球 - 显示/隐藏", type: "boolean", defaultValue: true });
@@ -38,14 +55,17 @@ app.registerExtension({
 		const hoverEffectSetting = app.ui.settings.addSetting({ id: "zml.floatingBall.hoverEffect", name: "悬浮球 - 启用悬停呼吸效果", type: "boolean", defaultValue: true });
 		const gifDelaySetting = app.ui.settings.addSetting({ id: "zml.floatingBall.gifDelay", name: "悬浮球 - GIF延迟显示 (秒)", type: "slider", attrs: { min: 0, max: 3, step: 0.1 }, defaultValue: 0.5 });
 
-		// --- 资源路径 ---
-		const baseImagePath = "/extensions/ComfyUI-ZML-Image/images/";
+		// --- 资源路径 (使用智能推断的 basePath) ---
+		const extensionBasePath = get_extension_base_path(); // 获取 /extensions/YourExtensionName/
+		const baseImagePath = extensionBasePath + "images/"; // 拼接图片目录
+
+		// 注意：这里的 timerAudioPath 和 eatSubfolderPath 会继承 baseImagePath 的逻辑
 		const idleImagePath = baseImagePath + "ZML.png";
 		const runningGifPath = baseImagePath + "ZML.gif";
 		const audioPath = baseImagePath + "ZML.wav";
 		const animationImagePath = baseImagePath + "ZML2.png";
 		const aiAvatarPath = baseImagePath + "A.png";
-        const timerAudioPath = baseImagePath + "A.wav";
+        const timerAudioPath = baseImagePath + "A.wav"; // 强烈建议这里改名，如 timer_alert.wav
         const eatSubfolderPath = baseImagePath + "eat/";
         const eatGifPath = eatSubfolderPath + "eat.gif";
         const heartImagePath = eatSubfolderPath + "heart.png";
@@ -55,11 +75,12 @@ app.registerExtension({
             eatSubfolderPath + "B.wav",
             eatSubfolderPath + "C.wav"
         ];
+        // MODIFIED: 为音频添加时间戳以确保缓存失效和文件名不再冲突
         const eatSounds = eatSoundPaths.map(path => new Audio(path + "?t=" + new Date().getTime()));
 
 
 		const audio = new Audio(audioPath);
-        const timerAudio = new Audio(timerAudioPath + "?t=" + new Date().getTime());
+        const timerAudio = new Audio(timerAudioPath + "?t=" + new Date().getTime()); // MODIFIED: 添加时间戳
 		let animationTimeout = null;
 		let gifDisplayTimeout = null;
 
@@ -76,6 +97,8 @@ app.registerExtension({
 				filter: "drop-shadow(0px 2px 5px rgba(0,0,0,0.5))"
 			}
 		}, [floatingImage]);
+
+		// ... (CSS 样式和其余功能代码保持不变) ...
 
 		// ================= CSS 样式 (FIX: 恢复动画时长硬编码，用于控制效果速度) =================
 		$el("style", {
@@ -98,13 +121,8 @@ app.registerExtension({
                 .zml-animation-pop { animation-name: zml-pop-in; } 
                 .zml-animation-slide { animation-name: zml-slide-up; } 
                 .zml-animation-shake { animation-name: zml-shake; } 
-                .zml-animation-pulse { animation-name: zml-pulse-effect; } 
-
-				@keyframes zml-fade-in { from { opacity: 0; } to { opacity: 1; } } 
-                @keyframes zml-pop-in { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } } 
-                @keyframes zml-slide-up { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } 
-                @keyframes zml-shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
                 @keyframes zml-pulse-effect { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+                .zml-animation-pulse { animation-name: zml-pulse-effect; } 
 
 				/* 卡通可爱聊天窗口样式 */
                 .zml-chat-window {
@@ -840,6 +858,7 @@ app.registerExtension({
             const heartCount = 5 + Math.floor(Math.random() * 3); // 产生5-7个爱心
 
             for (let i = 0; i < heartCount; i++) {
+                // MODIFIED: 为图片添加时间戳以避免缓存问题
                 const heart = $el("img.zml-heart-effect", { src: heartImagePath + "?t=" + new Date().getTime() });
                 
                 // 随机化属性
@@ -1103,3 +1122,4 @@ app.registerExtension({
 		floatingBall.ondragstart = () => false;
 	}
 });
+
