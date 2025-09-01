@@ -796,7 +796,7 @@ function showPainterModal(node, widget) {
                     <div class="zml-editor-main" id="zml-editor-main-container">
                         <canvas id="zml-fabric-canvas" class="zml-hidden-canvas"></canvas>
                     </div>
-                    <p id="zml-editor-tip" class="zml-editor-tip">滚轮缩放, 按住Ctrl+左键拖拽平移。画笔模式：按住鼠标左键绘制。</p>
+                    <p id="zml-editor-tip" class="zml-editor-tip">按住Ctrl+滚轮缩放, 按住Ctrl+左键拖拽平移。画笔模式：按住鼠标左键绘制。</p>
                     
                     <div id="zml-painter-bottom-panel" class="zml-painter-bottom-panel">
                         <div class="zml-control-group">
@@ -926,7 +926,7 @@ function showPainterModal(node, widget) {
             };
             drawingMode = modeMap[activeBtn.id] || 'brush';
             canvas.isDrawingMode = (drawingMode === 'brush');
-            let tipText = `滚轮缩放, 按住Ctrl+左键拖拽平移。当前模式：${activeBtn.title}。`;
+            let tipText = `按住Ctrl+滚轮缩放, 按住Ctrl+左键拖拽平移。当前模式：${activeBtn.title}。`;
             if (drawingMode === 'imageStamp') tipText += " “大小”滑块可控制图章缩放。";
             if (drawingMode === 'mosaic') tipText += " “大小”滑块可控制像素颗粒度。";
             tipElement.textContent = tipText;
