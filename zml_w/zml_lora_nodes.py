@@ -5,7 +5,6 @@ import folder_paths
 import comfy.utils
 import comfy.sd
 from aiohttp import web
-# from nodes import LoraLoader, LoraLoaderModelOnly # 实际上原始节点并未在此直接实例化，可以移除
 import torch
 import numpy as np
 from PIL import Image
@@ -839,7 +838,7 @@ class ZmlNameLoraLoader:
             "required": {
                 "模型": ("MODEL",),
                 "CLIP": ("CLIP",),
-                "lora名称列表": (ZML_LORA_STACK_TYPE,), # 接收 ZML_LORA_STACK_TYPE 类型
+                                "LoRA名称列表": (ZML_LORA_STACK_TYPE, {"forceInput": True}), 
             }
         }
 
@@ -849,15 +848,15 @@ class ZmlNameLoraLoader:
     CATEGORY = "图像/ZML_图像/lora加载器"
     COLOR = "#446699" # 一个更柔和的蓝色
     
-    def load_named_loras(self, 模型, CLIP, lora名称列表):
+    def load_named_loras(self, 模型, CLIP, LoRA名称列表):
         current_model = 模型
         current_clip = CLIP
 
-        if not isinstance(lora名称列表, list):
+        if not isinstance(LoRA名称列表, list):
             print(f"ZML_名称加载lora: 'lora名称列表' 输入不是一个有效的列表类型，跳过LoRA加载。")
             return (模型, CLIP) # 返回原始模型和CLIP，不报错
 
-        for lora_info in lora名称列表: # 遍历包含字典的列表
+        for lora_info in LoRA名称列表: # 遍历包含字典的列表
             if not isinstance(lora_info, dict) or "lora_name" not in lora_info or "weight" not in lora_info:
                 print(f"ZML_名称加载lora: 'lora名称列表' 中的LoRA信息格式不正确: {lora_info}，跳过。")
                 continue
