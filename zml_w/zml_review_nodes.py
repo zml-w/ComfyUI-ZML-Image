@@ -116,7 +116,7 @@ class ZML_AutoCensorNode:
         return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1), help_text)
     def get_mask(self, result, w, h):
         if hasattr(result, 'masks') and result.masks: return (cv2.resize(result.masks.data[0].cpu().numpy(), (w, h), interpolation=cv2.INTER_NEAREST) * 255).astype(np.uint8), 'segm'
-        elif hasattr(result, 'boxes') and result.boxes: box = result.boxes.xyxy[0].cpu().numpy().astype(int); mask_cv = np.zeros((h, w), dtype=np.uint8); cv2.rectangle(mask_cv, (box[0], box[1]), (box[2], box[3]), 255, -1); return mask_cv, 'bbox'
+        elif hasattr(result, 'boxes') and result.boxes: box = result.boxes.xyxy[0].cpu().numpy().astype(int); mask_cv = np.zeros((h, w), dtype=np.uint8); cv2.rectangle(mask_cv, (box[0], box[1]), (box[2], box[1]), 255, -1); return mask_cv, 'bbox'
         return None, None
     def process_mask(self, mask_cv, scale, dilation):
         processed_mask = mask_cv.copy()
@@ -250,7 +250,7 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
                 for contour in all_contours_to_draw:
                     # 创建一个只包含当前轮廓的空白遮罩
                     temp_mask = np.zeros_like(source_cv2_bgr[:,:,0], dtype=np.uint8)
-                    cv2.drawContours(temp_mask, [contour], -1, 255, cv2.FILLED)
+                    cv2.drawContours(temp_mask, [contour], -1, cv2.FILLED)
                     
                     # 膨胀这个遮罩
                     kernel = np.ones((外扩描边像素 * 2 + 1, 外扩描边像素 * 2 + 1), np.uint8)
@@ -281,21 +281,97 @@ class ZML_MaskSplitNode:
                 "宽度": ("INT", {"default": 1024}),
                 "高度": ("INT", {"default": 1024}),
                 "分割比例": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "分割方向": (["竖", "横"],)
+                "分割方向": (["竖", "横", "对角线"],) # 添加“对角线”选项
             }
         }
     RETURN_TYPES = ("MASK", "MASK", "MASK", "MASK", "MASK"); RETURN_NAMES = ("遮罩A", "遮罩B", "单独遮罩A", "单独遮罩B", "完整遮罩"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/遮罩"
     def process(self, 宽度, 高度, 分割比例, 分割方向):
-        a = np.zeros((高度, 宽度), dtype=np.float32); b = np.zeros((高度, 宽度), dtype=np.float32)
+        a = np.zeros((高度, 宽度), dtype=np.float32)
+        b = np.zeros((高度, 宽度), dtype=np.float32)
+        sa = np.zeros((1, 1), dtype=np.float32) # 初始化，为了防止空遮罩报错
+        sb = np.zeros((1, 1), dtype=np.float32) # 初始化
+
         if 分割方向 == "竖":
-            w_split = int(宽度 * 分割比例); a[:, :w_split] = 1.0; b[:, w_split:] = 1.0;
-            sa = np.ones((高度, w_split)); sb = np.ones((高度, 宽度 - w_split))
-        else:
-            h_split = int(高度 * 分割比例); a[:h_split, :] = 1.0; b[h_split:, :] = 1.0;
-            sa = np.ones((h_split, 宽度)); sb = np.ones((高度 - h_split, 宽度))
-        if sa.size == 0: sa = np.zeros((1,1));
-        if sb.size == 0: sb = np.zeros((1,1));
-        return tuple(torch.from_numpy(x).unsqueeze(0) for x in [a, b, sa, sb, np.ones((高度, 宽度))])
+            w_split = int(宽度 * 分割比例)
+            a[:, :w_split] = 1.0
+            b[:, w_split:] = 1.0
+            if w_split > 0:
+                sa = np.ones((高度, w_split), dtype=np.float32)
+            if (宽度 - w_split) > 0:
+                sb = np.ones((高度, 宽度 - w_split), dtype=np.float32)
+        elif 分割方向 == "横":
+            h_split = int(高度 * 分割比例)
+            a[:h_split, :] = 1.0
+            b[h_split:, :] = 1.0
+            if h_split > 0:
+                sa = np.ones((h_split, 宽度), dtype=np.float32)
+            if (高度 - h_split) > 0:
+                sb = np.ones((高度 - h_split, 宽度), dtype=np.float32)
+        elif 分割方向 == "对角线":
+            # 创建一个网格，X轴从0到宽度-1，Y轴从0到高度-1
+            y_coords, x_coords = np.indices((高度, 宽度))
+
+            # 计算对角线方程： (y - y1) * (x2 - x1) = (x - x1) * (y2 - y1)
+            # 简化为： Y * W = X * H (从 (0,0) 到 (W,H) 的线)
+            # 或者： `y / H = x / W`
+            # 为了控制分割比例，我们引入一个偏移量，让线变成 `y / H = x / W + offset`
+            # 实际操作更方便的是 `y * W - x * H` 的值
+            
+            # 归一化偏移量，使分割比例在0到1之间对应于对角线从一侧到另一侧的完全偏移
+            # 当分割比例为0时，对角线偏向左侧（更多区域给B）
+            # 当分割比例为1时，对角线偏向右侧（更多区域给A）
+            # base_line_value = (y_coords / 高度) - (x_coords / 宽度)
+            # offset = (分割比例 - 0.5) * 2.0 # 偏移量从-1到1
+            # a_condition = base_line_value < offset 
+
+            # 更直观的对角线分割方式：
+            # 考虑一个线性梯度，从左到右或从上到下。
+            # 这里我们尝试从左上到右下的对角线。
+            # 我们希望 `分割比例` 0.0 时，遮罩A为0，遮罩B为全图。
+            # `分割比例` 1.0 时，遮罩A为全图，遮罩B为0。
+
+            # 计算一个对角线梯度值：
+            # (x / 宽度 + y / 高度) 的值范围大约是 0 到 2
+            # 调整偏移使 `分割比例` 在 0 到 1 之间有效控制分割
+            
+            # 使用 `y * W - x * H` 表达式来判断像素点相对于对角线的位置
+            # 值为0时在线上，负值在一方，正值在另一方。
+            # 调整阈值 `threshold` 来实现 `分割比例` 的效果。
+            # threshold 范围可以从 -(H*W) 到 +(H*W)
+            # 我们可以将 `分割比例` 映射到一个合适的阈值范围
+            
+            # 假设对角线从左上角(0,0)到右下角(W-1, H-1)
+            # 点 (x,y) 到对角线 (0,0)-(W-1,H-1) 的距离正负判断： (y - H/W * x)
+            # 或者更通用的： (x - x1)(y2 - y1) - (y - y1)(x2 - x1)
+            # (x - 0)(H - 0) - (y - 0)(W - 0) = x*H - y*W
+            # 如果 x*H - y*W > 0, 则点在对角线下方
+            # 如果 x*H - y*W < 0, 则点在对角线上方
+
+            # 我们需要一个基于 `分割比例` 的偏移量
+            # 当分割比例为0时，几乎所有点都在 `a` 区域，`b` 区域很小 (或说线很靠近右下角)
+            # 当分割比例为1时，几乎所有点都在 `b` 区域，`a` 区域很小 (或说线很靠近左上角)
+            
+            # 我们创建一个0到1的连续对角线梯度
+            gradient = (x_coords / 宽度 + y_coords / 高度) / 2.0
+            
+            # 根据分割比例来确定分割点
+            # 如果分割比例是0.5，那么就是 (x/W + y/H)/2.0 > 0.5 的一半
+            # gradient <= 分割比例 给 mask_a
+            a[gradient <= 分割比例] = 1.0
+            b[gradient > 分割比例] = 1.0
+
+            # 对于单独遮罩 A 和 B，创建一个与各自区域大小匹配的全白遮罩
+            # 更好的方法是计算a和b的实际像素数，然后创建该大小的方形遮罩
+            # 但这不是像素的实际宽高，而是整体区域，通常单独遮罩用于裁剪，所以保持原逻辑
+            # 这里，sa和sb就是各自生成的a和b遮罩本身
+            sa = a.copy()
+            sb = b.copy()
+
+        # 确保sa和sb在某些极端情况下（如尺寸0，或分割比例导致其中一个为0）不会是空数组
+        if sa.size == 0 or sa.shape[0] == 0 or sa.shape[1] == 0: sa = np.zeros((1, 1), dtype=np.float32)
+        if sb.size == 0 or sb.shape[0] == 0 or sb.shape[1] == 0: sb = np.zeros((1, 1), dtype=np.float32)
+
+        return tuple(torch.from_numpy(x).unsqueeze(0) for x in [a, b, sa, sb, np.ones((高度, 宽度), dtype=np.float32)])
 
 class ZML_MaskSplitNode_Five:
     @classmethod
@@ -952,7 +1028,9 @@ class ZML_UnifyImageResolution:
 
                 # 确保尺寸至少为1
                 scaled_width = max(1, scaled_width)
+                    # scaled_height = max(1, scaled_height)
                 scaled_height = max(1, scaled_height)
+
 
                 resized_image = pil_image.resize((scaled_width, scaled_height), resample=Image.Resampling.LANCZOS)
 
@@ -1197,34 +1275,33 @@ class ZML_LimitImageAspect:
             intermediate_result_pil = pil_image.resize((final_width, final_height), resample=Image.Resampling.LANCZOS)
 
         elif 模式 in ["填充白", "填充黑"]:
+            # 填充模式现在总是根据原图尺寸来决定画布尺寸，以避免放大超出原图尺寸
+            
+            # 计算缩放后的原图尺寸，使其完全适应(fit in)目标比例矩形
+            # 即以原图的宽或高为基准，确定新的宽高
+            scale_factor_w = float(original_width) / original_width # 总是1
+            scale_factor_h = float(original_height) / original_height # 总是1
 
-            if target_aspect_float > original_image_aspect:
-                canvas_height = original_height # 画布高度与原图高度相同
-                canvas_width = int(canvas_height * target_aspect_float) # 根据目标比例计算画布宽度
-            # 如果目标比例相对更高，则以原始图像的原始宽度为基准，计算新高度
-            else:
-                canvas_width = original_width # 画布宽度与原图宽度相同
-                canvas_height = int(canvas_width / target_aspect_float) # 根据目标比例计算画布高度
+            canvas_width = original_width
+            canvas_height = original_height
+
+            # 调整画布以符合目标比例
+            if original_image_aspect < target_aspect_float: # 原始图像太“高”或不够“宽”，需要在左右填充
+                canvas_width = int(original_height * target_aspect_float)
+            else: # 原始图像太“宽”或不够“高”，需要在上下填充
+                canvas_height = int(original_width / target_aspect_float)
             
             canvas_width = max(1, canvas_width)
             canvas_height = max(1, canvas_height)
 
             new_canvas = Image.new("RGBA", (canvas_width, canvas_height), fill_color)
 
-            # 缩放原图以适应新画布（等比缩放，确保整个原图可见，即 fit in）
-            scale_factor = min(float(canvas_width) / original_width, float(canvas_height) / original_height)
-            scaled_image_width = int(original_width * scale_factor)
-            scaled_image_height = int(original_height * scale_factor)
+            # 粘贴原图（无需缩放，因为画布尺寸是根据原图推导的）
+            paste_x = (canvas_width - original_width) // 2
+            paste_y = (canvas_height - original_height) // 2
+            new_canvas.paste(pil_image, (paste_x, paste_y), pil_image) # 直接粘贴原图
 
-            if scaled_image_width == 0 or scaled_image_height == 0:
-                intermediate_result_pil = new_canvas # 如果缩放后原图变0，直接返回填充画布
-            else:
-                resized_pil_image = pil_image.resize((scaled_image_width, scaled_image_height), resample=Image.Resampling.LANCZOS)
-                # 计算粘贴位置 (居中)
-                paste_x = (canvas_width - scaled_image_width) // 2
-                paste_y = (canvas_height - scaled_image_height) // 2
-                new_canvas.paste(resized_pil_image, (paste_x, paste_y), resized_pil_image)
-                intermediate_result_pil = new_canvas
+            intermediate_result_pil = new_canvas
 
         elif 模式 == "裁剪":
             # 目标：在原始图像内找到一个符合目标比例的最大裁剪区域。
@@ -1308,3 +1385,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LimitMaskShape": "ZML_限制遮罩形状", 
     "ZML_LimitImageAspect": "ZML_限制图像比例",
 }
+
