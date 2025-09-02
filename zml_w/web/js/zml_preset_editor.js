@@ -556,11 +556,11 @@ function createResolutionAddDialog() {
             <div class="zml-form-row" style="display: flex; justify-content: space-between; align-items: flex-end;">
                 <div style="flex-grow: 1;">
                     <label for="zml-preset-resolution-width">宽度 (W):</label>
-                    <input type="number" id="zml-preset-resolution-width" value="1024" min="1" step="64" class="small-input">
+                    <input type="number" id="zml-preset-resolution-width" value="1024" min="1" class="small-input"> <!-- 移除 step="64" -->
                 </div>
                 <div style="flex-grow: 1;">
                     <label for="zml-preset-resolution-height">高度 (H):</label>
-                    <input type="number" id="zml-preset-resolution-height" value="768" min="1" step="64" class="small-input">
+                    <input type="number" id="zml-preset-resolution-height" value="768" min="1" class="small-input"> <!-- 移除 step="64" -->
                 </div>
             </div>
             <div class="zml-dialog-footer">
@@ -580,25 +580,59 @@ function createResolutionAddDialog() {
     const widthInput = dialogOverlay.querySelector("#zml-preset-resolution-width");
     const heightInput = dialogOverlay.querySelector("#zml-preset-resolution-height");
 
+    // 添加自定义验证逻辑，阻止浏览器默认提示
+    [widthInput, heightInput].forEach(input => {
+        input.addEventListener('invalid', function(event) {
+            event.preventDefault(); // 阻止浏览器显示默认提示
+            // 您可以在此处添加您自己的视觉反馈，例如改变输入框边框颜色
+            console.log('Validation failed:', this.validationMessage);
+            // 或者使用alert来提示，但通常不推荐频繁弹窗
+            // alert(`输入无效: ${this.value}, 请输入正确的数字。`);
+        });
+        input.addEventListener('input', function() {
+            // 用户再次输入时，理论上应该再次验证，但因为我们阻止了默认行为，
+            // 浏览器不会自动重置 validity 状态，所以这里不需要 setCustomValidity("")
+            // 如果希望有自己的错误消息显示在其他地方，需要在这里更新
+        });
+    });
+
+
     saveButton.onclick = async () => {
         const preset_name = nameInput.value.trim();
         const width = widthInput.value;
         const height = heightInput.value;
 
+        // 手动进行输入验证
         if (!width || !height) {
             alert("宽度和高度不能为空！");
             return;
         }
-        if (isNaN(parseInt(width)) || isNaN(parseInt(height))) {
+        
+        const parsedWidth = parseInt(width);
+        const parsedHeight = parseInt(height);
+
+        if (isNaN(parsedWidth) || isNaN(parsedHeight)) {
             alert("宽度和高度必须是有效的数字！");
             return;
         }
+
+        // 进一步的范围或步长验证 (可选，如果仍需要特定规则)
+        // 例如：
+        // if (parsedWidth < 1 || parsedWidth > 16384) {
+        //     alert("宽度必须在 1 到 16384 之间！");
+        //     return;
+        // }
+        // if (parsedHeight < 1 || parsedHeight > 16384) {
+        //     alert("高度必须在 1 到 16384 之间！");
+        //     return;
+        // }
+
 
         try {
             const response = await api.fetchApi("/zml/add_resolution_preset", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ preset_name, width, height }),
+                body: JSON.stringify({ preset_name, width: parsedWidth, height: parsedHeight }),
             });
 
             if (response.status === 200) {

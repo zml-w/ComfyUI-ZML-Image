@@ -301,6 +301,78 @@ app.registerExtension({
                     overflow: hidden;
                     text-overflow: ellipsis;
                 }
+                
+                /* === 新增: 编辑和查看按钮的样式 === */
+                .zml-edit-btn, .zml-view-image-btn {
+                    position: absolute;
+                    top: 5px;
+                    z-index: 10;
+                    background: rgba(0, 0, 0, 0.5);
+                    color: white;
+                    border: none;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    width: 28px;
+                    height: 28px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: background 0.2s, transform 0.2s;
+                    backdrop-filter: blur(2px);
+                }
+                .zml-edit-btn:hover, .zml-view-image-btn:hover {
+                    background: rgba(0, 0, 0, 0.75);
+                    transform: scale(1.1);
+                }
+                .zml-edit-btn { left: 5px; }
+                .zml-view-image-btn { right: 5px; }
+                .zml-edit-btn svg, .zml-view-image-btn svg {
+                    width: 16px;
+                    height: 16px;
+                    fill: white;
+                }
+                
+                /* === 新增: 编辑弹窗的样式 === */
+                .zml-edit-modal { 
+                    top: 15%; left: 20%; right: 20%; bottom: unset; height: 60vh; 
+                }
+                .zml-edit-modal-textarea {
+                    width: 100%; height: 100%; box-sizing: border-box; resize: none;
+                    padding: 10px; font-size: 1em; background-color: var(--zml-input-bg);
+                    color: var(--zml-main-text); border: 1px solid var(--zml-input-border); border-radius: 4px;
+                }
+                .zml-edit-modal-copy-btn {
+                    position: absolute; bottom: 15px; left: 15px; padding: 8px 16px;
+                    font-size: 0.9em; background-color: #4A90E2; color: white; border: none;
+                    border-radius: 5px; cursor: pointer; transition: background-color 0.2s ease, transform 0.1s ease;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.15); z-index: 10;
+                }
+                .zml-edit-modal-copy-btn:hover { background-color: #357ABD; }
+                .zml-edit-modal-copy-btn:active { transform: scale(0.98); }
+
+                /* === 新增: 图片查看器的样式 === */
+                 .zml-image-viewer-modal { 
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                    background-color: rgba(0, 0, 0, 0.8); z-index: 2000; 
+                }
+                .zml-image-viewer-content { 
+                    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                    display: flex; flex-direction: column; align-items: center; background: #222; 
+                    padding: 10px; border-radius: 8px; box-shadow: 0 5px 30px rgba(0,0,0,0.5); 
+                }
+                .zml-image-viewer-img { 
+                    max-width: 80vw; max-height: 80vh; object-fit: contain; 
+                    border: 1px solid #555; cursor: move; 
+                }
+                .zml-image-viewer-close-btn { 
+                    position: absolute; top: -15px; right: -15px; background-color: #f44336; 
+                    color: white; border: none; border-radius: 50%; width: 35px; height: 35px; 
+                    font-size: 1.5em; cursor: pointer; display: flex; justify-content: center; 
+                    align-items: center; transition: background-color 0.2s, transform 0.2s; 
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+                }
+                .zml-image-viewer-close-btn:hover { background-color: #d32f2f; transform: scale(1.05); }
+
 
                 /* 模态框底部布局 */
                 .zml-tag-modal-footer {
@@ -354,10 +426,13 @@ app.registerExtension({
                 }
 
                 /* 特定动作按钮颜色 */
-                .zml-undo-btn { background-color: #f0ad4e; }
-                .zml-undo-btn:hover:not(:disabled) { background-color: #ec971f; }
-                .zml-clear-btn { background-color: #d9534f; }
-                .zml-clear-btn:hover:not(:disabled) { background-color: #c9302c; }
+                .zml-action-btn.undo, .zml-undo-btn { background-color: #f0ad4e; }
+                .zml-action-btn.undo:hover:not(:disabled), .zml-undo-btn:hover:not(:disabled) { background-color: #ec971f; }
+                .zml-action-btn.cancel, .zml-clear-btn { background-color: #d9534f; }
+                .zml-action-btn.cancel:hover:not(:disabled), .zml-clear-btn:hover:not(:disabled) { background-color: #c9302c; }
+                .zml-action-btn.confirm { background-color: #5cb85c; }
+                .zml-action-btn.confirm:hover:not(:disabled) { background-color: #4cae4c; }
+
 
                 /* 按钮样式 */
                 .zml-confirm-btn-main {
@@ -506,6 +581,10 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 onNodeCreated?.apply(this, arguments);
                 
+                // === 新增: SVG 图标常量 ===
+                const pencilIconSVG = `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.56 2.44a4.2 4.2 0 0 0-5.94 0L3.4 10.66a1 1 0 0 0-.29.71L2 17l5.63-.88a1 1 0 0 0 .7-.29l8.22-8.23a4.2 4.2 0 0 0 0-5.94zM7.07 14.5l-2.12.33.33-2.12 6.37-6.36 1.79 1.8-6.37 6.35zM16.15 7l-1.8-1.79 1.1-1.1a2.82 2.82 0 1 1 4 4l-1.1 1.1-1.79-1.8.6-.6z"></path></svg>`;
+                const viewIconSVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`;
+
                 const DISPLAY_MODES = {
                     TEXT_ONLY: "text_only",
                     TEXT_HOVER: "text_hover",
@@ -522,6 +601,109 @@ app.registerExtension({
                     document.body.appendChild(imageHost);
                 };
                 const hideImage = () => { imageHost.remove(); };
+                
+                // === 新增: 拖动逻辑辅助函数 ===
+                const makeDraggable = (element, handle) => {
+                    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+                    handle.onmousedown = dragMouseDown;
+
+                    function dragMouseDown(e) {
+                        e = e || window.event;
+                        e.preventDefault();
+                        pos3 = e.clientX;
+                        pos4 = e.clientY;
+                        document.onmouseup = closeDragElement;
+                        document.onmousemove = elementDrag;
+                        if (element.style.transform) {
+                            const rect = element.getBoundingClientRect();
+                            element.style.transform = "none";
+                            element.style.left = `${rect.left}px`;
+                            element.style.top = `${rect.top}px`;
+                        }
+                    }
+
+                    function elementDrag(e) {
+                        e = e || window.event;
+                        e.preventDefault();
+                        pos1 = pos3 - e.clientX;
+                        pos2 = pos4 - e.clientY;
+                        pos3 = e.clientX;
+                        pos4 = e.clientY;
+                        element.style.top = (element.offsetTop - pos2) + "px";
+                        element.style.left = (element.offsetLeft - pos1) + "px";
+                    }
+
+                    function closeDragElement() {
+                        document.onmouseup = null;
+                        document.onmousemove = null;
+                    }
+                };
+                
+                // === 新增: 创建图片查看器弹窗的函数 ===
+                const createImageViewerModal = (imageUrl) => {
+                    const modal = $el("div.zml-image-viewer-modal");
+                    const content = $el("div.zml-image-viewer-content");
+                    const img = $el("img.zml-image-viewer-img", { src: imageUrl, alt: "Full Image" });
+                    const closeBtn = $el("button.zml-image-viewer-close-btn", { textContent: "✖" });
+
+                    const closeModal = () => { modal.remove(); };
+                    closeBtn.onclick = closeModal;
+                    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+                    content.append(img, closeBtn);
+                    modal.appendChild(content);
+                    document.body.appendChild(modal);
+
+                    makeDraggable(content, img);
+                };
+                
+                // === 关键修复: 创建编辑文本块弹窗的函数 ===
+                const createEditModal = (currentText) => {
+                    return new Promise((resolve, reject) => {
+                        const backdrop = $el("div.zml-backdrop");
+                        const textarea = $el("textarea.zml-edit-modal-textarea", { value: currentText });
+                        const saveBtn = $el("button.zml-action-btn.confirm", { textContent: "保存" });
+                        const cancelBtn = $el("button.zml-action-btn.cancel", { textContent: "取消" });
+                        const copyEditBtn = $el("button.zml-edit-modal-copy-btn", { textContent: "复制" });
+                        
+                        copyEditBtn.onclick = () => {
+                            if (!textarea.value) return;
+                            navigator.clipboard.writeText(textarea.value).then(() => {
+                                const originalText = copyEditBtn.textContent;
+                                copyEditBtn.textContent = "已复制!";
+                                setTimeout(() => { copyEditBtn.textContent = originalText; }, 2000);
+                            }).catch(err => { alert("复制失败: " + err); });
+                        };
+                        
+                        const activeTheme = document.querySelector('.zml-tag-modal')?.dataset.theme || localStorage.getItem("zml.tagImageLoader.theme") || 'blue';
+                        
+                        // -- 修复开始 --
+                        // 创建各个部分
+                        const header = $el("div.zml-tag-modal-header", { textContent: "编辑文本块" });
+                        const content = $el("div.zml-tag-modal-content");
+                        const footer = $el("div.zml-tag-modal-footer", {
+                            style: { justifyContent: 'flex-end', gap: '10px', position: 'relative' }
+                        });
+
+                        // 使用 append 方法添加子元素，而不是通过 'children' 属性
+                        content.appendChild(textarea);
+                        footer.append(copyEditBtn, cancelBtn, saveBtn);
+
+                        const modal = $el("div.zml-tag-modal.zml-edit-modal", {
+                            dataset: { theme: activeTheme }
+                        });
+                        modal.append(header, content, footer);
+                        // -- 修复结束 --
+
+                        const closeModal = () => { modal.remove(); backdrop.remove(); };
+                        saveBtn.onclick = () => { resolve(textarea.value); closeModal(); };
+                        cancelBtn.onclick = () => { reject(new Error("用户取消操作")); closeModal(); };
+                        backdrop.onclick = cancelBtn.onclick;
+                        document.body.appendChild(backdrop);
+                        document.body.appendChild(modal);
+                        textarea.focus();
+                    });
+                };
 
                 this.addWidget("button", "打开标签选择器", "open", () => {
                     const backdrop = $el("div.zml-backdrop");
@@ -706,25 +888,16 @@ app.registerExtension({
                         }
                     };
                     
-                    // ==================== START: MODIFIED CODE ====================
-
-                    /**
-                     * @summary 路径刷新事件的处理器
-                     * 这个函数会在用户点击“刷新路径”或在输入框按回车时触发。
-                     * 它会先清空当前已有的选择，然后再调用 fetchAndRenderFiles 加载新内容。
-                     */
                     const handlePathRefresh = () => {
-                        // 如果在刷新路径时已经有选中的文件，则先将其清空
                         if (selectedFiles.length > 0) {
-                            pushHistory(); // 将清空前的状态存入历史，以便撤回
-                            selectedFiles.length = 0; // 高效清空已选文件数组
-                            updateUiState(); // 立即更新UI显示（例如已选数量变为0）
+                            pushHistory(); 
+                            selectedFiles.length = 0;
+                            updateUiState();
                         }
-                        fetchAndRenderFiles(); // 调用核心函数加载新路径的文件
+                        fetchAndRenderFiles();
                     };
 
                     const renderCurrentLevel = () => {
-                    // ==================== END: MODIFIED CODE ======================
                         contentEl.innerHTML = "";
                         const folderContainer = $el("div.zml-folder-container");
                         const imageContainer = $el("div.zml-image-container");
@@ -766,34 +939,85 @@ app.registerExtension({
                                 const [displayName] = fileInfo.filename.split('.');
                                 const imgInnerChildren = [$el("span", { textContent: displayName })];
                                 const imgBtn = $el("button.zml-img-btn", imgInnerChildren);
+                                const customPath = pathInput.value.trim();
+
+                                const baseQueryParams = new URLSearchParams({
+                                    filename: fileInfo.filename,
+                                    subfolder: fileInfo.subfolder,
+                                });
+                                if (customPath) baseQueryParams.append("custom_path", customPath);
 
                                 switch(currentDisplayMode) {
                                     case DISPLAY_MODES.TEXT_HOVER:
                                         imgBtn.addEventListener("mouseover", () => {
-                                            const customPath = pathInput.value.trim();
-                                            const queryParams = new URLSearchParams({
-                                                filename: fileInfo.filename,
-                                                subfolder: fileInfo.subfolder,
-                                                t: +new Date(),
-                                            });
-                                            if (customPath) queryParams.append("custom_path", customPath);
-                                            imageHost.src = `${ZML_API_PREFIX}/view_image?${queryParams.toString()}`;
+                                            const hoverParams = new URLSearchParams(baseQueryParams);
+                                            hoverParams.append("t", +new Date());
+                                            imageHost.src = `${ZML_API_PREFIX}/view_image?${hoverParams.toString()}`;
                                             showImage(imgBtn);
                                         });
                                         imgBtn.addEventListener("mouseout", hideImage);
                                         break;
 
                                     case DISPLAY_MODES.THUMBNAIL_ONLY:
+                                        const thumbParams = new URLSearchParams(baseQueryParams);
                                         const thumb = $el("img", {
                                             loading: "lazy",
-                                            src: `${ZML_API_PREFIX}/view_image_thumb?filename=${encodeRFC3986URIComponent(fileInfo.filename)}&subfolder=${encodeRFC3986URIComponent(fileInfo.subfolder)}&custom_path=${encodeRFC3986URIComponent(pathInput.value.trim())}`
+                                            src: `${ZML_API_PREFIX}/view_image_thumb?${thumbParams.toString()}`
                                         });
                                         imgBtn.prepend(thumb);
+                                        
+                                        const editBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
+                                        editBtn.onclick = async (event) => {
+                                            event.stopPropagation();
+                                            const originalContent = editBtn.innerHTML;
+                                            editBtn.innerHTML = '...';
+                                            try {
+                                                const getTextUrl = `${ZML_API_PREFIX}/get_single_text_block?${baseQueryParams.toString()}`;
+                                                const res = await api.fetchApi(getTextUrl);
+                                                if (!res.ok) throw new Error("获取文本块失败: " + await res.text());
+                                                const data = await res.json();
+                                                
+                                                const newText = await createEditModal(data.text_content || "");
+
+                                                const writeData = {
+                                                    custom_path: customPath,
+                                                    ...fileInfo,
+                                                    text_content: newText
+                                                };
+                                                const writeRes = await api.fetchApi(`${ZML_API_PREFIX}/write_text_block`, {
+                                                    method: 'POST',
+                                                    headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify(writeData)
+                                                });
+                                                
+                                                const writeResult = await writeRes.json();
+                                                if (!writeRes.ok || writeResult.error) {
+                                                    throw new Error(writeResult.error || "写入失败");
+                                                }
+                                                alert("写入成功！");
+
+                                            } catch (err) {
+                                                if (err.message !== "用户取消操作") {
+                                                     alert(`操作失败: ${err.message}`);
+                                                     console.error("编辑文本块失败:", err);
+                                                }
+                                            } finally {
+                                                editBtn.innerHTML = originalContent;
+                                            }
+                                        };
+                                        imgBtn.appendChild(editBtn);
+
+                                        const fullImageUrl = `${ZML_API_PREFIX}/view_image?${baseQueryParams.toString()}`;
+                                        const viewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                        viewImageBtn.onclick = (event) => {
+                                            event.stopPropagation();
+                                            createImageViewerModal(fullImageUrl);
+                                        };
+                                        imgBtn.appendChild(viewImageBtn);
                                         break;
                                     
                                     case DISPLAY_MODES.TEXT_ONLY:
                                     default:
-                                        // 无需额外操作
                                         break;
                                 }
 
@@ -818,9 +1042,6 @@ app.registerExtension({
                         }
                     };
                     
-                    // ==================== START: MODIFIED CODE ====================
-                    
-                    // 将事件监听器指向新的 handlePathRefresh 函数
                     pathInput.addEventListener("keydown", (e) => {
                         if (e.key === "Enter") {
                             handlePathRefresh();
@@ -828,10 +1049,8 @@ app.registerExtension({
                     });
                     refreshPathBtn.onclick = handlePathRefresh;
                     
-                    // 首次加载时，直接调用 fetchAndRenderFiles，以保留已有的选择
                     fetchAndRenderFiles();
                     
-                    // ==================== END: MODIFIED CODE ======================
                 });
             };
         }
