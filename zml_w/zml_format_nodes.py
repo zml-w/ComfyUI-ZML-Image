@@ -57,62 +57,6 @@ def format_punctuation_global(text):
 class ZML_TextFormatter:
     """ZML 文本转格式节点"""
     
-    def __init__(self):
-        # 初始化计数文件路径
-        self.node_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # 将计数器文件路径移动到 "counter" 子文件夹
-        self.counter_dir = os.path.join(self.node_dir, "counter")
-        os.makedirs(self.counter_dir, exist_ok=True)
-        self.counter_file = os.path.join(self.counter_dir, "转格式计数.txt")
-        
-        # 确保计数器文件存在
-        self.ensure_counter_file()
-        
-        # 获取当前计数
-        self.total_count = self.get_current_count()
-        
-        # 更新帮助文本
-        self.help_text = f"你好，欢迎使用ZML节点~\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
-    
-    def ensure_counter_file(self):
-        """确保计数文件存在"""
-        try:
-            if not os.path.exists(self.counter_file):
-                with open(self.counter_file, "w", encoding="utf-8") as f:
-                    f.write("0")
-        except Exception as e:
-            print(f"创建计数文件失败: {str(e)}")
-    
-    def get_current_count(self):
-        """获取当前计数"""
-        try:
-            if os.path.exists(self.counter_file):
-                with open(self.counter_file, "r", encoding="utf-8") as f:
-                    count = f.read().strip()
-                    return int(count) if count.isdigit() else 0
-            return 0
-        except Exception:
-            return 0
-    
-    def increment_counter(self):
-        """增加计数器并更新帮助文本"""
-        try:
-            # 增加计数
-            self.total_count += 1
-            
-            # 更新计数文件
-            with open(self.counter_file, "w", encoding="utf-8") as f:
-                f.write(str(self.total_count))
-            
-            # 更新帮助文本
-            self.help_text = f"你好，欢迎使用ZML节点~\n到目前为止，你通过此节点总共转换了{self.total_count}次格式！此节点会将NAI的权重格式转化为SD的，还可以将中文逗号替换为英文逗号，或输入多个连续逗号时转换为单个英文逗号，比如输入‘，，{{{{{{kind_smlie}}}}}}，，，,,,，，’时，它会输出为‘(kind smile:1.611),’，输入‘2::1gril::’输出‘(1gril:2)’，输入[[[1girl]]]输出’(1girl:0.729)‘，如果你不想要这种非常精确的转换，还可以选择‘保留一位小数’模式，那输出就是(1girl:0.7)了，多一个嵌套就多/少0.1的乘数。\n还支持格式化断开语法‘BREAK’，会自动合并多个连续的，或者开头的BREAK，比如‘BREAK,1girl，BREAK,BREAK,solo’输出为‘1girl,solo,’，和逗号的格式化一样的效果。\n好啦~祝你天天开心！"
-            
-            return self.total_count
-        except Exception as e:
-            print(f"更新计数器失败: {str(e)}")
-            return self.total_count
-    
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -122,17 +66,36 @@ class ZML_TextFormatter:
                     "default": "",
                     "placeholder": "输入要转换的文本"
                 }),
-                "NAI转SD权重": (["禁用", "精确", "保留一位小数"], {"default": "精确"}),
-                "下划线转空格": ([True, False], {"default": True}),
+                "权重转换": (["禁用", "NAI转SD（精确）", "NAI转SD（一位小数）", "清空权重"], {"default": "NAI转SD（精确）"}),
+                "文本格式化": (["禁用", "下划线转空格", "空格转下划线", "空格隔离标签"], {"default": "下划线转空格"}),
                 "格式化标点符号": ([True, False], {"default": True}),
             }
         }
     
     CATEGORY = "image/ZML_图像/文本"
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("文本", "Help")
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
     FUNCTION = "format_text"
     
+    def clear_weights(self, text):
+        """移除所有权重语法，只保留标签文本"""
+        # 移除SD权重格式 (content:weight)
+        text = re.sub(r'\(\s*([^:]+?)\s*:\s*[\d\.]+\s*\)', r'\1', text)
+        # 移除自定义权重格式 weight::content::
+        text = re.sub(r'\d+(?:\.\d+)?::(.*?)::', r'\1', text)
+        
+        # 【修正】迭代移除所有包围性质的括号 (), {}, []
+        # 只要还能找到最内层的括号，就继续循环剥离
+        while re.search(r'\{[^{}]*?\}|\[[^\[\]]*?\]|\([^\(\)]*?\)', text):
+             # 移除一层 {}
+             text = re.sub(r'\{([^{}]*?)\}', r'\1', text)
+             # 移除一层 []
+             text = re.sub(r'\[([^\[\]]*?)\]', r'\1', text)
+             # 新增：移除一层 ()
+             text = re.sub(r'\(([^\(\)]*?)\)', r'\1', text)
+             
+        return text
+
     def convert_braces(self, text, mode="精确"):
         """
         将花括号{}和方括号[]转换为权重格式
@@ -234,24 +197,33 @@ class ZML_TextFormatter:
         """调用全局格式化函数"""
         return format_punctuation_global(text)
     
-    def format_text(self, 文本, NAI转SD权重, 下划线转空格, 格式化标点符号):
+    def format_text(self, 文本, 权重转换, 文本格式化, 格式化标点符号):
         """处理文本转换"""
-        # 无论是否有文本输入，都更新计数
-        self.increment_counter()
         
-        # 如果启用花括号/方括号转换
-        if NAI转SD权重 != "禁用":
-            文本 = self.convert_braces(文本, mode=NAI转SD权重)
+        # 1. 处理权重转换
+        if 权重转换 == "NAI转SD（精确）":
+            文本 = self.convert_braces(文本, mode="精确")
+        elif 权重转换 == "NAI转SD（一位小数）":
+            文本 = self.convert_braces(文本, mode="保留一位小数")
+        elif 权重转换 == "清空权重":
+            文本 = self.clear_weights(文本)
+        # 如果为 "禁用", 则不执行任何操作
         
-        # 如果启用下划线转换
-        if 下划线转空格:
+        # 2. 处理文本格式化
+        if 文本格式化 == "下划线转空格":
             文本 = 文本.replace('_', ' ')
-        
-        # 如果启用格式化标点符号
+        elif 文本格式化 == "空格转下划线":
+            文本 = 文本.replace(' ', '_')
+        elif 文本格式化 == "空格隔离标签":
+            # 替换逗号和其后的任意空格为 ", "
+            文本 = re.sub(r',\s*', ', ', 文本).strip()
+        # 如果为 "禁用", 则不执行任何操作
+
+        # 3. 处理标点符号格式化
         if 格式化标点符号:
             文本 = self.format_punctuation(文本)
         
-        return (文本, self.help_text)
+        return (文本,)
 
 # ============================== 筛选提示词节点 ==============================
 class ZML_TextFilter:
@@ -534,16 +506,16 @@ class ZML_RandomWeightedTextLine:
             "required": {
                 "文件": (file_list, ),
                 "小数位数": (["两位", "一位"], {"default": "两位"}),
-                "随机个数": ("INT", {"default": 5, "min": 1, "step": 1}),
-                "最小权重": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 10.0, "step": 0.1}),
-                "最大权重": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 10.0, "step": 0.1}),
+                "随机个数": ("INT", {"default": 1, "min": 1, "step": 1}), # 默认改为1
+                "最小权重": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 3.0, "step": 0.01}),
+                "最大权重": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 3.0, "step": 0.01}),
                 "格式化标点符号": ([True, False], {"default": True}),
             },
             "optional": {
                 "文本": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "placeholder": "当'模式'为'禁用'时，加载此处的tag"
+                    "placeholder": "当'文件'为'禁用 (使用文本框)'时，加载此处的标签或多行文本"
                 }),
             }
         }
@@ -565,33 +537,22 @@ class ZML_RandomWeightedTextLine:
         # 根据选项确定小数精度
         precision = 2 if 小数位数 == "两位" else 1
 
+        all_input_lines = [] # 存储所有可能的候选项，无论是来自文件还是文本框
+
         # 模式判断：是使用文本框还是文件
         if 文件 == "禁用 (使用文本框)":
             # --- 文本框模式 ---
             if not 文本 or not 文本.strip():
                 return ("", self.help_text)
 
-            input_text = 文本
-            # 如果启用，先格式化标点
-            if 格式化标点符号:
-                input_text = format_punctuation_global(input_text)
+            # 按换行符分割，并将每行视为一个独立的候选项
+            all_input_lines = [line.strip() for line in 文本.splitlines() if line.strip()]
             
-            # 按逗号分割成tag列表，并过滤掉空项
-            tags = [tag.strip() for tag in input_text.split(',') if tag.strip()]
-            
-            if not tags:
+            if not all_input_lines:
                 return ("", self.help_text)
 
-            weighted_tags = []
-            for tag in tags:
-                weight = round(random.uniform(min_w, max_w), precision)
-                weighted_tags.append(f"({tag}:{weight})")
-            
-            output_text = ",".join(weighted_tags)
-            return (output_text, self.help_text)
-
         else:
-            # --- 文件模式 (保持原有逻辑) ---
+            # --- 文件模式 ---
             if 文件 == "未找到txt文件":
                 return ("下拉菜单中未选择有效文件，请检查 '.../zml_w/txt' 目录下是否有txt文件并重启ComfyUI。", self.help_text)
 
@@ -599,25 +560,32 @@ class ZML_RandomWeightedTextLine:
             
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    lines = [line.strip().rstrip(',，').strip() for line in f.readlines() if line.strip()]
+                    all_input_lines = [line.strip().rstrip(',，').strip() for line in f.readlines() if line.strip()]
             except FileNotFoundError:
                 return (f"错误: 文件 '{文件}' 未在目录 '{self.txt_dir}' 中找到。", self.help_text)
             except Exception as e:
                 return (f"错误: 读取文件 '{文件}' 时发生错误: {e}", self.help_text)
 
-            if not lines:
+            if not all_input_lines:
                 return ("", self.help_text)
 
-            count = min(随机个数, len(lines))
-            selected_lines = random.sample(lines, count)
+        # 从所有候选项中随机选择指定数量的行
+        count_to_select = min(随机个数, len(all_input_lines))
+        # 使用 random.sample 进行不重复抽取
+        selected_raw_lines = random.sample(all_input_lines, count_to_select)
+        
+        weighted_output = []
+        for line_content in selected_raw_lines:
+            # 对每一选中的行内容进行格式化和权重添加
+            processed_content = line_content
+            if 格式化标点符号:
+                processed_content = format_punctuation_global(processed_content)
             
-            weighted_lines = []
-            for line in selected_lines:
-                weight = round(random.uniform(min_w, max_w), precision)
-                weighted_lines.append(f"({line}:{weight})")
-                
-            output_text = ", ".join(weighted_lines)
-            return (output_text, self.help_text)
+            weight = round(random.uniform(min_w, max_w), precision)
+            weighted_output.append(f"({processed_content}:{weight})")
+            
+        output_text = ", ".join(weighted_output)
+        return (output_text, self.help_text)
 
 # ============================== 多文本输入节点（五个输入框）==============================
 class ZML_MultiTextInput5:
@@ -816,7 +784,7 @@ class ZML_SelectTextV2:
 
         return (combined,)
 
-# ============================== 选择文本V3节点 (动态UI版) - 新增节点 ==============================
+# ============================== 选择文本V3节点 (动态UI版)==============================
 class ZML_SelectTextV3:
     """ZML 选择文本V3节点：具有动态UI，可以自由添加、删除、启用/禁用文本行。"""
 
@@ -871,7 +839,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MultiTextInput3": ZML_MultiTextInput3,
     "ZML_SelectText": ZML_SelectText,
     "ZML_SelectTextV2": ZML_SelectTextV2,
-    "ZML_SelectTextV3": ZML_SelectTextV3,  # 添加新节点到映射
+    "ZML_SelectTextV3": ZML_SelectTextV3,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -884,5 +852,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MultiTextInput3": "ZML_多文本输入_三",
     "ZML_SelectText": "ZML_选择文本",
     "ZML_SelectTextV2": "ZML_选择文本V2",
-    "ZML_SelectTextV3": "ZML_选择文本V3",  # 添加新节点的显示名称
+    "ZML_SelectTextV3": "ZML_选择文本V3",
 }

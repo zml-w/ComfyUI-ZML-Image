@@ -18,10 +18,7 @@ import re # 导入正则表达式模块
 
 ZML_API_PREFIX = "/zml/lora"
 
-# 定义一个用于LORA列表的自定义类型字符串
-# ComfyUI 的自定义类型需要以一个已注册的类型来表示，例如 STRING, IMAGE, MODEL 等
-# 但为了清晰，我们定义一个字符串字面量作为类型名，并在 INPUT_TYPES 中直接使用
-# 这里我们用一个元组来表示数据结构，尽管它内部还是字符串，但这向节点图表示了更复杂的数据。
+# 用一个元组来表示数据结构，尽管它内部还是字符串，但这向节点图表示了更复杂的数据。
 ZML_LORA_STACK_TYPE = ( "LORA_STACK", ) # 使用元组来定义一个自定义类型名
 
 # --- 辅助函数：查找LoRA根路径 ---
@@ -94,14 +91,57 @@ def fetch_civitai_data_by_hash(hash_string):
     return None
 
 def download_file(url, destination_path):
-    """下载文件到指定路径"""
+    """下载文件到指定路径，如果是视频则提取第一帧作为预览图"""
+    import cv2
+    import os
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req) as response, open(destination_path, 'wb') as out_file:
+        with urllib.request.urlopen(req) as response:
             if response.status == 200:
-                shutil.copyfileobj(response, out_file)
-                return True
+                # 获取文件类型
+                content_type = response.getheader('Content-Type', '')
+                is_video = content_type.startswith('video/') or url.lower().endswith(('.mp4', '.avi', '.mov', '.mkv'))
+                
+                # 如果是视频，提取第一帧
+                if is_video:
+                    # 先保存视频临时文件
+                    temp_video_path = destination_path + '.tmp'
+                    with open(temp_video_path, 'wb') as out_file:
+                        shutil.copyfileobj(response, out_file)
+                    
+                    # 使用OpenCV提取第一帧
+                    cap = cv2.VideoCapture(temp_video_path)
+                    if cap.isOpened():
+                        ret, frame = cap.read()
+                        if ret:
+                            # 确保目标路径是图片格式
+                            img_ext = os.path.splitext(destination_path)[1].lower()
+                            if img_ext not in ['.png', '.jpg', '.jpeg', '.webp']:
+                                destination_path = os.path.splitext(destination_path)[0] + '.jpg'
+                            
+                            # 保存第一帧为图片
+                            cv2.imwrite(destination_path, frame)
+                        else:
+                            print(f"[ZML_Parser] 无法读取视频帧: {temp_video_path}")
+                            return False
+                        cap.release()
+                    else:
+                        print(f"[ZML_Parser] 无法打开视频文件: {temp_video_path}")
+                        return False
+                    
+                    # 删除临时视频文件
+                    try:
+                        os.remove(temp_video_path)
+                    except Exception as e:
+                        print(f"[ZML_Parser] 删除临时视频文件时出错: {e}")
+                    
+                    return True
+                else:
+                    # 非视频文件，直接保存
+                    with open(destination_path, 'wb') as out_file:
+                        shutil.copyfileobj(response, out_file)
+                    return True
             else:
                 print(f"[ZML_Parser] 下载文件前 Civitai 响应状态码不为200: {response.status} (URL: {url})")
     except Exception as e:
@@ -224,6 +264,83 @@ async def get_images(request):
         
     return web.json_response(images)
 
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/get_lora_file")
+async def get_lora_file(request):
+    """
+    获取指定LoRA文件的内容
+    期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors", "file_type": "txt|log"}
+    返回 JSON body: {"status": "success", "content": "文件内容"} 或 {"status": "error", "message": "错误信息"}
+    """
+    try:
+        body = await request.json()
+        lora_relative_filename = body.get("lora_filename")
+        file_type = body.get("file_type", "txt")
+
+        if not lora_relative_filename:
+            return web.json_response({"status": "error", "message": "缺少 'lora_filename' 参数"}, status=400)
+
+        lora_full_path = folder_paths.get_full_path("loras", lora_relative_filename)
+        if not lora_full_path or not os.path.exists(lora_full_path):
+            return web.json_response({"status": "error", "message": f"LoRA文件未找到: {lora_relative_filename}"}, status=404)
+
+        lora_dir = os.path.dirname(lora_full_path)
+        lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
+        zml_dir = os.path.join(lora_dir, "zml")
+        file_ext = ".txt" if file_type == "txt" else ".log"
+        file_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{file_ext}")
+
+        if not os.path.exists(file_path):
+            # 如果文件不存在，返回空内容
+            return web.json_response({"status": "success", "content": ""})
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        return web.json_response({"status": "success", "content": content})
+
+    except Exception as e:
+        print(f"[ZML_Parser] 处理获取LoRA文件请求时出错: {e}")
+        return web.json_response({"status": "error", "message": f"服务器内部错误: {e}"}, status=500)
+
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/save_lora_file")
+async def save_lora_file(request):
+    """
+    保存指定LoRA文件的内容
+    期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors", "file_type": "txt|log", "content": "文件内容"}
+    返回 JSON body: {"status": "success", "message": "保存成功"} 或 {"status": "error", "message": "错误信息"}
+    """
+    try:
+        body = await request.json()
+        lora_relative_filename = body.get("lora_filename")
+        file_type = body.get("file_type", "txt")
+        content = body.get("content", "")
+
+        if not lora_relative_filename:
+            return web.json_response({"status": "error", "message": "缺少 'lora_filename' 参数"}, status=400)
+
+        lora_full_path = folder_paths.get_full_path("loras", lora_relative_filename)
+        if not lora_full_path or not os.path.exists(lora_full_path):
+            return web.json_response({"status": "error", "message": f"LoRA文件未找到: {lora_relative_filename}"}, status=404)
+
+        lora_dir = os.path.dirname(lora_full_path)
+        lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
+        zml_dir = os.path.join(lora_dir, "zml")
+        os.makedirs(zml_dir, exist_ok=True)
+
+        file_ext = ".txt" if file_type == "txt" else ".log"
+        file_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{file_ext}")
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        return web.json_response({"status": "success", "message": f"{file_type}文件保存成功"})
+
+    except Exception as e:
+        print(f"[ZML_Parser] 处理保存LoRA文件请求时出错: {e}")
+        return web.json_response({"status": "error", "message": f"服务器内部错误: {e}"}, status=500)
+
+
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/fetch_civitai_metadata")
 async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内部辅助函数fetch_civitai_data_by_hash混淆
     """
@@ -323,6 +440,74 @@ async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内�
 
     except Exception as e:
         print(f"[ZML_Parser] 处理Civitai元数据请求时出错: {e}")
+        return web.json_response({"status": "error", "message": f"服务器内部错误: {e}"}, status=500)
+
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/delete_lora_file")
+async def delete_lora_file(request):
+    """
+    删除指定的LoRA文件及其相关的所有文件（txt、log、图像等）
+    期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors"}
+    返回 JSON body: {"status": "success", "message": "删除成功"} 或 {"status": "error", "message": "错误信息"}
+    """
+    import os
+    import glob
+    
+    try:
+        body = await request.json()
+        lora_relative_filename = body.get("lora_filename")
+
+        if not lora_relative_filename:
+            return web.json_response({"status": "error", "message": "缺少 'lora_filename' 参数"}, status=400)
+
+        lora_full_path = folder_paths.get_full_path("loras", lora_relative_filename)
+        if not lora_full_path or not os.path.exists(lora_full_path):
+            return web.json_response({"status": "error", "message": f"LoRA文件未找到: {lora_relative_filename}"}, status=404)
+
+        lora_dir = os.path.dirname(lora_full_path)
+        lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
+        zml_dir = os.path.join(lora_dir, "zml")
+
+        # 记录要删除的文件
+        files_to_delete = [lora_full_path]
+        deleted_files = []
+        
+        # 删除主LoRA文件
+        if os.path.exists(lora_full_path):
+            try:
+                os.remove(lora_full_path)
+                deleted_files.append(os.path.basename(lora_full_path))
+            except Exception as e:
+                return web.json_response({"status": "error", "message": f"无法删除主LoRA文件: {e}"}, status=500)
+        
+        # 删除zml目录下的相关文件
+        if os.path.exists(zml_dir):
+            # 查找所有以lora_basename_no_ext开头的文件
+            pattern = os.path.join(zml_dir, f"{lora_basename_no_ext}.*")
+            zml_files = glob.glob(pattern)
+            
+            for zml_file in zml_files:
+                try:
+                    os.remove(zml_file)
+                    deleted_files.append(os.path.basename(zml_file))
+                except Exception as e:
+                    print(f"[ZML_Parser] 删除文件时出错 {zml_file}: {e}")
+        
+        # 如果zml目录为空，则删除它
+        if os.path.exists(zml_dir) and not os.listdir(zml_dir):
+            try:
+                os.rmdir(zml_dir)
+            except Exception as e:
+                print(f"[ZML_Parser] 删除空zml目录时出错: {e}")
+        
+        return web.json_response({
+            "status": "success", 
+            "message": f"成功删除 {len(deleted_files)} 个文件",
+            "deleted_files": deleted_files
+        })
+
+    except Exception as e:
+        print(f"[ZML_Parser] 处理删除LoRA文件请求时出错: {e}")
         return web.json_response({"status": "error", "message": f"服务器内部错误: {e}"}, status=500)
 
 # --- 解析LoRA元数据节点 ---

@@ -123,18 +123,18 @@ class ZML_SaveImage:
         if not path:
             return self.output_dir
         
-        # 使用 pathlib 规范化路径处理
-        full_path = Path(path)
-        if not full_path.is_absolute():
-            full_path = COMFYUI_ROOT / full_path # 相对于ComfyUI根目录
+        if os.path.isabs(path):
+            return path
         
-        return str(full_path.resolve()) # 返回解析后的绝对路径字符串
+        comfyui_root = os.path.dirname(self.output_dir)
+        full_path = os.path.join(comfyui_root, path)
+        return full_path
     
     def ensure_directory(self, path):
         """确保目录存在"""
         try:
-            # 使用 pathlib.Path().mkdir
-            Path(path).mkdir(parents=True, exist_ok=True)
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
             return path
         except Exception:
             return self.output_dir
@@ -214,27 +214,27 @@ class ZML_SaveImage:
             except Exception:
                 total_count = 0
 
-        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n默认的保存路径是在output文件夹下新建一个‘ZML’文件夹，然后根据当前的日期再创建一个子文件夹来保存图像。如果清空路径，则默认保存在output文件里。自定义路径支持保存到comfyui外的文件夹里。\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#00001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
+        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！\n默认的保存路径是在output文件夹下新建一个‘ZML’文件夹，然后根据当前的日期再创建一个子文件夹来保存图像。如果清空路径，则默认保存在output文件里。自定义路径支持保存到comfyui外的文件夹里。\n文本块是对图像写入文本，可以帮忙储存提示词，提取的时候只需要用加载图像节点来提取文本块就好了。\n清除元数据可以降低图像占用，清除元数据和存储文本块同时开启时，是先执行清除元数据再写入储存文本块的，所以结果是图像不含工作流但有写入的文本块，搭配上图像缩放的功能可以做到以极低的占用来保存图像和提示词。\n保存同名txt会保存图像的名称、分辨率、是否含有元数据（工作流）、以及文本块内容的信息。\n以下是图像名称规则和正规选项的介绍：\n图像名称的分割符号为“#-#”，正规就是只读取图像名称里第一个分隔符前面的文本，比如图像名称为“动作#-#000001#-#在梦里.PNG”那正规后的输出为“动作”，而反向就是只读取图像名称最后一个分隔符后的文本，再次以之前的图像名称为例，选择反向后输出的就是最后一个分隔符“#-#”后的文本“在梦里”了。\n感谢你使用ZML节点，祝你天天开心~"
         
         # 定义一个占位图像，用于不保存时的返回
         placeholder_image = torch.ones((1, 1, 1, 3), dtype=torch.float32)
 
         # 检查是否应该跳过保存
         skip_save = False
-        # skip_reason = "" # 暂时不需要这个变量
+        skip_reason = ""
 
         if 图像 is None or 图像.size(0) == 0:
             skip_save = True
-            # skip_reason = "无图像输入"
+            skip_reason = "无图像输入"
         elif 图像.shape[1] == 1 and 图像.shape[2] == 1:
             skip_save = True
-            # skip_reason = "图像尺寸为1x1像素"
+            skip_reason = "图像尺寸为1x1像素"
         elif 图像.shape[1] == 64 and 图像.shape[2] == 64:
             # 检查是否为纯黑图像 (像素值接近0)
             # 使用一个小的容差值来判断是否为纯黑，因为浮点数比较可能不精确
             if torch.all(torch.abs(图像 - 0.0) < 1e-6): # 如果所有像素值都接近于0
                 skip_save = True
-                # skip_reason = "图像尺寸为64x64像素且为纯黑"
+                skip_reason = "图像尺寸为64x64像素且为纯黑"
 
         if skip_save:
             if unique_id is not None:
@@ -248,17 +248,11 @@ class ZML_SaveImage:
         
         # 根据操作模式设置保存路径和UI类型
         if 操作模式 == "仅预览图像":
-            # 预览图像也需要确保路径在ComfyUI根目录下，否则前端无法根据相对路径请求
-            temp_dir = folder_paths.get_temp_directory()
-            # 确保 temp_dir 是在 COMFYUI_ROOT 下的
-            if not Path(temp_dir).resolve().is_relative_to(COMFYUI_ROOT):
-                temp_dir = str(COMFYUI_ROOT / "temp") # 如果temp不在ComfyUI根下，将其设定到根下的temp
-                Path(temp_dir).mkdir(parents=True, exist_ok=True)
-            save_path = temp_dir
+            save_path = folder_paths.get_temp_directory()
             ui_type = "temp"
         else:
             save_path = self.ensure_directory(self.format_path(保存路径))
-            ui_type = "output" # 这里假定 output/temp 作为基准目录
+            ui_type = "output"
 
         result_paths = []
         saved_txt_files = []  # 保存的txt文件列表
@@ -305,7 +299,7 @@ class ZML_SaveImage:
             image_array = 255. * image_tensor.cpu().numpy()
             pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
 
-            # original_width, original_height = pil_image.size # 获取原始分辨率
+            original_width, original_height = pil_image.size # 获取原始分辨率
 
             # 处理图像缩放
             if 缩放图像 == "启用" and 缩放比例 > 0:
@@ -352,7 +346,7 @@ class ZML_SaveImage:
             if text_content:
                 try:
                     # 使用zTXt块存储（压缩存储）
-                    metadata.add_text(DEFAULT_TEXT_BLOCK_KEY, text_content, zip=True)
+                    metadata.add_text("comfy_text_block", text_content, zip=True)
                 except Exception:
                     pass
             
@@ -378,35 +372,44 @@ class ZML_SaveImage:
                     with open(unique_txt_path, "w", encoding="utf-8") as f:
                         f.write(txt_content_to_save)
                     
-                    # 计算txt文件的相对路径
-                    txt_rel_path = Path(unique_txt_path).relative_to(COMFYUI_ROOT)
                     saved_txt_files.append({
-                        "filename": txt_rel_path.name,
-                        "subfolder": str(txt_rel_path.parent).replace("\\", "/"),
-                        "type": "custom" # 表示是用户自定义路径，但最终会通过ComfyUI的serve_file接口处理
+                        "filename": os.path.basename(unique_txt_path),
+                        "subfolder": os.path.relpath(os.path.dirname(unique_txt_path), self.output_dir).replace("\\", "/"),
+                        "type": "output"
                     })
                 
-                # 计算图片预览路径
+                # 计算预览路径
                 try:
-                    # 为了让 ComfyUI 的前端能够正确显示，需要将路径转换为相对于 COMFYUI_ROOT 的路径。
-                    # 如果存储路径不在 COMFYUI_ROOT 及其内部，则无法通过标准的 ComfyUI 接口预览。
-                    # 这里假设我们只预览在 COMFYUI_ROOT 内部的图片
-                    abs_file_path = Path(final_image_path).resolve()
-                    if abs_file_path.is_relative_to(COMFYUI_ROOT):
-                        rel_path_from_comfy = abs_file_path.relative_to(COMFYUI_ROOT)
-                        result_paths.append({
-                            "filename": rel_path_from_comfy.name,
-                            "subfolder": str(rel_path_from_comfy.parent).replace("\\", "/"),
-                            "type": "custom" # 指示前端这是自定义路径
-                        })
-                    else:
-                        print(f"警告: 图像 '{final_image_path}' 不在ComfyUI根目录内，无法通过标准接口预览。")
-                except Exception as e:
-                    print(f"无法计算图像预览路径: {e}")
+                    # 获取文件的基本信息
+                    file_basename = os.path.basename(final_image_path)
+                    file_dir = os.path.dirname(final_image_path)
+                    
+                    # 计算相对路径
+                    base_dir_for_relpath = self.output_dir if ui_type == "output" else folder_paths.get_temp_directory()
+                    
+                    # 确保路径是绝对的，以进行安全比较
+                    abs_file_dir = os.path.abspath(file_dir)
+                    abs_base_dir = os.path.abspath(base_dir_for_relpath)
+
+                    rel_dir = ""
+                    if abs_file_dir.startswith(abs_base_dir):
+                        rel_dir = os.path.relpath(abs_file_dir, abs_base_dir)
+
+                    # 标准化路径分隔符
+                    rel_dir = rel_dir.replace("\\", "/")
+                    if rel_dir == ".":
+                        rel_dir = ""
+                    
+                    # 添加到结果列表
+                    result_paths.append({
+                        "filename": file_basename,
+                        "subfolder": rel_dir,
+                        "type": ui_type
+                    })
+                except Exception:
                     pass
                 
-            except Exception as e:
-                print(f"保存图像失败: {e}")
+            except Exception:
                 pass
         
         # 返回输出接口值
@@ -428,7 +431,7 @@ class ZML_SaveImage:
                     {
                         "filename": t["filename"],
                         "subfolder": t["subfolder"],
-                        "type": "custom" # txt文件也作为custom类型返回
+                        "type": "output"
                     } for t in saved_txt_files
                 ]
             

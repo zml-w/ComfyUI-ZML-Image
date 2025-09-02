@@ -618,80 +618,6 @@ class ZML_ImageToHTML:
             error_help = f"保存HTML时出错: {str(e)}"
             return {"result": (error_help,)}
 
-# ============================== GIF文件路径节点 ==============================
-class ZML_GIFLoader:
-    """ZML GIF文件路径节点"""
-    
-    def __init__(self):
-        pass
-    
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "文件路径": ("STRING", {"default": "", "placeholder": "输入GIF文件路径"}),
-            }
-        }
-    
-    RETURN_TYPES = ("IMAGE", "INT", "STRING")
-    RETURN_NAMES = ("图像", "帧率", "Help")
-    FUNCTION = "load_gif"
-    CATEGORY = "image/ZML_图像/图像"
-    
-    def load_gif(self, 文件路径):
-        """加载GIF文件并分解为图像序列"""
-        help_output = "你好，欢迎使用ZML节点~\n你需要使用文件路径而非文件夹路径来指定GIF文件，此节点会自动拆分指定的GIF文件并输出图像和帧率，且会自动处理透明通道，此节点与图片转HTML节点一起使用效果最佳~\n祝你生活愉快~天天开心~"
-        
-        文件路径 = 文件路径.strip().strip('"').strip("'")
-        
-        if not 文件路径:
-            return (torch.zeros(0), 0, help_output)
-        
-        if not os.path.exists(文件路径):
-            return (torch.zeros(0), 0, help_output)
-        
-        try:
-            gif = Image.open(文件路径)
-            
-            frame_duration = 100
-            try:
-                frame_duration = gif.info.get('duration', 100)
-                if frame_duration == 0:
-                    frame_duration = 100
-            except:
-                frame_duration = 100
-            
-            fps = max(1, min(60, int(1000 / frame_duration)))
-            
-            frames = []
-            frame_count = 0
-            while True:
-                try:
-                    frame = gif.convert("RGBA")
-                    
-                    rgb_frame = Image.new("RGB", frame.size, (255, 255, 255))
-                    rgb_frame.paste(frame, mask=frame.split()[3]) 
-                    
-                    frame_array = np.array(rgb_frame).astype(np.float32) / 255.0
-                    frame_tensor = torch.from_numpy(frame_array)[None,]
-                    frames.append(frame_tensor)
-                    
-                    frame_count += 1
-                    gif.seek(frame_count)
-                except EOFError:
-                    break
-            
-            if not frames:
-                return (torch.zeros(0), fps, help_output)
-            
-            images = torch.cat(frames, dim=0)
-            
-            return (images, fps, help_output)
-        
-        except Exception as e:
-            print(f"加载GIF失败: {str(e)}")
-            return (torch.zeros(0), 0, help_output)
-
 # ============================== 双整数节点 ==============================
 class ZML_DualInteger:
     """
@@ -1260,7 +1186,6 @@ NODE_CLASS_MAPPINGS = {
     "ZML_WriteText": ZML_WriteText,
     "ZML_PresetText": ZML_PresetText,
     "ZML_ImageToHTML": ZML_ImageToHTML,
-    "ZML_GIFLoader": ZML_GIFLoader,
     "ZML_DualFloat": ZML_DualFloat,
     "ZML_DualInteger": ZML_DualInteger,          
     "ZML_DualIntegerV2": ZML_DualIntegerV2,
@@ -1274,7 +1199,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_WriteText": "ZML_写入文本",
     "ZML_PresetText": "ZML_预设文本",
     "ZML_ImageToHTML": "ZML_图片转HTML",
-    "ZML_GIFLoader": "ZML_GIF文件路径",
     "ZML_DualFloat": "ZML_双浮点",
     "ZML_DualInteger": "ZML_双整数",             
     "ZML_DualIntegerV2": "ZML_双整数V2",

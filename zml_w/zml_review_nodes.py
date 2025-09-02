@@ -1105,6 +1105,174 @@ class ZML_LimitMaskShape:
         
         return (self._numpy_uint8_to_mask(output_mask_np),)
 
+# ============================== 限制图像比例节点 ==============================
+class ZML_LimitImageAspect:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE",),
+                "目标比例": (["1：1", "16：9", "9：16", "3：2", "2：3", "4：3", "3：4", "21：9", "9：21", "5：4", "4：5"], {"default": "1：1"}),
+                "模式": (["填充白", "填充黑", "裁剪", "拉伸"],),
+                "限制分辨率": ("BOOLEAN", {"default": False, "tooltip": "如果启用，最终图像的宽度和高度将不会超过原始输入图像的宽度和高度。如果目标比例和模式导致尺寸变大，将等比缩小。"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("处理后图像",)
+    FUNCTION = "adjust_aspect_ratio"
+    CATEGORY = "image/ZML_图像/图像" # 分类为 ZML_图像/图像
+
+    def _tensor_to_pil(self, tensor: torch.Tensor) -> Image.Image:
+        """Helper to convert ComfyUI IMAGE tensor to PIL Image (RGBA)."""
+        img_np = np.clip(255. * tensor.cpu().numpy().squeeze(0), 0, 255).astype(np.uint8)
+        if img_np.ndim == 3:
+            if img_np.shape[2] == 4:
+                return Image.fromarray(img_np, 'RGBA')
+            elif img_np.shape[2] == 3:
+                return Image.fromarray(img_np, 'RGB').convert('RGBA')
+            else:
+                return Image.fromarray(img_np).convert('RGBA')
+        elif img_np.ndim == 2:
+            return Image.fromarray(img_np, 'L').convert('RGBA')
+        else:
+            raise ValueError(f"Unsupported image tensor dimensions: {img_np.shape}")
+
+    def _pil_to_tensor(self, pil_image: Image.Image) -> torch.Tensor:
+        """Helper to convert PIL Image (RGBA/RGB) to ComfyUI IMAGE tensor."""
+        if pil_image.mode not in ['RGB', 'RGBA']:
+            pil_image = pil_image.convert('RGBA')
+        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def adjust_aspect_ratio(self, 图像: torch.Tensor, 目标比例: str, 模式: str, 限制分辨率: bool):
+        pil_image = self._tensor_to_pil(图像)
+        original_width, original_height = pil_image.size
+
+        # 1. 解析目标比例
+        target_aspect_float = 1.0 # default for 1:1
+        if 目标比例 == "16：9": target_aspect_float = 16.0 / 9.0
+        elif 目标比例 == "9：16": target_aspect_float = 9.0 / 16.0
+        elif 目标比例 == "3：2": target_aspect_float = 3.0 / 2.0
+        elif 目标比例 == "2：3": target_aspect_float = 2.0 / 3.0
+        elif 目标比例 == "4：3": target_aspect_float = 4.0 / 3.0
+        elif 目标比例 == "3：4": target_aspect_float = 3.0 / 4.0
+        elif 目标比例 == "21：9": target_aspect_float = 21.0 / 9.0
+        elif 目标比例 == "9：21": target_aspect_float = 9.0 / 21.0
+        elif 目标比例 == "5：4": target_aspect_float = 5.0 / 4.0
+        elif 目标比例 == "4：5": target_aspect_float = 4.0 / 5.0
+
+        # 处理空图像尺寸情况 (宽或高为0)
+        # 返回一个符合目标比例的128x128（或等效尺寸）的颜色填充图
+        if original_width == 0 or original_height == 0:
+            default_fill_color = (0, 0, 0, 255) if 模式 == "填充黑" else (255, 255, 255, 255)
+            # 确定一个非零的默认尺寸，并尊重目标比例 (例如，以128为基准)
+            base_dim = 128
+            if target_aspect_float >= 1: # 宽图 (或方形)
+                fallback_width, fallback_height = int(base_dim * target_aspect_float), base_dim
+            else: # 高图
+                fallback_width, fallback_height = base_dim, int(base_dim / target_aspect_float)
+            
+            # 确保最小尺寸为1
+            fallback_width = max(1, fallback_width)
+            fallback_height = max(1, fallback_height)
+
+            new_pil_image = Image.new("RGBA", (fallback_width, fallback_height), default_fill_color)
+            return (self._pil_to_tensor(new_pil_image),)
+
+        intermediate_result_pil = None # 用于存储未经最终分辨率限制处理的结果
+        original_image_aspect = float(original_width) / original_height
+        fill_color = (0, 0, 0, 255) if 模式 == "填充黑" else (255, 255, 255, 255)
+
+        if 模式 == "拉伸":
+            if original_width >= original_height: # 原始图像宽度更长或相等
+                final_width = original_width
+                final_height = int(final_width / target_aspect_float)
+            else: # 原始图像高度更长
+                final_height = original_height
+                final_width = int(final_height * target_aspect_float)
+            
+            final_width = max(1, final_width)
+            final_height = max(1, final_height)
+
+            intermediate_result_pil = pil_image.resize((final_width, final_height), resample=Image.Resampling.LANCZOS)
+
+        elif 模式 in ["填充白", "填充黑"]:
+
+            if target_aspect_float > original_image_aspect:
+                canvas_height = original_height # 画布高度与原图高度相同
+                canvas_width = int(canvas_height * target_aspect_float) # 根据目标比例计算画布宽度
+            # 如果目标比例相对更高，则以原始图像的原始宽度为基准，计算新高度
+            else:
+                canvas_width = original_width # 画布宽度与原图宽度相同
+                canvas_height = int(canvas_width / target_aspect_float) # 根据目标比例计算画布高度
+            
+            canvas_width = max(1, canvas_width)
+            canvas_height = max(1, canvas_height)
+
+            new_canvas = Image.new("RGBA", (canvas_width, canvas_height), fill_color)
+
+            # 缩放原图以适应新画布（等比缩放，确保整个原图可见，即 fit in）
+            scale_factor = min(float(canvas_width) / original_width, float(canvas_height) / original_height)
+            scaled_image_width = int(original_width * scale_factor)
+            scaled_image_height = int(original_height * scale_factor)
+
+            if scaled_image_width == 0 or scaled_image_height == 0:
+                intermediate_result_pil = new_canvas # 如果缩放后原图变0，直接返回填充画布
+            else:
+                resized_pil_image = pil_image.resize((scaled_image_width, scaled_image_height), resample=Image.Resampling.LANCZOS)
+                # 计算粘贴位置 (居中)
+                paste_x = (canvas_width - scaled_image_width) // 2
+                paste_y = (canvas_height - scaled_image_height) // 2
+                new_canvas.paste(resized_pil_image, (paste_x, paste_y), resized_pil_image)
+                intermediate_result_pil = new_canvas
+
+        elif 模式 == "裁剪":
+            # 目标：在原始图像内找到一个符合目标比例的最大裁剪区域。
+            # 裁剪模式本身就意味着缩小或保持尺寸，不会超出原始分辨率。
+            
+            crop_width, crop_height = 0, 0
+            if original_image_aspect > target_aspect_float: # 原始图像相对目标比例更宽，以高度为基准确定裁剪宽度
+                crop_height = original_height
+                crop_width = int(original_height * target_aspect_float)
+            else: # 原始图像相对目标比例更高或等比，以宽度为基准确定裁剪高度
+                crop_width = original_width
+                crop_height = int(original_width / target_aspect_float)
+            
+            crop_width = max(1, crop_width)
+            crop_height = max(1, crop_height)
+
+            # 计算裁剪框坐标以居中裁剪
+            left = (original_width - crop_width) // 2
+            top = (original_height - crop_height) // 2
+            right = left + crop_width
+            bottom = top + crop_height
+            
+            intermediate_result_pil = pil_image.crop((left, top, right, bottom))
+
+
+        # 2. 应用 `限制分辨率` 开关 (仅当开关为 True 且结果超出原始尺寸时才生效)
+        final_pil_image = intermediate_result_pil # 先假设 intermediate_result_pil 就是最终结果
+
+        # 检查是否需要应用分辨率限制: 只有当限制分辨率为True 并且 (计算出的宽度大于原始宽度 或 计算出的高度大于原始高度)
+        if 限制分辨率:
+            current_width, current_height = final_pil_image.size
+            if current_width > original_width or current_height > original_height:
+                scale_factor = min(float(original_width) / current_width, float(original_height) / current_height)
+                
+                # 计算缩放后的尺寸，确保不为0
+                new_limit_width = max(1, int(current_width * scale_factor))
+                new_limit_height = max(1, int(current_height * scale_factor))
+                
+                # 执行缩放
+                final_pil_image = final_pil_image.resize((new_limit_width, new_limit_height), resample=Image.Resampling.LANCZOS)
+
+        # 3. 确保最终图像尺寸不为0（极端情况下可能出现）
+        if final_pil_image.width == 0 or final_pil_image.height == 0:
+            final_pil_image = Image.new("RGBA", (1, 1), (0, 0, 0, 255)) # 返回一个1x1的黑图
+
+        output_tensor = self._pil_to_tensor(final_pil_image)
+
+        return (output_tensor,)
 
 # ============================== MAPPINGS ==============================
 NODE_CLASS_MAPPINGS = {
@@ -1120,7 +1288,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MaskSeparateDistance": ZML_MaskSeparateDistance,
     "ZML_MaskSeparateThree": ZML_MaskSeparateThree,
     "ZML_UnifyImageResolution": ZML_UnifyImageResolution,
-    "ZML_LimitMaskShape": ZML_LimitMaskShape, # 新增节点映射
+    "ZML_LimitMaskShape": ZML_LimitMaskShape, 
+    "ZML_LimitImageAspect": ZML_LimitImageAspect, 
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1136,5 +1305,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MaskSeparateDistance": "ZML_遮罩分离-二",
     "ZML_MaskSeparateThree": "ZML_遮罩分离-三",
     "ZML_UnifyImageResolution": "ZML_统一图像分辨率",
-    "ZML_LimitMaskShape": "ZML_限制遮罩形状", # 新增节点显示名称
+    "ZML_LimitMaskShape": "ZML_限制遮罩形状", 
+    "ZML_LimitImageAspect": "ZML_限制图像比例",
 }
