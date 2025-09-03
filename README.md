@@ -1,6 +1,6 @@
 <div align="center">
   
-### [🇨🇳 简体中文](README.md) | [🇺🇸 English](README_EN.md)
+### [🇨🇳 简体中文](README.md) | [🇺🇸 English](https://github.com/zml-w/ZZZ_ZML_English_Patch/tree/main)
 
 </div>
 
