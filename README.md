@@ -1,6 +1,8 @@
 <div align="center">
   
-### [🇨🇳 简体中文](README.md) | [🇺🇸 English](https://github.com/zml-w/ZZZ_ZML_English_Patch/tree/main)
+## Most nodes now support English (those containing JS code are not yet supported), but an additional patch file is required.
+
+# [Click here to download](https://github.com/zml-w/ZZZ_ZML_English_Patch/tree/main)
 
 </div>
 
