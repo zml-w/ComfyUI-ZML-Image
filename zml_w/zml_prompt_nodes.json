@@ -1,0 +1,10 @@
+{
+    "NODE_DISPLAY_NAME_MAPPINGS": {
+        "ZML_标签化提示词加载器": "ZML_Tagged Prompt Loader"
+    },
+    "UI_TEXT": {
+        "ZML_图像": "ZML_Image",
+        "工具": "Tools",
+        "提示词": "Prompt"
+    }
+}
