@@ -433,6 +433,18 @@ app.registerExtension({
                 .zml-action-btn.confirm { background-color: #5cb85c; }
                 .zml-action-btn.confirm:hover:not(:disabled) { background-color: #4cae4c; }
 
+                /* === 新增: “记住位置”按钮样式 === */
+                .zml-remember-btn {
+                    background-color: #a9a9a9; /* 灰色代表关闭状态 */
+                    font-size: 0.9em;
+                    padding: 6px 12px;
+                }
+                .zml-remember-btn:hover {
+                    filter: brightness(1.1);
+                }
+                .zml-remember-btn.active {
+                    background-color: #5cb85c; /* 绿色代表开启状态 */
+                }
 
                 /* 按钮样式 */
                 .zml-confirm-btn-main {
@@ -718,6 +730,10 @@ app.registerExtension({
                     const clearBtn = $el("button.zml-action-btn.zml-clear-btn", { textContent: "清空" });
                     const countEl = $el("div.zml-tag-selected-count");
                     
+                    // --- 🔴 MODIFICATION START: “记住位置”按钮 ---
+                    const rememberPathBtn = $el("button.zml-action-btn.zml-remember-btn", { textContent: "记住打开位置" });
+                    // --- 🔴 MODIFICATION END ---
+                    
                     const pathInput = $el("input.zml-path-input", { type: "text", placeholder: "自定义图片文件夹路径 (留空使用output)" });
                     const refreshPathBtn = $el("button.zml-path-refresh-btn", { textContent: "刷新路径" });
                     const pathInputGroup = $el("div.zml-path-input-group", [
@@ -736,7 +752,9 @@ app.registerExtension({
                         $el("div.zml-tag-modal-breadcrumbs"),
                         $el("div.zml-tag-modal-content"),
                         $el("div.zml-tag-modal-footer", [
-                            $el("div.zml-footer-group", [ displayModeSelector, countEl ]),
+                            // --- 🔴 MODIFICATION START: 添加按钮到Footer ---
+                            $el("div.zml-footer-group", [ displayModeSelector, rememberPathBtn, countEl ]),
+                            // --- 🔴 MODIFICATION END ---
                             $el("div.zml-footer-group.center", [ confirmBtn ]),
                             $el("div.zml-footer-group", [ undoBtn, clearBtn ])
                         ])
@@ -787,6 +805,24 @@ app.registerExtension({
                     
                     pathInput.value = localStorage.getItem("zml.tagImageLoader.lastPath") || "";
 
+                    // --- 🔴 MODIFICATION START: “记住位置”功能逻辑 ---
+                    const LS_REMEMBER_ENABLED_KEY = "zml.tagImageLoader.rememberPathEnabled";
+                    const LS_LAST_FOLDER_PATH_KEY = "zml.tagImageLoader.lastFolderPath";
+
+                    let rememberPathEnabled = localStorage.getItem(LS_REMEMBER_ENABLED_KEY) !== 'false';
+                    rememberPathBtn.classList.toggle('active', rememberPathEnabled);
+
+                    rememberPathBtn.onclick = () => {
+                        rememberPathEnabled = !rememberPathEnabled;
+                        rememberPathBtn.classList.toggle('active', rememberPathEnabled);
+                        localStorage.setItem(LS_REMEMBER_ENABLED_KEY, rememberPathEnabled);
+                        // 如果关闭该功能，则清除已保存的路径
+                        if (!rememberPathEnabled) {
+                            localStorage.removeItem(LS_LAST_FOLDER_PATH_KEY);
+                        }
+                    };
+                    // --- 🔴 MODIFICATION END ---
+
                     const selectedFilesJsonWidget = this.widgets.find(w => w.name === "selected_files_json");
 
                     if (selectedFilesJsonWidget && selectedFilesJsonWidget.value && selectedFilesJsonWidget.value !== "[]") {
@@ -809,7 +845,16 @@ app.registerExtension({
                     const updateUiState = () => { countEl.textContent = `已选: ${selectedFiles.length}`; undoBtn.disabled = historyStack.length === 0; };
                     updateUiState();
 
-                    const closeModal = () => { hideImage(); backdrop.remove(); modal.remove(); };
+                    const closeModal = () => {
+                        // --- 🔴 MODIFICATION START: 关闭时保存位置 ---
+                        if (rememberPathEnabled) {
+                            localStorage.setItem(LS_LAST_FOLDER_PATH_KEY, JSON.stringify(currentPath));
+                        }
+                        // --- 🔴 MODIFICATION END ---
+                        hideImage(); 
+                        backdrop.remove(); 
+                        modal.remove(); 
+                    };
                     backdrop.onclick = closeModal;
                     confirmBtn.onclick = () => { 
                         const dataToSave = {
@@ -881,6 +926,41 @@ app.registerExtension({
                                 if (!currentLevel.files) currentLevel.files = [];
                                 currentLevel.files.push(fileInfo);
                             }
+
+                            // --- 🔴 MODIFICATION START: 加载并验证已保存的位置 ---
+                            if (rememberPathEnabled) {
+                                const savedPathJSON = localStorage.getItem(LS_LAST_FOLDER_PATH_KEY);
+                                if (savedPathJSON) {
+                                    try {
+                                        const savedPath = JSON.parse(savedPathJSON);
+                                        if (Array.isArray(savedPath)) {
+                                            // 验证路径是否在当前文件树中有效
+                                            let tempLevel = fileTree;
+                                            let isPathValid = true;
+                                            for (const part of savedPath) {
+                                                if (tempLevel[part] && typeof tempLevel[part] === 'object') {
+                                                    tempLevel = tempLevel[part];
+                                                } else {
+                                                    isPathValid = false;
+                                                    break;
+                                                }
+                                            }
+                                            // 如果路径有效，则应用它
+                                            if (isPathValid) {
+                                                currentPath = savedPath;
+                                            } else {
+                                                // 如果路径无效 (例如，文件夹被删除或移动)，则清除保存的记录
+                                                localStorage.removeItem(LS_LAST_FOLDER_PATH_KEY);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error("解析已保存的文件夹路径失败:", e);
+                                        localStorage.removeItem(LS_LAST_FOLDER_PATH_KEY); // 解析失败则清除
+                                    }
+                                }
+                            }
+                            // --- 🔴 MODIFICATION END ---
+                            
                             renderCurrentLevel();
                         } catch (error) {
                             contentEl.innerHTML = `<p style="color:red;">加载失败: ${error.message}</p>`;
