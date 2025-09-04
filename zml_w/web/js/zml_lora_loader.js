@@ -29,14 +29,36 @@ const calculateImagePosition = (el, bodyRect) => {
 	return { left: Math.round(left), top: Math.round(top), isLeft: !isSpaceRight };
 };
 let loraImages = {};
+// 新增：存储MP4预览视频路径
+globalThis.zmlMp4Previews = {};
+// 新增：控制MP4预览模式的全局变量
+globalThis.zmlBatchLoraPreviewMp4Mode = false;
+
 const loadImageList = async () => {
     try {
         console.log("[ZML] Loading lora image list...");
-        loraImages = await (await api.fetchApi(`${ZML_API_PREFIX}/images/loras`)).json();
-        // console.log("[ZML] loraImages loaded:", loraImages); // 调试用
+        // 修改API调用，添加参数以获取MP4格式视频
+        loraImages = await (await api.fetchApi(`${ZML_API_PREFIX}/images/loras?include_mp4=true`)).json();
+        // 提取并存储MP4预览视频路径
+        if (loraImages && typeof loraImages === 'object') {
+            // 清空现有MP4预览视频缓存
+            globalThis.zmlMp4Previews = {};
+            // 遍历所有LoRA文件
+            for (const [loraPath, imagePath] of Object.entries(loraImages)) {
+                // 检查是否有对应的MP4文件
+                if (imagePath && typeof imagePath === 'string') {
+                    const basePath = imagePath.replace(/\.(png|jpg|jpeg)$/i, '');
+                    const mp4Path = `${basePath}.mp4`;
+                    // 存储MP4路径（即使不存在，后续使用时会处理）
+                    globalThis.zmlMp4Previews[loraPath] = mp4Path;
+                }
+            }
+        }
+        console.log("[ZML] loraImages loaded, including MP4 previews support");
     } catch (e) {
         console.error("[ZML] Error loading lora images:", e);
         loraImages = {}; // 确保在加载失败时清空，避免无效缓存
+        globalThis.zmlGifPreviews = {}; // 同时清空GIF预览图缓存
     }
 };
 
@@ -370,6 +392,57 @@ app.registerExtension({
                 .zml-batch-lora-all-loras-btn {
                     /* 避免 margin-right 与其他文件夹 item 影响布局，现在应该与文件夹item统一 */
                 }
+
+                /* 主题样式变量 */
+                :root {
+                    --zml-primary-bg: #31353a;
+                    --zml-secondary-bg: #2b2b2b;
+                    --zml-border-color: #4a515a;
+                    --zml-text-color: #e0e0e0;
+                    --zml-button-bg: #444;
+                    --zml-button-border: #666;
+                    --zml-button-hover-bg: #555;
+                    --zml-button-hover-border: #777;
+                    --zml-input-bg: #1a1a1a;
+                    --zml-input-border: #4a4a4a;
+                    --zml-input-focus-border: #5d99f2;
+                    --zml-folder-bg: #30353c;
+                    --zml-lora-entry-bg: #3a3a3a;
+                }
+
+                /* 浅蓝色主题 */
+                .theme-light-blue {
+                    --zml-primary-bg: #E0F2F7; /* 浅蓝色背景 */
+                    --zml-secondary-bg: #F0F8FF; /* 更浅的背景 */
+                    --zml-border-color: #A7D9ED;
+                    --zml-text-color: #333;
+                    --zml-button-bg: #B0E0E6;
+                    --zml-button-border: #87CEEB;
+                    --zml-button-hover-bg: #ADD8E6;
+                    --zml-button-hover-border: #6495ED;
+                    --zml-input-bg: #FFFFFF;
+                    --zml-input-border: #B0E0E6;
+                    --zml-input-focus-border: #6495ED;
+                    --zml-folder-bg: #C6E2FF;
+                    --zml-lora-entry-bg: #D6EEFF;
+                }
+
+                /* 浅绿色主题 */
+                .theme-light-green {
+                    --zml-primary-bg: #E6F7E6; /* 浅绿色背景 */
+                    --zml-secondary-bg: #F0FFF0; /* 更浅的背景 */
+                    --zml-border-color: #B3E0B3;
+                    --zml-text-color: #333;
+                    --zml-button-bg: #C1E1C1;
+                    --zml-button-border: #98FB98;
+                    --zml-button-hover-bg: #A2D1A2;
+                    --zml-button-hover-border: #7CFC00;
+                    --zml-input-bg: #FFFFFF;
+                    --zml-input-border: #B3E0B3;
+                    --zml-input-focus-border: #7CFC00;
+                    --zml-folder-bg: #C1FFC1;
+                    --zml-lora-entry-bg: #D1FFD1;
+                }
             `,
 			parent: document.body,
 		});
@@ -475,8 +548,9 @@ app.registerExtension({
 						}
 						insert(container, content, level + 1);
 						parentEl.appendChild(container);
-						folderEl.addEventListener("click", (e) => {
-							e.stopPropagation();
+						folderEl.addEventListener("mousedown", (e) => {
+							e.stopImmediatePropagation(); // 阻止所有其他事件监听器
+							e.preventDefault(); // 阻止默认的 mousedown 行为
 							const arrow = folderEl.querySelector(".zml-lora-folder-arrow");
 							const isHidden = container.style.display === "none";
 							container.style.display = isHidden ? "block" : "none";
@@ -509,6 +583,8 @@ app.registerExtension({
 
 		// 6. 启动观察者
 		mutationObserver.observe(document.body, { childList: true });
+
+
 	},
 
 	async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -1208,6 +1284,8 @@ app.registerExtension({
 
             // 全局变量存储当前的展示样式
             let zmlBatchLoraDisplayStyle = 'vertical'; // 默认为竖向
+            let zmlBatchLoraPreviewGifMode = false; // GIF预览模式开关
+            let zmlBatchLoraPreviewGifButton = null; // GIF预览按钮
             
             function createBatchLoraModal() {
                 if (zmlBatchLoraModalOverlay) return;
@@ -1340,18 +1418,40 @@ app.registerExtension({
                 });
                 squareBtn.onclick = function() {
                     zmlBatchLoraDisplayStyle = 'square';
-                    updateStyleButtons([verticalBtn, horizontalBtn, squareBtn]);
+                    updateStyleButtons([verticalBtn, horizontalBtn, squareBtn, zmlBatchLoraPreviewGifButton]);
                     refreshBatchLoraGrid();
                 };
                 displayStyleControl.appendChild(squareBtn);
+
+                // 添加MP4预览按钮
+                let zmlBatchLoraPreviewMp4Button = zmlCreateEl("button", {
+                    textContent: "MP4预览",
+                    style: `
+                        padding: 3px 10px;
+                        border: 1px solid ${zmlBatchLoraPreviewMp4Mode ? '#4CAF50' : '#555'};
+                        background-color: ${zmlBatchLoraPreviewMp4Mode ? '#4CAF50' : '#333'};
+                        color: #fff;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        transition: all 0.2s;
+                    `
+                });
+                zmlBatchLoraPreviewMp4Button.onclick = function() {
+                    zmlBatchLoraPreviewMp4Mode = !zmlBatchLoraPreviewMp4Mode;
+                    updateStyleButtons([verticalBtn, horizontalBtn, squareBtn, zmlBatchLoraPreviewMp4Button]);
+                    refreshBatchLoraGrid();
+                };
+                displayStyleControl.appendChild(zmlBatchLoraPreviewMp4Button);
                 
                 // 更新样式按钮状态的函数
                 function updateStyleButtons(buttons) {
                     buttons.forEach(btn => {
                         const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
                                         btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
-                                        btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square';
-                        
+                                        btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square' ||
+                                        btn.textContent === 'MP4预览' && zmlBatchLoraPreviewMp4Mode;
+                                        
                         btn.style.borderColor = isActive ? '#4CAF50' : '#555';
                         btn.style.backgroundColor = isActive ? '#4CAF50' : '#333';
                     });
@@ -1507,6 +1607,7 @@ app.registerExtension({
 
             function renderBatchLoraContent() {
                 if (!zmlBatchLoraCurrentNodeInstance) return;
+                if (!zmlBatchLoraParentPathDisplay || !zmlBatchLoraFoldersPanel || !zmlBatchLoraGridContainer) return;
 
                 zmlBatchLoraParentPathDisplay.innerHTML = "";
                 zmlBatchLoraFoldersPanel.innerHTML = "";
@@ -1674,6 +1775,15 @@ app.registerExtension({
                     const isDeleted = zmlDeletedLoraFiles.has(loraPath);
                     // The /view API expects "loras/subdir/image.ext" from the client.
                     const civitaiPreviewUrl = loraImages[loraPath] ? `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(loraImages[loraPath])}?${+new Date()}` : '';
+                    // 新增：MP4预览模式处理
+                    let previewUrl = civitaiPreviewUrl;
+                    let isMp4Preview = false;
+                    // 检查是否启用了MP4预览模式，并且存在对应的MP4文件
+                    if (globalThis.zmlBatchLoraPreviewMp4Mode && globalThis.zmlMp4Previews && globalThis.zmlMp4Previews[loraPath]) {
+                        const mp4Path = globalThis.zmlMp4Previews[loraPath];
+                        previewUrl = `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(mp4Path)}?${+new Date()}`;
+                        isMp4Preview = true;
+                    }
 
                     const itemEl = zmlCreateEl("div", { // 使用 zmlCreateEl
                         className: `zml-batch-lora-item ${isSelected ? 'selected' : ''} ${zmlBatchLoraDisplayStyle === 'horizontal' ? 'horizontal' : ''} ${zmlBatchLoraDisplayStyle === 'vertical' ? 'vertical' : ''} ${zmlBatchLoraDisplayStyle === 'square' ? 'square' : ''} ${isDeleted ? 'deleted' : ''}`,
@@ -1722,17 +1832,67 @@ app.registerExtension({
                         `
                     });
 
-                    if (hasPreview) {
-                        const img = zmlCreateEl("img", { // 使用 zmlCreateEl
-                            src: civitaiPreviewUrl, // Use the dynamically constructed URL
-                            className: "zml-batch-lora-item-image",
-                            style: `
-                                width: 100%;
-                                height: 100%;
-                                object-fit: cover;
-                            `
-                        });
-                        imageWrapper.appendChild(img);
+                    if (previewUrl) {
+                        if (isMp4Preview) {
+                            // 创建视频元素
+                            const video = zmlCreateEl("video", {
+                                className: "zml-batch-lora-item-video",
+                                style: `
+                                    width: 100%;
+                                    height: 100%;
+                                    object-fit: cover;
+                                `,
+                                autoplay: true,
+                                loop: true,
+                                muted: true,
+                                playsinline: true
+                            });
+                            // 创建视频源
+                            const source = zmlCreateEl("source", {
+                                src: previewUrl,
+                                type: "video/mp4"
+                            });
+                            video.appendChild(source);
+                            // 添加视频加载错误处理
+                            video.onerror = function() {
+                                console.warn(`[ZML] Failed to load MP4 preview: ${previewUrl}`);
+                                // 如果是MP4预览模式且加载失败，则尝试使用原始图片
+                                if (globalThis.zmlBatchLoraPreviewMp4Mode && civitaiPreviewUrl) {
+                                    console.log(`[ZML] Falling back to original image: ${civitaiPreviewUrl}`);
+                                    const img = zmlCreateEl("img", {
+                                        src: civitaiPreviewUrl,
+                                        className: "zml-batch-lora-item-image",
+                                        style: `
+                                            width: 100%;
+                                            height: 100%;
+                                            object-fit: cover;
+                                        `
+                                    });
+                                    imageWrapper.innerHTML = '';
+                                    imageWrapper.appendChild(img);
+                                } else {
+                                    imageWrapper.textContent = "预览视频加载失败";
+                                }
+                            };
+                            imageWrapper.appendChild(video);
+                        } else {
+                            // 创建图片元素
+                            const img = zmlCreateEl("img", {
+                                src: previewUrl,
+                                className: "zml-batch-lora-item-image",
+                                style: `
+                                    width: 100%;
+                                    height: 100%;
+                                    object-fit: cover;
+                                `
+                            });
+                            // 添加图片加载错误处理
+                            img.onerror = function() {
+                                console.warn(`[ZML] Failed to load image preview: ${previewUrl}`);
+                                imageWrapper.textContent = "预览图加载失败";
+                            };
+                            imageWrapper.appendChild(img);
+                        }
                     } else {
                         imageWrapper.textContent = "LoRA暂无预览图";
                     }
@@ -2044,6 +2204,16 @@ app.registerExtension({
                     zmlBatchLoraCurrentPath = [];
                     zmlBatchLoraSelected.clear();
                     updateSelectedCountDisplay(); // 清空后更新计数显示
+                    // 重置MP4预览模式
+                    if (typeof zmlBatchLoraPreviewMp4Mode !== 'undefined') {
+                        zmlBatchLoraPreviewMp4Mode = false;
+                        // 检查updateStyleButtons是否存在，如果存在则调用
+                        if (typeof updateStyleButtons === 'function') {
+                            // 获取所有样式按钮
+                            const styleButtons = Array.from(zmlBatchLoraModalOverlay.querySelectorAll('button'));
+                            updateStyleButtons(styleButtons);
+                        }
+                    }
                 }
             }
             // --- 结束：批量添加 LoRA 弹窗的变量和函数 ---
@@ -2743,7 +2913,9 @@ app.registerExtension({
                          content.style.borderColor = adjustBrightness(this.folderColor, -15);
 
 
-                         header.onclick = (e) => {
+                         header.addEventListener("mousedown", (e) => {
+                             e.stopImmediatePropagation(); // 阻止所有其他事件监听器
+                             e.preventDefault(); // 阻止默认的 mousedown 行为
                              // Allow clicking on inputs/buttons inside header without toggling collapse
                              if (e.target === nameInput || e.target === deleteBtn || e.target === dragHandle) return;
                              // Check if the click happened directly on the header or the toggle button
@@ -2753,7 +2925,7 @@ app.registerExtension({
                                  content.classList.toggle('hidden', entry.is_collapsed);
                                  this.triggerSlotChanged();
                              }
-                         };
+                         });
                          
                          nameInput.onchange = (e) => { entry.name = e.target.value; this.triggerSlotChanged(); };
                          
@@ -2899,7 +3071,7 @@ app.registerExtension({
                                  parentDom.appendChild(domInfo.dom);
                                  
                                  // If it's a folder, recursively append its children
-                                 if (item.item_type === 'folder') {
+                                 if (item.item_type === 'folder' && domInfo.dom) {
                                      const folderContentArea = domInfo.dom.querySelector('.zml-pll-folder-content');
                                      if (folderContentArea) {
                                          const children = this.powerLoraLoader_data.entries.filter(e => e.parent_id === item.id);
@@ -2989,6 +3161,7 @@ app.registerExtension({
                          // ... (现有 onConfigure 逻辑) ...
                          if (this.powerLoraLoader_initialized && this.applySizeMode) {
                              setTimeout(() => {
+                                 if (!this.domElement) return;
                                  const topControls = this.domElement.querySelector(".zml-pll-controls-top");
                                  if (topControls) {
                                       const lockButton = topControls.querySelector("button[title='锁定/解锁 LoRA 排序']");
@@ -3043,7 +3216,15 @@ app.registerExtension({
                     Object.keys(treeLevel.folders).sort().forEach(folderName => {
                         const folderEl = zmlCreateEl("div", { className: "zml-lora-folder", innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}` }); // <-- 这里会调用到局部定义的 zmlCreateEl
                         const contentEl = zmlCreateEl("div", { className: "zml-lora-folder-content" }); // <-- 这里会调用到局部定义的 zmlCreateEl
-                        folderEl.onclick = (e) => { e.stopPropagation(); const isHidden = contentEl.style.display === "none"; contentEl.style.display = isHidden ? "block" : "none"; folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶"; };
+                        // 修复：确保contentEl默认是隐藏的，并且第一次点击就能正确展开
+                        contentEl.style.display = "none";
+                        folderEl.addEventListener("click", (e) => {
+                            e.stopImmediatePropagation(); // 阻止所有其他事件监听器
+                            e.preventDefault(); // 阻止默认行为
+                            const isHidden = contentEl.style.display === "none" || contentEl.style.display === "";
+                            contentEl.style.display = isHidden ? "block" : "none";
+                            folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶";
+                        });
                         buildMenuLevel(contentEl, treeLevel.folders[folderName]);
                         parent.append(folderEl, contentEl);
                     });
