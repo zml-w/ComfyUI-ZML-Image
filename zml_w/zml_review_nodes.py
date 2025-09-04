@@ -116,7 +116,7 @@ class ZML_AutoCensorNode:
         return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1), help_text)
     def get_mask(self, result, w, h):
         if hasattr(result, 'masks') and result.masks: return (cv2.resize(result.masks.data[0].cpu().numpy(), (w, h), interpolation=cv2.INTER_NEAREST) * 255).astype(np.uint8), 'segm'
-        elif hasattr(result, 'boxes') and result.boxes: box = result.boxes.xyxy[0].cpu().numpy().astype(int); mask_cv = np.zeros((h, w), dtype=np.uint8); cv2.rectangle(mask_cv, (box[0], box[1]), (box[2], box[1]), 255, -1); return mask_cv, 'bbox'
+        elif hasattr(result, 'boxes') and result.boxes: box = result.boxes.xyxy[0].cpu().numpy().astype(int); mask_cv = np.zeros((h, w), dtype=np.uint8); cv2.rectangle(mask_cv, (box[0], box[1]), (box[2], box[3]), 255, -1); return mask_cv, 'bbox' # 修正了box[1]这里的问题
         return None, None
     def process_mask(self, mask_cv, scale, dilation):
         processed_mask = mask_cv.copy()
@@ -167,27 +167,29 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
         return {
             "required": {
                 "图像": ("IMAGE",),
-                "YOLO模型": (model_list,),
+                "YOLO模型": (model_list,), 
                 "置信度阈值": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}),
                 "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),
                 "描边颜色": ("STRING", {"default": "#FF0000", "tooltip": "描边颜色，十六进制代码 (例如 #RRGGBB)。默认红色。", "pysssss.color": True}),
                 "描边厚度": ("INT", {"default": 2, "min": 0, "max": 30, "step": 1}),
                 "外扩描边像素": ("INT", {"default": 0, "min": 0, "max": 50, "step": 1}),
+                "保持裁剪图像原始分辨率": ("BOOLEAN", {"default": False, "tooltip": "如果为True，裁剪图像将保持原始输入图像的分辨率并填充透明像素；如果为False，裁剪图像将自动剪裁周围的透明区域，只保留最小有效内容。"}),
             }
         }
-    RETURN_TYPES = ("MASK", "MASK", "IMAGE")
-    RETURN_NAMES = ("遮罩", "反转遮罩", "描边图像")
+    RETURN_TYPES = ("MASK", "MASK", "IMAGE", "IMAGE") # 新增 IMAGE 输出类型给裁剪图像
+    RETURN_NAMES = ("遮罩", "反转遮罩", "描边图像", "裁剪图像") # 新增 裁剪图像 名称
     FUNCTION = "process_yolo_to_mask"
-    CATEGORY = "image/ZML_图像/遮罩"
+    CATEGORY = "image/ZML_图像/遮罩" # 放在遮罩分类下
 
-    def process_yolo_to_mask(self, 图像, YOLO模型, 置信度阈值, 遮罩缩放系数, 遮罩膨胀, 描边颜色, 描边厚度, 外扩描边像素):
-        if not YOLO模型:
+    def process_yolo_to_mask(self, 图像, YOLO模型, 置信度阈值, 遮罩缩放系数, 遮罩膨胀, 描边颜色, 描边厚度, 外扩描边像素, 保持裁剪图像原始分辨率):
+        if not YOLO模型: 
             _, h, w, _ = 图像.shape
-            # 返回空遮罩、全白反转遮罩和原始图像
-            return (torch.zeros((1, h, w), dtype=torch.float32),
-                    torch.ones((1, h, w), dtype=torch.float32),
-                    图像)
+            # 返回空遮罩、全白反转遮罩、原始图像和全黑图像作为裁剪图像
+            return (torch.zeros((1, h, w), dtype=torch.float32), 
+                    torch.ones((1, h, w), dtype=torch.float32), 
+                    图像,
+                    torch.zeros_like(图像)) # 返回与输入图像大小相同的全黑图像
 
         model_path = folder_paths.get_full_path("ultralytics", YOLO模型)
         if not model_path: raise FileNotFoundError(f"模型文件 '{YOLO模型}' 未找到。")
@@ -197,7 +199,7 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
             model = YOLO(model_path)
         
         source_pil = self.tensor_to_pil(图像)
-        source_cv2_bgr = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR) # 用于描边
+        source_cv2_bgr = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR) # 用于描边和裁剪
         h, w = source_pil.height, source_pil.width # 获取实际图片宽高
 
         # 运行YOLO推理
@@ -217,7 +219,6 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
                     continue
                 
                 # 应用遮罩缩放系数和遮罩膨胀
-                # 注意：这里我们对轮廓也应该使用缩放和膨胀后的遮罩
                 processed_mask_cv = self.process_mask(mask_cv, 遮罩缩放系数, 遮罩膨胀)
                 
                 # 提取描边轮廓
@@ -235,11 +236,11 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
         inverted_mask = 1.0 - output_mask
 
         # --- 描边图像处理 ---
-        # 将颜色十六进制转换为BGR元组
-        line_color_bgr = tuple(int(描边颜色.lstrip('#')[i:i+2], 16) for i in (4, 2, 0)) # RRGGBB -> BBGGRR
-        
+        # 将颜色十六进制转换为BGR元组 (用于OpenCV)
+        line_color_rgb_tuple = tuple(int(描边颜色.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) # RRGGBB -> RGB
+        line_color_bgr_tuple = (line_color_rgb_tuple[2], line_color_rgb_tuple[1], line_color_rgb_tuple[0]) # RGB -> BGR
+
         # 创建一个描边图像副本，以在上面绘图
-        # 这里使用原始图像的副本
         stroked_image_cv2 = source_cv2_bgr.copy() 
 
         if 描边厚度 > 0 and len(all_contours_to_draw) > 0:
@@ -250,7 +251,7 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
                 for contour in all_contours_to_draw:
                     # 创建一个只包含当前轮廓的空白遮罩
                     temp_mask = np.zeros_like(source_cv2_bgr[:,:,0], dtype=np.uint8)
-                    cv2.drawContours(temp_mask, [contour], -1, cv2.FILLED)
+                    cv2.drawContours(temp_mask, [contour], -1, 255, cv2.FILLED) # Use 255 and cv2.FILLED to make a solid mask
                     
                     # 膨胀这个遮罩
                     kernel = np.ones((外扩描边像素 * 2 + 1, 外扩描边像素 * 2 + 1), np.uint8)
@@ -261,16 +262,45 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
                     expanded_contours.extend(new_contours) # 将膨胀后的轮廓加入列表
                 
                 # 在描边图像上绘制膨胀后的轮廓描边
-                cv2.drawContours(stroked_image_cv2, expanded_contours, -1, line_color_bgr, 描边厚度)
+                cv2.drawContours(stroked_image_cv2, expanded_contours, -1, line_color_bgr_tuple, 描边厚度)
             else:
                 # 直接绘制原始轮廓的描边
-                cv2.drawContours(stroked_image_cv2, all_contours_to_draw, -1, line_color_bgr, 描边厚度)
+                cv2.drawContours(stroked_image_cv2, all_contours_to_draw, -1, line_color_bgr_tuple, 描边厚度)
 
         # 将描边图像从OpenCV BGR格式转换为ComfyUI的IMAGE张量格式 (B, H, W, 3)
         stroked_image_pil = Image.fromarray(cv2.cvtColor(stroked_image_cv2, cv2.COLOR_BGR2RGB))
         output_stroked_image = self.pil_to_tensor(stroked_image_pil)
 
-        return (output_mask, inverted_mask, output_stroked_image)
+        # --- 裁剪图像处理 ---
+        # 创建一个透明背景的图像，用于裁剪
+        temp_cropped_pil = Image.new('RGBA', (w, h), (0, 0, 0, 0)) # 初始透明背景
+        
+        original_pil_rgba = source_pil.convert("RGBA") # 确保原始图像是RGBA模式，以便正确粘贴到透明背景上
+
+        # 使用遮罩粘贴原始图像内容
+        # PIL.Image.paste(im, box=None, mask=None) - mask中的非零区域决定了im的哪些像素会被复制
+        # 我们需要遮罩是L模式，且0表示透明，255表示不透明
+        final_combined_mask_pil_for_paste = final_combined_mask_pil.convert("L")
+
+        temp_cropped_pil.paste(original_pil_rgba, (0, 0), final_combined_mask_pil_for_paste)
+
+        # 根据 `保持裁剪图像原始分辨率` 选项处理
+        output_cropped_image = None
+        if 保持裁剪图像原始分辨率:
+            # 保持原始分辨率，直接输出带透明背景的裁剪图像
+            output_cropped_image = self.pil_to_tensor(temp_cropped_pil)
+        else:
+            # 自动裁剪，只保留非透明区域（即实际内容）的最紧凑边界框
+            # Image.getbbox() 返回图像的非零区域（或非透明区域）的边界框 (left, upper, right, lower)
+            bbox = temp_cropped_pil.getbbox() # 自动获取包含所有非透明像素的最小矩形
+            if bbox:
+                cropped_content_pil = temp_cropped_pil.crop(bbox)
+                output_cropped_image = self.pil_to_tensor(cropped_content_pil)
+            else:
+                # 如果 bbox 为None (图像完全透明/空白)，返回一个1x1的透明图像
+                output_cropped_image = self.pil_to_tensor(Image.new('RGBA', (1, 1), (0, 0, 0, 0)))
+
+        return (output_mask, inverted_mask, output_stroked_image, output_cropped_image)
 
 
 class ZML_MaskSplitNode:
@@ -308,62 +338,13 @@ class ZML_MaskSplitNode:
             if (高度 - h_split) > 0:
                 sb = np.ones((高度 - h_split, 宽度), dtype=np.float32)
         elif 分割方向 == "对角线":
-            # 创建一个网格，X轴从0到宽度-1，Y轴从0到高度-1
             y_coords, x_coords = np.indices((高度, 宽度))
-
-            # 计算对角线方程： (y - y1) * (x2 - x1) = (x - x1) * (y2 - y1)
-            # 简化为： Y * W = X * H (从 (0,0) 到 (W,H) 的线)
-            # 或者： `y / H = x / W`
-            # 为了控制分割比例，我们引入一个偏移量，让线变成 `y / H = x / W + offset`
-            # 实际操作更方便的是 `y * W - x * H` 的值
             
-            # 归一化偏移量，使分割比例在0到1之间对应于对角线从一侧到另一侧的完全偏移
-            # 当分割比例为0时，对角线偏向左侧（更多区域给B）
-            # 当分割比例为1时，对角线偏向右侧（更多区域给A）
-            # base_line_value = (y_coords / 高度) - (x_coords / 宽度)
-            # offset = (分割比例 - 0.5) * 2.0 # 偏移量从-1到1
-            # a_condition = base_line_value < offset 
-
-            # 更直观的对角线分割方式：
-            # 考虑一个线性梯度，从左到右或从上到下。
-            # 这里我们尝试从左上到右下的对角线。
-            # 我们希望 `分割比例` 0.0 时，遮罩A为0，遮罩B为全图。
-            # `分割比例` 1.0 时，遮罩A为全图，遮罩B为0。
-
-            # 计算一个对角线梯度值：
-            # (x / 宽度 + y / 高度) 的值范围大约是 0 到 2
-            # 调整偏移使 `分割比例` 在 0 到 1 之间有效控制分割
-            
-            # 使用 `y * W - x * H` 表达式来判断像素点相对于对角线的位置
-            # 值为0时在线上，负值在一方，正值在另一方。
-            # 调整阈值 `threshold` 来实现 `分割比例` 的效果。
-            # threshold 范围可以从 -(H*W) 到 +(H*W)
-            # 我们可以将 `分割比例` 映射到一个合适的阈值范围
-            
-            # 假设对角线从左上角(0,0)到右下角(W-1, H-1)
-            # 点 (x,y) 到对角线 (0,0)-(W-1,H-1) 的距离正负判断： (y - H/W * x)
-            # 或者更通用的： (x - x1)(y2 - y1) - (y - y1)(x2 - x1)
-            # (x - 0)(H - 0) - (y - 0)(W - 0) = x*H - y*W
-            # 如果 x*H - y*W > 0, 则点在对角线下方
-            # 如果 x*H - y*W < 0, 则点在对角线上方
-
-            # 我们需要一个基于 `分割比例` 的偏移量
-            # 当分割比例为0时，几乎所有点都在 `a` 区域，`b` 区域很小 (或说线很靠近右下角)
-            # 当分割比例为1时，几乎所有点都在 `b` 区域，`a` 区域很小 (或说线很靠近左上角)
-            
-            # 我们创建一个0到1的连续对角线梯度
             gradient = (x_coords / 宽度 + y_coords / 高度) / 2.0
             
-            # 根据分割比例来确定分割点
-            # 如果分割比例是0.5，那么就是 (x/W + y/H)/2.0 > 0.5 的一半
-            # gradient <= 分割比例 给 mask_a
             a[gradient <= 分割比例] = 1.0
             b[gradient > 分割比例] = 1.0
 
-            # 对于单独遮罩 A 和 B，创建一个与各自区域大小匹配的全白遮罩
-            # 更好的方法是计算a和b的实际像素数，然后创建该大小的方形遮罩
-            # 但这不是像素的实际宽高，而是整体区域，通常单独遮罩用于裁剪，所以保持原逻辑
-            # 这里，sa和sb就是各自生成的a和b遮罩本身
             sa = a.copy()
             sb = b.copy()
 
@@ -710,7 +691,10 @@ class ZML_MaskSeparateDistance:
     CATEGORY = "image/ZML_图像/遮罩"
     def _mask_to_numpy_uint8(self, mask_tensor: torch.Tensor) -> np.ndarray:
         """Converts a ComfyUI MASK tensor (B, H, W) to a (H, W) uint8 numpy array."""
-        return (mask_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8)
+        mask_np_float = mask_tensor.squeeze(0).cpu().numpy()
+        mask_np_uint8 = (mask_np_float * 255).astype(np.uint8)
+        _, binary_mask = cv2.threshold(mask_np_uint8, 127, 255, cv2.THRESH_BINARY)
+        return binary_mask
 
     def _numpy_uint8_to_mask(self, mask_np: np.ndarray) -> torch.Tensor:
         """Converts a (H, W) uint8 numpy array to a ComfyUI MASK tensor (B, H, W)."""
@@ -824,7 +808,10 @@ class ZML_MaskSeparateThree:
 
     def _mask_to_numpy_uint8(self, mask_tensor: torch.Tensor) -> np.ndarray:
         """Converts a ComfyUI MASK tensor (B, H, W) to a (H, W) uint8 numpy array."""
-        return (mask_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8)
+        mask_np_float = mask_tensor.squeeze(0).cpu().numpy()
+        mask_np_uint8 = (mask_np_float * 255).astype(np.uint8)
+        _, binary_mask = cv2.threshold(mask_np_uint8, 127, 255, cv2.THRESH_BINARY)
+        return binary_mask
 
     def _numpy_uint8_to_mask(self, mask_np: np.ndarray) -> torch.Tensor:
         """Converts a (H, W) uint8 numpy array to a ComfyUI MASK tensor (B, H, W)."""
@@ -1028,9 +1015,7 @@ class ZML_UnifyImageResolution:
 
                 # 确保尺寸至少为1
                 scaled_width = max(1, scaled_width)
-                    # scaled_height = max(1, scaled_height)
                 scaled_height = max(1, scaled_height)
-
 
                 resized_image = pil_image.resize((scaled_width, scaled_height), resample=Image.Resampling.LANCZOS)
 
@@ -1355,7 +1340,7 @@ class ZML_LimitImageAspect:
 NODE_CLASS_MAPPINGS = {
     "ZML_AutoCensorNode": ZML_AutoCensorNode,
     "ZML_CustomCensorNode": ZML_CustomCensorNode,
-    "ZML_YoloToMask": ZML_YoloToMask, # New Node
+    "ZML_YoloToMask": ZML_YoloToMask,
     "ZML_MaskSplitNode": ZML_MaskSplitNode,
     "ZML_MaskSplitNode_Five": ZML_MaskSplitNode_Five,
     "ZML_ImageRotate": ZML_ImageRotate,
@@ -1365,8 +1350,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MaskSeparateDistance": ZML_MaskSeparateDistance,
     "ZML_MaskSeparateThree": ZML_MaskSeparateThree,
     "ZML_UnifyImageResolution": ZML_UnifyImageResolution,
-    "ZML_LimitMaskShape": ZML_LimitMaskShape, 
-    "ZML_LimitImageAspect": ZML_LimitImageAspect, 
+    "ZML_LimitMaskShape": ZML_LimitMaskShape,
+    "ZML_LimitImageAspect": ZML_LimitImageAspect,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1382,7 +1367,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MaskSeparateDistance": "ZML_遮罩分离-二",
     "ZML_MaskSeparateThree": "ZML_遮罩分离-三",
     "ZML_UnifyImageResolution": "ZML_统一图像分辨率",
-    "ZML_LimitMaskShape": "ZML_限制遮罩形状", 
+    "ZML_LimitMaskShape": "ZML_限制遮罩形状",
     "ZML_LimitImageAspect": "ZML_限制图像比例",
 }
-

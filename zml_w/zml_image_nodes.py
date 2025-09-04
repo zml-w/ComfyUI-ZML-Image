@@ -14,7 +14,10 @@ import json
 import random
 import urllib.parse
 from pathlib import Path
+import cv2 
 
+# ============================== 支持的视频扩展名 ==============================
+supported_video_extensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.flv', '.wmv', '.gif'] # 添加.gif支持，虽然gif本质上是图像序列，但通常也被视为短视频
 
 # ZML节点用于存储文本块的特定键名 (所有相关节点统一使用此常量)
 DEFAULT_TEXT_BLOCK_KEY = "comfy_text_block"
@@ -1212,16 +1215,25 @@ class ZML_TagImageLoader:
 
     OUTPUT_IS_LIST = (True, False, False,)
 
+    # --- 🔴 MODIFICATION START: 添加占位符图像创建函数 ---
+    def _create_placeholder_image(self, size=1) -> torch.Tensor:
+        """创建一个 1x1 像素的黑色占位符图像张量"""
+        return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
+    # --- 🔴 MODIFICATION END ---
+
     def load_images_by_tags(self, selected_files_json="[]", **kwargs): # 自定义路径不再作为参数
-        # ==================== START: FIXED CODE ====================
+        # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
+        placeholder_image = self._create_placeholder_image()
+
         if not selected_files_json or selected_files_json == "[]":
-            return ([], "", "未选择任何文件。")
+            return ([placeholder_image], "", "未选择任何文件。")
 
         try:
             data = json.loads(selected_files_json)
         except json.JSONDecodeError:
             print("ZML_TagImageLoader: JSON解析失败。")
-            return ([], "", "JSON解析失败")
+            return ([placeholder_image], "", "JSON解析失败")
+        # --- 🔴 MODIFICATION END ---
 
         file_list = []
         current_custom_base_path = ""
@@ -1234,21 +1246,23 @@ class ZML_TagImageLoader:
         elif isinstance(data, list):
             # 这是旧格式: [...]
             file_list = data
-
+        
+        # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if not file_list:
-            return ([], "", "选择列表为空或格式不正确。")
+            return ([placeholder_image], "", "选择列表为空或格式不正确。")
+        # --- 🔴 MODIFICATION END ---
 
         image_tensors = []
         text_blocks = []
         validation_messages = []
 
         base_dir = get_base_path(current_custom_base_path)
-        # ===================== END: FIXED CODE =====================
         
+        # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if base_dir is None or not base_dir.is_dir():
             print(f"ZML_TagImageLoader: 基准目录无效或不存在: {current_custom_base_path or 'output'}")
-            return ([], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}")
-
+            return ([placeholder_image], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}")
+        # --- 🔴 MODIFICATION END ---
 
         for item in file_list:
             # 忽略内部 base_path 字段，只处理实际的文件信息
@@ -1299,9 +1313,11 @@ class ZML_TagImageLoader:
                 validation_messages.append(f"{filename}：加载失败 ({e})")
                 print(f"ZML_TagImageLoader: 加载图片 '{image_path}' 失败: {e}")
 
+        # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if not image_tensors:
             final_validation_output = "\n".join(validation_messages)
-            return ([], "", final_validation_output)
+            return ([placeholder_image], "", final_validation_output)
+        # --- 🔴 MODIFICATION END ---
 
         text_separator = "\n\n"
         final_text_output = text_separator.join(text_blocks)
@@ -1380,12 +1396,222 @@ class ZML_ClassifyImage:
 
         return (output_no_data, output_metadata, output_text_block,)
 
+# ============================== 从路径加载视频节点 ==============================
+class ZML_LoadVideoFromPath:
+    """
+    ZML 从路径加载视频节点：从指定文件夹路径加载视频文件，逐帧输出图像。
+    支持索引模式、帧率限制和读取帧数上限。
+    """
+    def __init__(self):
+        self.cached_files = [] # 缓存当前路径下的视频文件列表
+        self.cached_path = ""  # 缓存的路径
+        self.cache_time = 0    # 缓存时间戳
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 视频文件计数器，与ZML_LoadImageFromPath共享计数器文件
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "路径视频计数.json")
+        
+        # 启动时重置计数器
+        self.reset_counters_on_startup()
+        
+    def reset_counters_on_startup(self):
+        """在ComfyUI启动时重置所有节点的顺序计数器"""
+        try:
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                json.dump({}, f)
+        except Exception as e:
+            print(f"ZML_LoadVideoFromPath: 重置路径视频计数JSON文件失败: {str(e)}")
+
+    def get_all_counts(self):
+        """读取所有节点的顺序计数器"""
+        try:
+            with open(self.counter_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def get_sequential_count(self, node_id):
+        """获取特定节点的顺序计数"""
+        return self.get_all_counts().get(node_id, 0)
+
+    def increment_sequential_count(self, node_id):
+        """增加特定节点的顺序计数并保存"""
+        all_counts = self.get_all_counts()
+        current_count = all_counts.get(node_id, 0)
+        all_counts[node_id] = current_count + 1
+        try:
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                json.dump(all_counts, f, indent=4)
+        except Exception as e:
+            print(f"ZML_LoadVideoFromPath: 更新路径视频计数JSON文件失败: {str(e)}")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "文件夹路径": ("STRING", {"default": "", "placeholder": "包含视频文件的文件夹路径"}),
+                "索引模式": (["固定索引", "随机索引", "顺序"], {"default": "固定索引"}), # 视频通常一次处理一个，不设“全部”
+                "索引值": ("INT", {"default": 0, "min": 0, "step": 1}),
+                "读取帧数上限": ("INT", {"default": 0, "min": 0, "step": 1, "max": 999999, "help": "0表示读取所有帧"}),
+                "帧率限制": ("INT", {"default": 0, "min": 0, "step": 1, "max": 999, "help": "0表示不限制，保留原视频帧率"}),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "unique_id": "UNIQUE_ID"
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT")
+    RETURN_NAMES = ("图像", "帧率", "帧数")
+    FUNCTION = "load_video"
+    CATEGORY = "image/ZML_图像/图像"
+    OUTPUT_IS_LIST = (True, False, False) # 图像是PIL列表，其他是单一值
+
+    def scan_directory(self, folder_path_str: str):
+        """
+        扫描指定目录，返回所有支持的视频文件列表。
+        """
+        if not folder_path_str:
+            return []
+
+        folder_path = Path(folder_path_str)
+        if not folder_path.is_absolute():
+            folder_path = COMFYUI_ROOT / folder_path
+        real_folder_path = folder_path.resolve()
+
+        if not real_folder_path.is_dir():
+            print(f"ZML_LoadVideoFromPath: 文件夹路径不存在或不是目录: {real_folder_path}")
+            return []
+
+        files = [f.name for f in real_folder_path.iterdir() if f.is_file() and f.suffix.lower() in supported_video_extensions]
+        files.sort()
+        return files
+
+    def _create_placeholder_image(self, size=1) -> torch.Tensor:
+        """Helper: 创建一个 1x1 像素的黑色占位符图像张量"""
+        return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
+
+    def load_video(self, 文件夹路径: str, 索引模式: str, 索引值: int, 读取帧数上限: int, 帧率限制: int, unique_id=None, prompt=None):
+        current_time = time.time()
+        # 优化缓存逻辑: 只有当路径改变或缓存过期时才重新扫描
+        if 文件夹路径 != self.cached_path or current_time - self.cache_time > 60:
+            self.cached_files = self.scan_directory(文件夹路径)
+            self.cached_path = 文件夹路径
+            self.cache_time = current_time
+        
+        num_files_in_folder = len(self.cached_files) # 文件夹中的视频文件总数
+
+        # 如果没有找到视频文件，返回占位符
+        if not self.cached_files:
+            print(f"ZML_LoadVideoFromPath: 未在路径 '{文件夹路径}' 中找到任何视频文件。")
+            return ([self._create_placeholder_image(64)], 0, 0)
+        
+        # 根据索引模式选择视频文件
+        selected_file_index = 0
+        if 索引模式 == "固定索引":
+            selected_file_index = 索引值 % num_files_in_folder
+        elif 索引模式 == "随机索引":
+            selected_file_index = random.randint(0, num_files_in_folder - 1)
+        elif 索引模式 == "顺序":
+            count = self.get_sequential_count(str(unique_id)) if unique_id is not None else 0
+            selected_file_index = count % num_files_in_folder
+            if unique_id is not None:
+                self.increment_sequential_count(str(unique_id))
+        
+        selected_filename = self.cached_files[selected_file_index]
+        
+        # 解析实际的文件夹路径，用于构建完整的视频路径
+        actual_folder_path = Path(文件夹路径)
+        if not actual_folder_path.is_absolute():
+            actual_folder_path = COMFYUI_ROOT / actual_folder_path
+        actual_folder_path = actual_folder_path.resolve()
+        
+        video_path = str(actual_folder_path / selected_filename)
+
+        print(f"ZML_LoadVideoFromPath: 尝试加载视频: {video_path}")
+
+        # 使用 OpenCV 打开视频文件
+        cap = cv2.VideoCapture(video_path)
+
+        if not cap.isOpened():
+            print(f"ZML_LoadVideoFromPath: 无法打开视频文件: {video_path}")
+            return ([self._create_placeholder_image(64)], 0, 0)
+        
+        frames_output = []
+        original_fps = int(cap.get(cv2.CAP_PROP_FPS))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        actual_output_fps = original_fps
+        frame_read_interval = 1 # 默认每帧都读取
+
+        if 帧率限制 > 0 and original_fps > 帧率限制:
+            frame_read_interval = max(1, int(original_fps / 帧率限制))
+            # 修正实际输出帧率，避免除数为零或过小
+            if frame_read_interval > 0:
+                actual_output_fps = original_fps / frame_read_interval
+            else:
+                 actual_output_fps = original_fps # 实际上不应该发生，但作为安全措施
+
+        frame_count = 0
+        read_frame_counter = 0
+
+        while True:
+            # 根据 frame_read_interval 跳过不需要的帧
+            if read_frame_counter % frame_read_interval != 0:
+                ret = cap.grab() # grab only
+                if not ret:
+                    break
+                read_frame_counter += 1
+                continue
+
+            ret, frame = cap.read()
+            if not ret:
+                break # 视频读取完毕或出错
+
+            # 检查读取帧数上限
+            if 读取帧数上限 > 0 and frame_count >= 读取帧数上限:
+                break
+
+            # 将 OpenCV 的 BGR 格式转换为 RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # 转换为 ComfyUI 的 Tensor 格式 (B, H, W, C)
+            frame_tensor = torch.from_numpy(frame_rgb.astype(np.float32) / 255.0)[None,]
+            frames_output.append(frame_tensor)
+            
+            frame_count += 1
+            read_frame_counter += 1
+
+        cap.release()
+        
+        if not frames_output:
+            print(f"ZML_LoadVideoFromPath: 未从视频 '{video_path}' 中读取到任何帧。")
+            return ([self._create_placeholder_image(64)], 0, 0)
+
+        # 返回帧率使用实际输出的帧率，但如果原始帧率为0（或读取失败），则也返回0
+        final_output_fps = int(actual_output_fps) if original_fps > 0 else 0 
+        
+        return (frames_output, final_output_fps, total_frames)
+
+    @classmethod
+    def IS_CHANGED(cls, 文件夹路径: str, 索引模式: str, 索引值: int, 读取帧数上限: int, 帧率限制: int, unique_id=None, prompt=None):
+        # 确保每次运行时都更新文件列表，因为文件夹内容可能变化。
+        # 依赖于 load_video 内部的缓存机制来避免频繁的磁盘扫描。
+        # 对于 "顺序" 模式，每次执行都会改变内部计数器，因此总是返回 nan 强制执行
+        if 索引模式 == "顺序":
+            return float("nan")
+        # 对于其他模式，只要路径或索引改变，就重新加载
+        return (文件夹路径, 索引模式, 索引值, 读取帧数上限, 帧率限制)
+
 # ============================== 节点注册==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_SaveImage": ZML_SaveImage,
     "ZML_SimpleSaveImage": ZML_SimpleSaveImage,
     "ZML_LoadImage": ZML_LoadImage,
     "ZML_LoadImageFromPath": ZML_LoadImageFromPath,
+    "ZML_LoadVideoFromPath": ZML_LoadVideoFromPath,
     "ZML_TextBlockLoader": ZML_TextBlockLoader,
     "ZML_TagImageLoader": ZML_TagImageLoader,
     "ZML_ClassifyImage": ZML_ClassifyImage, 
@@ -1396,6 +1622,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SimpleSaveImage": "ZML_简易_保存图像",
     "ZML_LoadImage": "ZML_加载图像",
     "ZML_LoadImageFromPath": "ZML_从路径加载图像",
+    "ZML_LoadVideoFromPath": "ZML_从路径加载视频",
     "ZML_TextBlockLoader": "ZML_文本块加载器", 
     "ZML_TagImageLoader": "ZML_标签化图片加载器", 
     "ZML_ClassifyImage": "ZML_分类图像", 
