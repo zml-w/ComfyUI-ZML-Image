@@ -1,3 +1,12 @@
+<div align="center">
+  
+## English-speaking users need to download the translation patch!
+
+# [Click here to download](https://github.com/zml-w/ZZZ_ZML_English_Patch)
+
+</div>
+
+
 # 💕简单介绍一下节点：
 **这是一个功能丰富的COMFYUI自定义节点，主要和“图像、文本、整数、LoRA加载器、遮罩”相关，还有一些杂七杂八的小工具。目前节点总数共有50+，一般情况下每隔两天都会有新的节点增加。**
 
