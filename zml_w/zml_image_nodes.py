@@ -1182,6 +1182,85 @@ async def view_image_thumb(request):
         print(f"Error generating thumbnail for {image_path}: {e}")
         return web.Response(status=500, text=f"Error generating thumbnail: {e}")
 
+# ============================== 新增的API代码 START ==============================
+# API 5: 根据文件名从自定义路径获取单个图片的文本块 (为标签加载器新增)
+@server.PromptServer.instance.routes.get("/zml/get_single_text_block")
+async def get_single_text_block(request):
+    filename = request.query.get("filename")
+    subfolder = request.query.get("subfolder", "")
+    custom_path_str = request.query.get("custom_path", "")
+
+    # 安全检查
+    if not filename or ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
+        return web.Response(status=400, text="无效的文件名或子文件夹路径")
+
+    base_dir = get_base_path(custom_path_str)
+    if base_dir is None:
+        return web.Response(status=404, text=f"基准目录未找到: {custom_path_str}")
+
+    image_path = (base_dir / subfolder / filename).resolve()
+
+    if not image_path.is_file():
+        return web.Response(status=404, text="图片文件未找到")
+
+    try:
+        with Image.open(image_path) as img:
+            text_content = img.text.get(DEFAULT_TEXT_BLOCK_KEY, "") # 如果未找到则返回空字符串
+            return web.json_response({"text_content": text_content})
+    except Exception as e:
+        return web.Response(status=500, text=f"读取图片信息时发生错误: {e}")
+
+# API 6: 写入文本块到指定的图片 (为标签加载器新增)
+@server.PromptServer.instance.routes.post("/zml/write_text_block")
+async def write_text_block(request):
+    try:
+        data = await request.json()
+        filename = data.get("filename")
+        subfolder = data.get("subfolder", "")
+        custom_path_str = data.get("custom_path", "")
+        text_content = data.get("text_content", "")
+    except Exception:
+        return web.json_response({"error": "无效的请求数据"}, status=400)
+
+    # 安全检查
+    if not filename or ".." in filename or "/" in filename or "\\" in filename or ".." in subfolder:
+        return web.json_response({"error": "无效的文件名或子文件夹路径"}, status=400)
+
+    base_dir = get_base_path(custom_path_str)
+    if base_dir is None:
+        return web.json_response({"error": f"基准目录未找到: {custom_path_str}"}, status=404)
+
+    image_path = (base_dir / subfolder / filename).resolve()
+
+    if not image_path.is_file():
+        return web.json_response({"error": "图片文件未找到"}, status=404)
+
+    try:
+        with Image.open(image_path) as img:
+            # 加载原始图像数据以重新保存
+            img.load() 
+            
+            # 创建或更新元数据
+            metadata = PngImagePlugin.PngInfo()
+            # 复制原始元数据（如果有）
+            if img.info:
+                for key, value in img.info.items():
+                    if key != DEFAULT_TEXT_BLOCK_KEY: # 避免重复添加旧的文本块
+                        metadata.add_text(key, str(value))
+            
+            # 添加或更新我们的文本块
+            if text_content: # 只有当新内容不为空时才写入
+                metadata.add_text(DEFAULT_TEXT_BLOCK_KEY, text_content, zip=True)
+
+            # 重新保存图片，覆盖原文件
+            img.save(image_path, pnginfo=metadata, compress_level=4)
+            
+        return web.json_response({"success": True, "message": "文本块写入成功！"})
+    except Exception as e:
+        print(f"写入文本块失败: {e}")
+        return web.json_response({"error": f"写入文本块失败: {e}"}, status=500)
+# ============================== 新增的API代码 END ================================
+
 
 # ============================== 标签化图片加载器 ==============================
 class ZML_TagImageLoader:
