@@ -5,6 +5,122 @@ import random
 import json
 import math
 
+# 导入 ComfyUI 的 server 模块
+import server
+# 从 aiohttp 导入 web 用于 JSON 响应
+from aiohttp import web 
+
+# 获取当前文件所在目录
+NODE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 定义预设文本的目录和文件
+PRESET_TEXT_DIR = os.path.join(NODE_DIR, "txt", "Preset text")
+PRESET_TEXT_FILE = os.path.join(PRESET_TEXT_DIR, "text_v3.txt")
+
+# 确保预设文本目录存在
+os.makedirs(PRESET_TEXT_DIR, exist_ok=True)
+
+# Helper function to read preset text file
+def _read_presets():
+    presets = []
+    if os.path.exists(PRESET_TEXT_FILE):
+        with open(PRESET_TEXT_FILE, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f):
+                # 保持原始行内容，仅移除最右侧的换行符
+                line_content = line.rstrip('\n') 
+                if not line_content.strip(): # 用strip()判断是否为空行，但行内容依然保留
+                    continue
+                parts = line_content.split('#-#', 1) # 只按第一个#-#分割
+                if len(parts) == 2:
+                    # 读取时，content也不要做strip()，保留原始用户输入
+                    presets.append({"name": parts[0].strip(), "content": parts[1]}) # content now includes original newlines
+                else:
+                    base_name = f"未命名预设_{line_num+1}"
+                    current_name = base_name
+                    suffix = 0
+                    while any(p['name'] == current_name for p in presets):
+                        suffix += 1
+                        current_name = f"{base_name}_{suffix}"
+                    presets.append({"name": current_name, "content": line_content})
+    return presets
+
+# Helper function to write preset text file
+def _write_presets(presets):
+    with open(PRESET_TEXT_FILE, 'w', encoding='utf-8') as f:
+        for preset in presets:
+            # 写入时，content保留原始换行符
+            f.write(f"{preset['name']}#-#{preset['content']}\n")
+
+@server.PromptServer.instance.routes.post("/zml_select_text_v3/presets")
+async def zml_select_text_v3_presets(request):
+    """API endpoint to handle preset text operations for SelectTextV3 node."""
+    input_data = await request.json()
+    action = input_data.get("action")
+    
+    response_data = {"success": False, "message": "Unknown action"}
+
+    if action == "get_all":
+        presets = _read_presets()
+        response_data = {"success": True, "presets": presets}
+    elif action == "add":
+        new_name = input_data.get("name")
+        new_content = input_data.get("content")
+        if new_name is not None and new_content is not None:
+            presets = _read_presets()
+            
+            # Check for duplicate name (case-insensitive for better UX)
+            if any(p['name'].lower() == new_name.lower() for p in presets):
+                response_data = {"success": False, "message": f"Preset with name '{new_name}' already exists. Please choose a different name."}
+            else:
+                # 添加时，content不进行strip()，保留原始用户输入
+                presets.append({"name": str(new_name).strip(), "content": str(new_content)})
+                _write_presets(presets)
+                response_data = {"success": True, "message": "Preset added successfully."}
+        else:
+            response_data = {"success": False, "message": "Missing name or content for add operation."}
+    elif action == "update":
+        old_name = input_data.get("old_name")
+        new_name = input_data.get("new_name")
+        new_content = input_data.get("new_content")
+        
+        if old_name is not None and new_name is not None and new_content is not None:
+            presets = _read_presets()
+            found_index = -1
+            for i, p in enumerate(presets):
+                if p["name"] == old_name: # Use exact old_name to find
+                    found_index = i
+                    break
+            
+            if found_index != -1:
+                # Check for duplicate name if name is changed and new name already exists (case-insensitive)
+                if new_name.lower() != old_name.lower() and any(p['name'].lower() == new_name.lower() for i_dup, p in enumerate(presets) if i_dup != found_index):
+                    response_data = {"success": False, "message": f"Preset with new name '{new_name}' already exists. Please choose a different name."}
+                else:
+                    # 更新时，content不进行strip()，保留原始用户输入
+                    presets[found_index]["name"] = str(new_name).strip()
+                    presets[found_index]["content"] = str(new_content)
+                    _write_presets(presets)
+                    response_data = {"success": True, "message": "Preset updated successfully."}
+            else:
+                response_data = {"success": False, "message": f"Preset '{old_name}' not found."}
+        else:
+            response_data = {"success": False, "message": "Missing old_name, new_name or new_content for update operation."}
+    elif action == "delete":
+        preset_name_to_delete = input_data.get("name")
+        if preset_name_to_delete is not None:
+            presets = _read_presets()
+            initial_len = len(presets)
+            presets = [p for p in presets if p["name"] != preset_name_to_delete] # Use exact name to delete
+            if len(presets) < initial_len:
+                _write_presets(presets)
+                response_data = {"success": True, "message": "Preset deleted successfully."}
+            else:
+                response_data = {"success": False, "message": f"Preset '{preset_name_to_delete}' not found."}
+        else:
+            response_data = {"success": False, "message": "Missing name for delete operation."}
+    
+    return web.json_response(response_data)
+
+
 # ============================== 全局格式化函数 ==============================
 def format_punctuation_global(text):
     """
@@ -28,20 +144,23 @@ def format_punctuation_global(text):
         count += 1
         return placeholder
     
-    # 临时替换权重表达式
-    text = re.sub(r'\([^)]*\)', replace_fn, text)
-    
+    # 临时替换权重表达式，匹配任何字符包括换行符 (改进的正则表达式，避免嵌套处理问题)
+    text = re.sub(r'\((?:(?!\().)*?\)', replace_fn, text) 
+
     # 1. 将中文逗号替换为英文逗号
     text = text.replace('，', ',')
     
     # 2. 【顺序调整】先合并连续的逗号，以确保后续BREAK处理的准确性
+    # 匹配一个或多个逗号或中文逗号，替换成单个英文逗号
     text = re.sub(r'[,，]+', ',', text)
     
     # 3. 【顺序调整】处理连续BREAK
     # 在逗号被合并后，此正则表达式现在可以正确处理 "BREAK,BREAK"
+    # \s* 允许匹配换行符
     text = re.sub(r'(\bBREAK\b\s*,\s*)+(\bBREAK\b)', r'\2', text, flags=re.IGNORECASE)
     
     # 4. 移除开头的BREAK（如 "BREAK, tag" -> "tag"）
+    # \s* 允许匹配换行符
     text = re.sub(r'^(\s*,\s*)*\bBREAK\b(\s*,\s*)*', '', text, count=1, flags=re.IGNORECASE)
     
     # 5. 移除开头的逗号（如果前面没有文本）
@@ -80,19 +199,22 @@ class ZML_TextFormatter:
     def clear_weights(self, text):
         """移除所有权重语法，只保留标签文本"""
         # 移除SD权重格式 (content:weight)
-        text = re.sub(r'\(\s*([^:]+?)\s*:\s*[\d\.]+\s*\)', r'\1', text)
+        # (?:(?!\().)*? 匹配任何字符，非贪婪，直到但不包括下一个开括号或闭括号
+        text = re.sub(r'\(\s*((?:(?!\(|\)).)*?)\s*:\s*[\d\.]+\s*\)', r'\1', text)
         # 移除自定义权重格式 weight::content::
         text = re.sub(r'\d+(?:\.\d+)?::(.*?)::', r'\1', text)
         
         # 【修正】迭代移除所有包围性质的括号 (), {}, []
         # 只要还能找到最内层的括号，就继续循环剥离
-        while re.search(r'\{[^{}]*?\}|\[[^\[\]]*?\]|\([^\(\)]*?\)', text):
+        # 改进正则表达式，避免匹配到新行
+        # 使用非贪婪匹配 .*?，并确保括号内的匹配不跨越其他括号
+        while re.search(r'\{(?:(?!\{|\}).)*?\}|\[(?:(?!\[|\]).)*?\]|\((?:(?!\(|\)).)*?\)', text):
              # 移除一层 {}
-             text = re.sub(r'\{([^{}]*?)\}', r'\1', text)
+             text = re.sub(r'\{(?:(?!\{|\}).)*?\}', lambda m: m.group(0)[1:-1], text)
              # 移除一层 []
-             text = re.sub(r'\[([^\[\]]*?)\]', r'\1', text)
+             text = re.sub(r'\[(?:(?!\[|\]).)*?\]', lambda m: m.group(0)[1:-1], text)
              # 新增：移除一层 ()
-             text = re.sub(r'\(([^\(\)]*?)\)', r'\1', text)
+             text = re.sub(r'\((?:(?!\(|\)).)*?\)', lambda m: m.group(0)[1:-1], text)
              
         return text
 
@@ -105,6 +227,7 @@ class ZML_TextFormatter:
         text = self.convert_double_colon(text)
         
         # 同时匹配花括号{}和方括号[]
+        # 修改正则表达式以避免匹配嵌套括号内部内容，并允许内容包含换行
         matches = list(re.finditer(r'(\{+[^{}]*?\}+|\[+[^\[\]]*?\]+)', text))
         
         # 如果没有匹配项，直接返回原文本
@@ -112,6 +235,8 @@ class ZML_TextFormatter:
             return text
             
         # 从最内层开始处理（反向迭代）
+        # 注意：此处假设没有嵌套的括号类型混用，例如 { [tag] }
+        # 如果有，需要更复杂的解析逻辑
         for match in reversed(matches):
             full_match = match.group(0)
             start_idx, end_idx = match.span()
@@ -122,17 +247,15 @@ class ZML_TextFormatter:
             close_char = '}' if is_brace else ']'
             
             # 计算括号层数
+            # 这里的层数计算是基于连续的开头和结尾字符，而不是真正的嵌套深度
             left_count = 0
-            right_count = 0
-            
-            # 计算左侧连续括号数量
             for char in full_match:
                 if char == brace_char:
                     left_count += 1
                 else:
                     break
                     
-            # 计算右侧连续括号数量
+            right_count = 0
             for char in reversed(full_match):
                 if char == close_char:
                     right_count += 1
@@ -169,10 +292,11 @@ class ZML_TextFormatter:
     def convert_double_colon(self, text):
         """将双冒号格式::转换为权重格式"""
         # 匹配格式：数字::内容:: 
+        # (.*?) 匹配内容，包括换行
         pattern = r'(\d+(?:\.\d+)?)::(.*?)::'
         
         # 查找所有匹配项
-        matches = list(re.finditer(pattern, text))
+        matches = list(re.finditer(pattern, text, re.DOTALL)) # 使用re.DOTALL让.匹配换行
         
         # 如果没有匹配项，直接返回原文本
         if not matches:
@@ -202,7 +326,7 @@ class ZML_TextFormatter:
         
         # 1. 处理权重转换
         if 权重转换 == "NAI转SD（精确）":
-            文本 = self.convert_braces(文本, mode="精确")
+            文本 = self.convert_braces(文本, mode="精确") # convert_braces会先调用convert_double_colon
         elif 权重转换 == "NAI转SD（一位小数）":
             文本 = self.convert_braces(文本, mode="保留一位小数")
         elif 权重转换 == "清空权重":
@@ -213,9 +337,11 @@ class ZML_TextFormatter:
         if 文本格式化 == "下划线转空格":
             文本 = 文本.replace('_', ' ')
         elif 文本格式化 == "空格转下划线":
+            # 确保只替换实际空格，不影响其他空白符
             文本 = 文本.replace(' ', '_')
         elif 文本格式化 == "空格隔离标签":
-            # 替换逗号和其后的任意空格为 ", "
+            # 替换逗号和其后的任意空白（包括换行）为 ", "
+            # 注意：此操作会删除逗号后的换行符，这是此模式的预期行为
             文本 = re.sub(r',\s*', ', ', 文本).strip()
         # 如果为 "禁用", 则不执行任何操作
 
@@ -256,30 +382,34 @@ class ZML_TextFilter:
     
     def filter_text(self, 文本, 过滤标签):
         """过滤掉指定的标签"""
-        # 如果输入文本为空，则返回空字符串
+        # 修改：不再对整个输入文本进行strip()，以保留其内部的换行符
+        # 仅在判断是否为空时使用.strip()
         if not 文本.strip():
             return ("", self.help_text, "")
         
         # 将过滤标签字符串按逗号分割，并去除每个标签两边的空格
+        # 过滤标签通常是单行，所以strip()是合适的
         filter_list = [tag.strip() for tag in 过滤标签.split(',') if tag.strip()]
         
-        # 将输入文本按逗号分割（支持中英文逗号）
-        tags = []
-        for part in re.split(r'[,，]', 文本):
-            tag = part.strip()
-            if tag:  # 跳过空标签
-                tags.append(tag)
+        # 分割输入文本，允许分割符前后有任意空白（包括换行）
+        # re.split(r'[,，]\s*', 文本) 可以处理逗号后跟换行的情况
+        # 使用正则表达式分割文本，并过滤掉空字符串（可能是连续逗号或开头/结尾的空白导致）
+        original_tags = [tag.strip() for tag in re.split(r'[,，]+', 文本) if tag.strip()]
         
         # 过滤掉在filter_list中的标签（注意：大小写敏感）
-        filtered_tags = [tag for tag in tags if tag not in filter_list]
+        filtered_tags = [tag for tag in original_tags if tag not in filter_list]
         
         # 找出被过滤掉的标签
-        removed_tags = [tag for tag in tags if tag in filter_list]
+        removed_tags = [tag for tag in original_tags if tag in filter_list]
         
-        # 重新组合成字符串
-        result = ', '.join(filtered_tags)
-        removed_result = ', '.join(removed_tags)
+        # 重新组合成字符串，保留原始标签的顺序
+        result = ','.join(filtered_tags) # 重新组合时可以使用逗号，然后通过format_punctuation_global处理
+        removed_result = ','.join(removed_tags)
         
+        # 额外处理一下结果，移除多余的逗号，保持格式整洁
+        result = format_punctuation_global(result)
+        removed_result = format_punctuation_global(removed_result)
+
         return (result, self.help_text, removed_result)
 
 # ============================== 删除文本节点 ==============================
@@ -313,7 +443,8 @@ class ZML_DeleteText:
     
     def delete_text(self, 文本, 删除标签或字符): # Simplified function signature
         """删除文本中的指定标签或子字符串"""
-        # 如果输入文本为空，则返回空字符串
+        # 修改：不再对整个输入文本进行strip()，以保留其内部的换行符
+        # 仅在判断是否为空时使用.strip()
         if not 文本.strip():
             return ("", self.help_text)
         
@@ -322,14 +453,22 @@ class ZML_DeleteText:
         delete_list = [item.strip() for item in 删除标签或字符.split(',') if item.strip()]
         
         for item_to_delete in delete_list:
-            result = result.replace(item_to_delete, '')
-        
-        result = re.sub(r',+', ',', result) # Merge multiple commas
-        result = re.sub(r'^,', '', result)  # Remove leading comma
-        result = re.sub(r',$', '', result)  # Remove trailing comma
-        
-        result = result.replace(',,', ',') # This line is redundant if r',+' is used effectively but doesn't hurt.
-        
+            # 使用re.sub替换，可以确保删除的字符串前后有或没有空白符都能正确处理
+            # 并且不会影响其他换行符
+            # 使用 \b 对标签进行单词边界匹配以避免删除部分单词，如果item_to_delete是一个完整的tag
+            # 如果item_to_delete是子字符串，则直接替换
+            if re.match(r'^[\w\s-]+$', item_to_delete): # 简单的判断是否是类似tag的结构
+                 result = re.sub(r'\b' + re.escape(item_to_delete) + r'\b', '', result)
+            else:
+                 result = result.replace(item_to_delete, '')
+            
+        # 修正：清理多余的空白符和逗号，但尽量保留用户输入的换行符
+        result = re.sub(r'(\s*[,，]\s*)+', ',', result) # 将多个逗号或逗号与空白组合替换为单个逗号
+        result = re.sub(r'^,+', '', result) # 移除开头的逗号
+        result = re.sub(r',+$', '', result) # 移除结尾的逗号
+        result = re.sub(r'\s*\n\s*', '\n', result) # 合并连续换行，不去除首尾空白
+        result = result.strip() # 最后去除整个字符串的首尾空白
+
         return (result, self.help_text)
 
 # ============================== 文本行节点==============================
@@ -391,12 +530,14 @@ class ZML_TextLine:
         os.makedirs(txt_dir, exist_ok=True)
         
         try:
-            files = [f for f in os.listdir(txt_dir) if f.endswith(".txt")]
+            # 排除 Preset text 目录，或者只列出顶级txt文件
+            files = [f for f in os.listdir(txt_dir) if f.startswith('Preset text') == False and f.endswith(".txt") and os.path.isfile(os.path.join(txt_dir, f))]
         except Exception as e:
             print(f"ZML_TextLine [错误]: 扫描目录时出错 {txt_dir}: {e}")
             files = []
         
         # 创建下拉菜单列表，"禁用"作为第一个选项
+        files.sort() # 排序文件列表
         file_list = ["禁用"] + files
         if not files:
             file_list = ["禁用 (未找到txt文件)"]
@@ -438,7 +579,8 @@ class ZML_TextLine:
             file_path = os.path.join(self.txt_dir, 文件选择)
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    lines = [line.strip() for line in f.readlines() if line.strip()]
+                    # 修改：读取文件时只移除右侧换行符，保留行内以及左侧空白
+                    lines = [line.rstrip('\n') for line in f.readlines() if line.strip()]
             except FileNotFoundError:
                 return (f"错误: 文件 '{文件选择}' 未在目录 '{self.txt_dir}' 中找到。", self.help_text)
             except Exception as e:
@@ -446,7 +588,10 @@ class ZML_TextLine:
         else:
             # 如果未选择文件，则从文本框读取
             if 文本:
-                lines = [line.strip() for line in 文本.splitlines() if line.strip()]
+                # 修改：文本框输入时，按行分割，只对每行末尾的换行符或空行进行处理，保留行内的所有内容
+                lines = [line for line in 文本.splitlines() if line.strip()]
+            else:
+                return ("", self.help_text) # 如果文本框为空
 
         if not lines:
             return ("", self.help_text)
@@ -492,12 +637,14 @@ class ZML_RandomWeightedTextLine:
         os.makedirs(txt_dir, exist_ok=True)
         
         try:
-            files = [f for f in os.listdir(txt_dir) if f.endswith(".txt")]
+            # 排除 Preset text 目录，或者只列出顶级txt文件
+            files = [f for f in os.listdir(txt_dir) if f.startswith('Preset text') == False and f.endswith(".txt") and os.path.isfile(os.path.join(txt_dir, f))]
         except Exception as e:
             print(f"ZML_RandomWeightedTextLine [错误]: 扫描目录时出错 {txt_dir}: {e}")
             files = []
         
         # 将'禁用'选项放在列表最前面，作为模式开关
+        files.sort() # 排序文件列表
         file_list = ["禁用 (使用文本框)"] + files
         if not files:
             file_list = ["禁用 (使用文本框)", "未找到txt文件"]
@@ -542,11 +689,12 @@ class ZML_RandomWeightedTextLine:
         # 模式判断：是使用文本框还是文件
         if 文件 == "禁用 (使用文本框)":
             # --- 文本框模式 ---
-            if not 文本 or not 文本.strip():
+            if not 文本 or not 文本.strip(): # 仅判断是否为空白字符串
                 return ("", self.help_text)
 
-            # 按换行符分割，并将每行视为一个独立的候选项
-            all_input_lines = [line.strip() for line in 文本.splitlines() if line.strip()]
+            # 修改：按换行符分割，但不对每行做strip()，以便保留每行的前后空白和内部换行
+            # 过滤掉完全为空白内容的行
+            all_input_lines = [line for line in 文本.splitlines() if line.strip()]
             
             if not all_input_lines:
                 return ("", self.help_text)
@@ -560,7 +708,8 @@ class ZML_RandomWeightedTextLine:
             
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    all_input_lines = [line.strip().rstrip(',，').strip() for line in f.readlines() if line.strip()]
+                    # 修改：读取文件时只移除右侧换行符，并移除行末逗号，保留行内以及左侧空白
+                    all_input_lines = [line.rstrip('\n').rstrip(',，').strip() for line in f.readlines() if line.strip()]
             except FileNotFoundError:
                 return (f"错误: 文件 '{文件}' 未在目录 '{self.txt_dir}' 中找到。", self.help_text)
             except Exception as e:
@@ -581,11 +730,14 @@ class ZML_RandomWeightedTextLine:
             if 格式化标点符号:
                 processed_content = format_punctuation_global(processed_content)
             
-            weight = round(random.uniform(min_w, max_w), precision)
-            weighted_output.append(f"({processed_content}:{weight})")
+            # 只有当内容非空时才添加权重
+            if processed_content.strip():
+                weight = round(random.uniform(min_w, max_w), precision)
+                weighted_output.append(f"({processed_content}:{weight})")
             
         output_text = ", ".join(weighted_output)
         return (output_text, self.help_text)
+
 
 # ============================== 多文本输入节点（五个输入框）==============================
 class ZML_MultiTextInput5:
@@ -598,7 +750,7 @@ class ZML_MultiTextInput5:
                 "格式化标点符号": ([True, False], {"default": True}),
                 "分隔符": ("STRING", {
                     "multiline": False,
-                    "default": ",",
+                    "default": ",\\n\\n",
                     "placeholder": "输入分隔符"
                 }),
             },
@@ -627,11 +779,14 @@ class ZML_MultiTextInput5:
             文本5 or ""
         ]
         
-        # 过滤掉空文本，并去除首尾空格
-        non_empty_texts = [text.strip() for text in texts if text.strip()]
+        # 修改：不再对每个文本进行strip()，过滤掉纯空白的文本（例如只包含换行符的文本），以便保留内部换行
+        non_empty_texts = [text for text in texts if text.strip()]
+        
+        # 处理分隔符中的换行符
+        processed_separator = 分隔符.replace("\\n", "\n")
         
         # 使用分隔符连接文本
-        combined = 分隔符.join(non_empty_texts)
+        combined = processed_separator.join(non_empty_texts)
         
         # 应用标点符号格式化
         if 格式化标点符号:
@@ -650,7 +805,7 @@ class ZML_MultiTextInput3:
                 "格式化标点符号": ([True, False], {"default": True}),
                 "分隔符": ("STRING", {
                     "multiline": False,
-                    "default": ",",
+                    "default": ",\\n\\n",
                     "placeholder": "输入分隔符"
                 }),
             },
@@ -675,11 +830,14 @@ class ZML_MultiTextInput3:
             文本3 or ""
         ]
         
-        # 过滤掉空文本，并去除首尾空格
-        non_empty_texts = [text.strip() for text in texts if text.strip()]
+        # 修改：不再对每个文本进行strip()，过滤掉纯空白的文本，以便保留内部换行
+        non_empty_texts = [text for text in texts if text.strip()]
+        
+        # 处理分隔符中的换行符
+        processed_separator = 分隔符.replace("\\n", "\n")
         
         # 使用分隔符连接文本
-        combined = 分隔符.join(non_empty_texts)
+        combined = processed_separator.join(non_empty_texts)
         
         # 应用标点符号格式化
         if 格式化标点符号:
@@ -696,12 +854,13 @@ class ZML_SelectText:
         return {
             "required": {
                 # 节点内部的控件
-                "分隔符": ("STRING", {"multiline": False, "default": ","}),
+                "分隔符": ("STRING", {"multiline": False, "default": ",\\n\\n"}),
                 "启用1": ("BOOLEAN", {"default": True, "label_on": "启用 1", "label_off": "禁用 1"}),
                 "启用2": ("BOOLEAN", {"default": False, "label_on": "启用 2", "label_off": "禁用 2"}),
                 "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
                 "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
                 "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
+                "格式化标点符号": ([True, False], {"default": True}), # 新增格式化标点符号选项
             },
             "optional": {
                 # 外部文本输入接口
@@ -718,7 +877,7 @@ class ZML_SelectText:
     RETURN_NAMES = ("文本",)
     FUNCTION = "select_and_combine"
 
-    def select_and_combine(self, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None):
+    def select_and_combine(self, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 格式化标点符号, 文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None):
         """根据启用状态组合来自接口的文本"""
         # 将启用状态和对应的文本配对。如果接口未连接，其值为None，我们将其视为空字符串。
         inputs = [
@@ -729,11 +888,18 @@ class ZML_SelectText:
             (启用5, 文本5 or ""),
         ]
 
-        # 过滤出已启用且内容非空的文本
-        enabled_texts = [text.strip() for is_enabled, text in inputs if is_enabled and text.strip()]
+        # 过滤出已启用且内容非空的文本，不再对文本进行strip()以保留换行
+        enabled_texts = [text for is_enabled, text in inputs if is_enabled and text.strip()]
+
+        # 处理分隔符中的换行符
+        processed_separator = 分隔符.replace("\\n", "\n")
 
         # 使用分隔符连接文本
-        combined = 分隔符.join(enabled_texts)
+        combined = processed_separator.join(enabled_texts)
+
+        # 应用标点符号格式化
+        if 格式化标点符号:
+            combined = format_punctuation_global(combined)
 
         return (combined,)
 
@@ -751,12 +917,13 @@ class ZML_SelectTextV2:
                 "文本3": ("STRING", {"multiline": True, "default": ""}),
                 "文本4": ("STRING", {"multiline": True, "default": ""}),
                 "文本5": ("STRING", {"multiline": True, "default": ""}),
-                "分隔符": ("STRING", {"multiline": False, "default": ","}),
+                "分隔符": ("STRING", {"multiline": False, "default": ",\\n\\n"}),
                 "启用1": ("BOOLEAN", {"default": True, "label_on": "启用 1", "label_off": "禁用 1"}),
                 "启用2": ("BOOLEAN", {"default": False, "label_on": "启用 2", "label_off": "禁用 2"}),
                 "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
                 "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
                 "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
+                "格式化标点符号": ([True, False], {"default": True}), # 新增格式化标点符号选项
             }
         }
 
@@ -765,7 +932,7 @@ class ZML_SelectTextV2:
     RETURN_NAMES = ("文本",)
     FUNCTION = "select_and_combine_v2"
 
-    def select_and_combine_v2(self, 文本1, 文本2, 文本3, 文本4, 文本5, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5):
+    def select_and_combine_v2(self, 文本1, 文本2, 文本3, 文本4, 文本5, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 格式化标点符号):
         """根据启用状态组合来自节点内部的文本"""
         # 将启用状态和对应的文本配对
         inputs = [
@@ -776,11 +943,18 @@ class ZML_SelectTextV2:
             (启用5, 文本5),
         ]
 
-        # 过滤出已启用且内容非空的文本
-        enabled_texts = [text.strip() for is_enabled, text in inputs if is_enabled and text.strip()]
+        # 过滤出已启用且内容非空的文本，不再对文本进行strip()以保留换行
+        enabled_texts = [text for is_enabled, text in inputs if is_enabled and text.strip()]
+
+        # 处理分隔符中的换行符
+        processed_separator = 分隔符.replace("\\n", "\n")
 
         # 使用分隔符连接文本
-        combined = 分隔符.join(enabled_texts)
+        combined = processed_separator.join(enabled_texts)
+
+        # 应用标点符号格式化
+        if 格式化标点符号:
+            combined = format_punctuation_global(combined)
 
         return (combined,)
 
@@ -792,7 +966,7 @@ class ZML_SelectTextV3:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "separator": ("STRING", {"multiline": False, "default": ","}), # 分隔符输入
+                "separator": ("STRING", {"multiline": False, "default": ",\n\n"}), # 分隔符输入
             },
             "hidden": {
                 "selectTextV3_data": ("STRING", {"default": "{}"}), # 隐藏的控件，用于接收JS前端数据
@@ -821,10 +995,13 @@ class ZML_SelectTextV3:
         for entry in entries:
             if entry.get("enabled", False):
                 content = entry.get("content", "")
-                if content.strip():
+                if content is not None and content != "":
                     final_parts.append(content)
         
-        output_text = separator.join(final_parts)
+        # 处理分隔符中的换行符
+        processed_separator = separator.replace("\\n", "\n")
+        
+        output_text = processed_separator.join(final_parts)
         
         return (output_text,)
 
