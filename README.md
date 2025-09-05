@@ -267,6 +267,15 @@
 <details>
 <summary>点击查看更新节点图像</summary>
 
+> ### 更新日期： **2025.09.06**
+
+> <img width="1154" height="839" alt="1" src="https://github.com/user-attachments/assets/b8229940-2363-4d93-8c21-9185bdb4efd1" />
+> 
+> <img width="1204" height="664" alt="2" src="https://github.com/user-attachments/assets/7561e40b-4461-4a44-a70b-0dfb27c6d290" />
+> 
+> <img width="986" height="830" alt="3" src="https://github.com/user-attachments/assets/3f5dc8a2-5183-4cee-96e7-8b39ce197b3e" />
+> 
+
 > ### 更新日期： **2025.09.03**
 
 > <img width="896" height="429" alt="1" src="https://github.com/user-attachments/assets/16d79123-9689-476d-a1cf-65431ba03dd0" />
