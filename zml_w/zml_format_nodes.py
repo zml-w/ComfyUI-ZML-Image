@@ -860,7 +860,6 @@ class ZML_SelectText:
                 "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
                 "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
                 "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
-                "格式化标点符号": ([True, False], {"default": True}), # 新增格式化标点符号选项
             },
             "optional": {
                 # 外部文本输入接口
@@ -877,7 +876,7 @@ class ZML_SelectText:
     RETURN_NAMES = ("文本",)
     FUNCTION = "select_and_combine"
 
-    def select_and_combine(self, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 格式化标点符号, 文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None):
+    def select_and_combine(self, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None):
         """根据启用状态组合来自接口的文本"""
         # 将启用状态和对应的文本配对。如果接口未连接，其值为None，我们将其视为空字符串。
         inputs = [
@@ -896,10 +895,6 @@ class ZML_SelectText:
 
         # 使用分隔符连接文本
         combined = processed_separator.join(enabled_texts)
-
-        # 应用标点符号格式化
-        if 格式化标点符号:
-            combined = format_punctuation_global(combined)
 
         return (combined,)
 
@@ -923,7 +918,6 @@ class ZML_SelectTextV2:
                 "启用3": ("BOOLEAN", {"default": False, "label_on": "启用 3", "label_off": "禁用 3"}),
                 "启用4": ("BOOLEAN", {"default": False, "label_on": "启用 4", "label_off": "禁用 4"}),
                 "启用5": ("BOOLEAN", {"default": False, "label_on": "启用 5", "label_off": "禁用 5"}),
-                "格式化标点符号": ([True, False], {"default": True}), # 新增格式化标点符号选项
             }
         }
 
@@ -932,7 +926,7 @@ class ZML_SelectTextV2:
     RETURN_NAMES = ("文本",)
     FUNCTION = "select_and_combine_v2"
 
-    def select_and_combine_v2(self, 文本1, 文本2, 文本3, 文本4, 文本5, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5, 格式化标点符号):
+    def select_and_combine_v2(self, 文本1, 文本2, 文本3, 文本4, 文本5, 分隔符, 启用1, 启用2, 启用3, 启用4, 启用5):
         """根据启用状态组合来自节点内部的文本"""
         # 将启用状态和对应的文本配对
         inputs = [
@@ -951,10 +945,6 @@ class ZML_SelectTextV2:
 
         # 使用分隔符连接文本
         combined = processed_separator.join(enabled_texts)
-
-        # 应用标点符号格式化
-        if 格式化标点符号:
-            combined = format_punctuation_global(combined)
 
         return (combined,)
 
