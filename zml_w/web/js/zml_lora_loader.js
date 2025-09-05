@@ -1331,6 +1331,8 @@ app.registerExtension({
                         margin: 0 0 15px 0;
                         padding-bottom: 10px;
                         border-bottom: 1px solid #4a515a;
+                        cursor: move;
+                        user-select: none;
                     `
                 });
                 
@@ -1375,10 +1377,10 @@ app.registerExtension({
                     `
                 });
                 verticalBtn.onclick = function() {
-                    zmlBatchLoraDisplayStyle = 'vertical';
-                    updateStyleButtons([verticalBtn, horizontalBtn, squareBtn]);
-                    refreshBatchLoraGrid();
-                };
+                            zmlBatchLoraDisplayStyle = 'vertical';
+                            updateStyleButtons([verticalBtn, horizontalBtn, squareBtn]);
+                            refreshBatchLoraGrid();
+                        };
                 displayStyleControl.appendChild(verticalBtn);
                 
                 // 横向矩形样式按钮 (移到第二位)
@@ -1401,61 +1403,136 @@ app.registerExtension({
                     refreshBatchLoraGrid();
                 };
                 displayStyleControl.appendChild(horizontalBtn);
-                
-                // 方形样式按钮 (新增)
-                const squareBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
-                    textContent: "方形",
-                    style: `
-                        padding: 3px 10px;
-                        border: 1px solid ${zmlBatchLoraDisplayStyle === 'square' ? '#4CAF50' : '#555'};
-                        background-color: ${zmlBatchLoraDisplayStyle === 'square' ? '#4CAF50' : '#333'};
-                        color: #fff;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        font-size: 12px;
-                        transition: all 0.2s;
-                    `
-                });
-                squareBtn.onclick = function() {
-                    zmlBatchLoraDisplayStyle = 'square';
-                    updateStyleButtons([verticalBtn, horizontalBtn, squareBtn, zmlBatchLoraPreviewGifButton]);
-                    refreshBatchLoraGrid();
-                };
-                displayStyleControl.appendChild(squareBtn);
 
-                // 添加MP4预览按钮
-                let zmlBatchLoraPreviewMp4Button = zmlCreateEl("button", {
-                    textContent: "MP4预览",
-                    style: `
-                        padding: 3px 10px;
-                        border: 1px solid ${zmlBatchLoraPreviewMp4Mode ? '#4CAF50' : '#555'};
-                        background-color: ${zmlBatchLoraPreviewMp4Mode ? '#4CAF50' : '#333'};
-                        color: #fff;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        font-size: 12px;
-                        transition: all 0.2s;
-                    `
-                });
-                zmlBatchLoraPreviewMp4Button.onclick = function() {
-                    zmlBatchLoraPreviewMp4Mode = !zmlBatchLoraPreviewMp4Mode;
-                    updateStyleButtons([verticalBtn, horizontalBtn, squareBtn, zmlBatchLoraPreviewMp4Button]);
-                    refreshBatchLoraGrid();
-                };
-                displayStyleControl.appendChild(zmlBatchLoraPreviewMp4Button);
+                        // 方形样式按钮
+                        const squareBtn = zmlCreateEl("button", {
+                            textContent: "方形",
+                            style: `
+                                padding: 3px 10px;
+                                border: 1px solid ${zmlBatchLoraDisplayStyle === 'square' ? '#4CAF50' : '#555'};
+                                background-color: ${zmlBatchLoraDisplayStyle === 'square' ? '#4CAF50' : '#333'};
+                                color: #fff;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 12px;
+                                transition: all 0.2s;
+                            `
+                        });
+                        squareBtn.onclick = function() {
+                            zmlBatchLoraDisplayStyle = 'square';
+                            updateStyleButtons([verticalBtn, horizontalBtn, squareBtn]);
+                            refreshBatchLoraGrid();
+                        };
+                        displayStyleControl.appendChild(squareBtn);
+
+                        // 创建视频预览控制容器，与展示样式有间隔
+                        const videoPreviewContainer = zmlCreateEl("div", {
+                            style: `
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                margin-left: 15px; /* 添加间隔 */
+                            `
+                        });
+                        displayStyleControl.appendChild(videoPreviewContainer);
+
+                        // 添加视频预览文本标签
+                        const videoPreviewLabel = zmlCreateEl("span", {
+                            textContent: "视频预览",
+                            style: `
+                                color: #fff;
+                                font-size: 12px;
+                                white-space: nowrap;
+                            `
+                        });
+                        videoPreviewContainer.appendChild(videoPreviewLabel);
+
+                        // 添加视频预览开关
+                        const zmlBatchLoraPreviewMp4Toggle = zmlCreateEl("label", {
+                            className: "zml-toggle-switch",
+                            style: `
+                                position: relative;
+                                display: inline-block;
+                                width: 36px;
+                                height: 20px;
+                                cursor: pointer;
+                            `
+                        });
+
+                        // 创建隐藏的input作为开关
+                        const toggleInput = zmlCreateEl("input", {
+                            type: "checkbox",
+                            style: `
+                                opacity: 0;
+                                width: 0;
+                                height: 0;
+                            `
+                        });
+                        toggleInput.checked = zmlBatchLoraPreviewMp4Mode;
+                        zmlBatchLoraPreviewMp4Toggle.appendChild(toggleInput);
+
+                        // 创建开关滑块
+                        const toggleSlider = zmlCreateEl("span", {
+                            style: `
+                                position: absolute;
+                                cursor: pointer;
+                                top: 0;
+                                left: 0;
+                                right: 0;
+                                bottom: 0;
+                                background-color: #666;
+                                transition: .3s;
+                                border-radius: 20px;
+                            `
+                        });
+                        toggleSlider.innerHTML = `
+                            <span style="
+                                position: absolute;
+                                height: 16px;
+                                width: 16px;
+                                left: 2px;
+                                bottom: 2px;
+                                background-color: white;
+                                transition: .3s;
+                                border-radius: 50%;
+                                transform: translateX(${zmlBatchLoraPreviewMp4Mode ? '16px' : '0'});
+                            "></span>
+                        `;
+                        zmlBatchLoraPreviewMp4Toggle.appendChild(toggleSlider);
+                        videoPreviewContainer.appendChild(zmlBatchLoraPreviewMp4Toggle);
+
+                        // 统一处理开关的点击事件
+                        const toggleMp4Preview = function() {
+                            zmlBatchLoraPreviewMp4Mode = !zmlBatchLoraPreviewMp4Mode;
+
+                            // 更新开关样式
+                            toggleInput.checked = zmlBatchLoraPreviewMp4Mode;
+                            toggleSlider.style.backgroundColor = zmlBatchLoraPreviewMp4Mode ? '#4CAF50' : '#666';
+                            toggleSlider.querySelector('span').style.transform = `translateX(${zmlBatchLoraPreviewMp4Mode ? '16px' : '0'})`;
+                            // 刷新网格
+                            refreshBatchLoraGrid();
+                            // 添加CSS反馈效果到开关
+                            zmlBatchLoraPreviewMp4Toggle.style.transform = "scale(1.05)";
+                            setTimeout(() => {
+                                zmlBatchLoraPreviewMp4Toggle.style.transform = "scale(1)";
+                            }, 200);
+                        };
+
+                        // 重新绑定点击事件，确保生效
+                        zmlBatchLoraPreviewMp4Toggle.onclick = toggleMp4Preview;
+                        toggleInput.onchange = toggleMp4Preview;
                 
                 // 更新样式按钮状态的函数
                 function updateStyleButtons(buttons) {
-                    buttons.forEach(btn => {
-                        const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
-                                        btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
-                                        btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square' ||
-                                        btn.textContent === 'MP4预览' && zmlBatchLoraPreviewMp4Mode;
-                                        
-                        btn.style.borderColor = isActive ? '#4CAF50' : '#555';
-                        btn.style.backgroundColor = isActive ? '#4CAF50' : '#333';
-                    });
-                }
+                            buttons.forEach(btn => {
+                                const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
+                                                btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
+                                                btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square';
+                                                 
+                                btn.style.borderColor = isActive ? '#4CAF50' : '#555';
+                                btn.style.backgroundColor = isActive ? '#4CAF50' : '#333';
+                            });
+                        }
 
                 zmlBatchLoraParentPathDisplay = zmlCreateEl("div", { // 使用 zmlCreateEl
                     style: `
@@ -1497,25 +1574,67 @@ app.registerExtension({
                         border-spacing: 0; /* 确保单元格间距为0 */
                         box-sizing: border-box !important;
                         overflow-y: auto; /* 允许滚动 */
-                        padding: 2px;
+                        padding: 0 !important;
                         border: 1px solid #444;
                         border-radius: 4px;
                         background-color: #2b2b2b;
                     `
                 });
                 
+                // 全局变量存储当前列宽，方便其他函数访问
+                let currentColumnWidth = '120px';
+
+                // 初始化时调用一次刷新函数
+                refreshBatchLoraGrid();
+
                 // 刷新网格函数
                 function refreshBatchLoraGrid() {
                     // 保存当前的网格样式设置
                     const currentStyle = zmlBatchLoraDisplayStyle;
-                    
+
                     // 更新网格容器的列宽
-                    zmlBatchLoraGridContainer.style.gridTemplateColumns = `repeat(auto-fill, minmax(${currentStyle === 'horizontal' ? '200px' : '120px'}, 1fr))`;
-                    
+                // 根据不同显示样式设置不同的列宽和行高
+                let columnWidthValue;
+                let rowHeightValue;
+
+                if (currentStyle === 'horizontal') {
+                    columnWidthValue = '200px';
+                    rowHeightValue = '100px'; // 横向模式，高度更低
+                } else if (currentStyle === 'square') {
+                    columnWidthValue = '120px'; // 方形模式，宽高一致
+                    rowHeightValue = '120px';
+                } else { // vertical
+                    columnWidthValue = '120px';
+                    rowHeightValue = '200px'; // 竖向模式，高度更高
+                }
+
+                zmlBatchLoraGridContainer.style.gridTemplateColumns = `repeat(auto-fill, minmax(${columnWidthValue}, 1fr))`;
+                zmlBatchLoraGridContainer.style.gridAutoRows = rowHeightValue; // 确保行高与计算值一致
+
+                // 根据不同显示样式添加/移除类
+                if (currentStyle === 'square') {
+                    zmlBatchLoraGridContainer.classList.add('square-mode');
+                    zmlBatchLoraGridContainer.classList.remove('horizontal-mode', 'vertical-mode');
+                } else if (currentStyle === 'horizontal') {
+                    zmlBatchLoraGridContainer.classList.add('horizontal-mode');
+                    zmlBatchLoraGridContainer.classList.remove('square-mode', 'vertical-mode');
+                } else { // vertical
+                    zmlBatchLoraGridContainer.classList.add('vertical-mode');
+                    zmlBatchLoraGridContainer.classList.remove('square-mode', 'horizontal-mode');
+                }
+
                     // 更新网格间隙，明确设置行间距和列间距为0以确保无间隙
                     zmlBatchLoraGridContainer.style.rowGap = '0 !important';
                     zmlBatchLoraGridContainer.style.columnGap = '0 !important';
                     zmlBatchLoraGridContainer.style.gap = '0 !important'; // 作为后备
+
+                    // 确保网格项对齐方式不会导致间隙
+                    zmlBatchLoraGridContainer.style.alignItems = 'start';
+                    zmlBatchLoraGridContainer.style.justifyItems = 'stretch';
+                    
+                    // 添加额外样式确保无间隙
+                    zmlBatchLoraGridContainer.style.borderSpacing = '0 !important';
+                    zmlBatchLoraGridContainer.style.borderCollapse = 'collapse !important';
                     
                     // 重新渲染网格
                     renderBatchLoraContent(zmlBatchLoraCurrentNodeInstance);
@@ -1531,6 +1650,712 @@ app.registerExtension({
                     style: `color: #e0e0e0; font-size: 14px;`
                 });
                 modalFooter.appendChild(zmlBatchLoraSelectedCountDisplay);
+
+                // 主题切换按钮组
+                const themeSwitcher = zmlCreateEl("div", {
+                    style: `display: flex; align-items: center; gap: 8px; margin-left: 15px;`
+                });
+
+                // 主题颜色选项
+                const themes = [
+                    { id: 'none', color: '#31353a', name: '无色' },
+                    { id: 'white', color: '#ffffff', name: '白色' },
+                    { id: 'lightblue', color: '#e3f2fd', name: '浅蓝色' },
+                    { id: 'lightgreen', color: '#e8f5e9', name: '浅绿色' },
+                    { id: 'pink', color: '#fce4ec', name: '粉色' }
+                ];
+
+                // 创建颜色主题球按钮
+                themes.forEach(theme => {
+                    const themeBall = zmlCreateEl("button", {
+                        title: theme.name,
+                        style: `
+                            width: 20px;
+                            height: 20px;
+                            border-radius: 50%;
+                            border: 2px solid ${theme.id === 'none' ? '#4CAF50' : '#555'};
+                            background-color: ${theme.color};
+                            cursor: pointer;
+                            padding: 0;
+                            transition: all 0.2s;
+                        `
+                    });
+
+                    themeBall.onclick = function() {
+                        // 更新所有主题按钮的边框颜色
+                        themeSwitcher.querySelectorAll('button').forEach(btn => {
+                            btn.style.borderColor = '#555';
+                        });
+                        // 高亮当前选中的主题按钮
+                        themeBall.style.borderColor = '#4CAF50';
+                        
+                        // 更新UI主题
+                        applyTheme(theme.id);
+                    };
+
+                    themeSwitcher.appendChild(themeBall);
+                });
+
+                modalFooter.appendChild(themeSwitcher);
+
+                // 存储当前主题的全局变量
+                globalThis.zmlCurrentTheme = 'none';
+
+                // 应用主题的函数
+                function applyTheme(themeId) {
+                    globalThis.zmlCurrentTheme = themeId;
+                    // 获取主要的UI元素
+                    const modalContainer = document.querySelector('.zml-batch-lora-modal-container');
+                    const foldersPanel = zmlBatchLoraFoldersPanel;
+                    const gridContainer = zmlBatchLoraGridContainer;
+                    const headerContainer = document.querySelector('.zml-batch-lora-modal-container > div:first-child');
+                    const displayStyleControl = document.querySelector('.zml-batch-lora-modal-container > div:first-child > div:last-child');
+                    const headerTitle = headerContainer?.querySelector('h3');
+                    const styleLabel = displayStyleControl?.querySelector('span');
+                    const folderButtons = foldersPanel?.querySelectorAll('button');
+                    const addSelectedBtn = document.querySelector('.zml-batch-lora-modal-container button:first-of-type');
+                    const closeBtn = document.querySelector('.zml-batch-lora-modal-container button:last-of-type');
+                    const styleButtons = displayStyleControl?.querySelectorAll('button');
+                    const loraGridItems = gridContainer?.querySelectorAll('.zml-lora-item');
+                    const loraItemTexts = gridContainer?.querySelectorAll('.zml-lora-item-text');
+                    const imageWrappers = gridContainer?.querySelectorAll('.zml-batch-lora-image-wrapper');
+                    const addIcons = gridContainer?.querySelectorAll('.zml-batch-lora-add-icon');
+                    const nameDisplays = gridContainer?.querySelectorAll('.zml-batch-lora-item > div:last-child');
+                    const pathLinks = zmlBatchLoraParentPathDisplay?.querySelectorAll('a');
+                    const pathSeparators = zmlBatchLoraParentPathDisplay?.querySelectorAll('span');
+                    const fetchMetadataBtns = gridContainer?.querySelectorAll('.zml-batch-lora-fetch-from-civitai-btn');
+                    const overlays = gridContainer?.querySelectorAll('.zml-batch-lora-item-overlay');
+                    const deletedOverlays = gridContainer?.querySelectorAll('.zml-batch-lora-deleted-overlay');
+                    const deletedTexts = gridContainer?.querySelectorAll('.zml-batch-lora-deleted-text');
+                    
+                    if (!modalContainer || !foldersPanel || !gridContainer || !headerContainer) return;
+
+                    // 根据主题ID应用不同的样式
+                    if (themeId === 'none') {
+                        // 无色主题（默认样式）- 降低亮度
+                        modalContainer.style.backgroundColor = '#25292d';
+                        modalContainer.style.borderColor = '#4a515a';
+                        foldersPanel.style.backgroundColor = '#25292d';
+                        foldersPanel.style.borderBottomColor = '#3c3c3c';
+                        gridContainer.style.backgroundColor = '#1f1f1f';
+                        gridContainer.style.borderColor = '#444';
+                        headerContainer.style.backgroundColor = '#1a1a1a';
+                        headerContainer.style.borderBottomColor = '#333333';
+                        if (displayStyleControl) {
+                            displayStyleControl.style.backgroundColor = '#121212';
+                        }
+                        
+                        // 降低其他元素亮度
+                        modalContainer.style.backgroundColor = '#121212';
+                        modalContainer.style.borderColor = '#333333';
+                        foldersPanel.style.backgroundColor = '#121212';
+                        foldersPanel.style.borderBottomColor = '#333333';
+                        gridContainer.style.backgroundColor = '#121212';
+                        gridContainer.style.borderColor = '#333333';
+                        
+                        // 文本颜色
+                        if (headerTitle) headerTitle.style.color = '#e0e0e0';
+                        if (styleLabel) styleLabel.style.color = '#888';
+                        zmlBatchLoraSelectedCountDisplay.style.color = '#e0e0e0';
+                        
+                        // 路径链接和分隔符颜色
+                        if (pathLinks) {
+                            pathLinks.forEach(link => {
+                                link.style.color = '#e0e0e0';
+                            });
+                        }
+                        if (pathSeparators) {
+                            pathSeparators.forEach(sep => {
+                                sep.style.color = '#4a515a';
+                            });
+                        }
+                        
+                        // 按钮颜色
+                        if (addSelectedBtn) {
+                            addSelectedBtn.style.backgroundColor = '#4CAF50';
+                            addSelectedBtn.style.borderColor = '#3e8e41';
+                            addSelectedBtn.style.color = 'white';
+                        }
+                        if (closeBtn) {
+                            closeBtn.style.backgroundColor = '#f44336';
+                            closeBtn.style.borderColor = '#da190b';
+                            closeBtn.style.color = 'white';
+                        }
+                        
+                        // 样式按钮颜色
+                        if (styleButtons) {
+                            styleButtons.forEach(btn => {
+                                const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
+                                              btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
+                                              btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square' ||
+                                              btn.textContent === 'MP4预览' && zmlBatchLoraPreviewMp4Mode;
+                                              
+                                btn.style.borderColor = isActive ? '#4CAF50' : '#555';
+                                btn.style.backgroundColor = isActive ? '#4CAF50' : '#333';
+                                btn.style.color = '#fff';
+                            });
+                        }
+                        
+                        // 文件夹按钮颜色
+                        if (folderButtons) {
+                            folderButtons.forEach(btn => {
+                                btn.style.color = '#888';
+                            });
+                        }
+                        
+                        // LoRA网格项文本颜色
+                        if (loraItemTexts) {
+                            loraItemTexts.forEach(text => {
+                                text.style.color = '#ddd';
+                            });
+                        }
+                        
+                        // 无预览图样式
+                        if (imageWrappers) {
+                            imageWrappers.forEach(wrapper => {
+                                if (wrapper.style.backgroundColor === 'transparent' || !wrapper.style.backgroundColor) return;
+                                wrapper.style.backgroundColor = '#252525';
+                                wrapper.style.color = '#888';
+                            });
+                        }
+                        
+                        // 添加LoRA按钮样式
+                        if (addIcons) {
+                            addIcons.forEach(icon => {
+                                icon.style.backgroundColor = 'rgba(0, 128, 0, 0.8)';
+                                icon.style.color = 'white';
+                            });
+                        }
+                        
+                        // LoRA名称显示样式
+                        if (nameDisplays) {
+                            nameDisplays.forEach(display => {
+                                display.style.backgroundColor = 'rgba(0,0,0,0.7)';
+                                display.style.color = '#fff';
+                            });
+                        }
+                        
+                        // 元数据获取按钮样式
+                        if (fetchMetadataBtns) {
+                            fetchMetadataBtns.forEach(btn => {
+                                btn.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                                btn.style.color = '#888';
+                            });
+                        }
+                        
+                        // 选中覆盖层样式
+                        if (overlays) {
+                            overlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                            });
+                        }
+                        
+                        // 删除标记样式
+                        if (deletedOverlays) {
+                            deletedOverlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+                            });
+                        }
+                        if (deletedTexts) {
+                            deletedTexts.forEach(text => {
+                                text.style.color = '#ff0000';
+                                text.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                            });
+                        }
+                    } else if (themeId === 'lightblue') {
+                        // 浅蓝色主题 - 降低亮度，确保文本清晰
+                        modalContainer.style.backgroundColor = '#8fa8c1';
+                        modalContainer.style.borderColor = '#5a7a9a';
+                        foldersPanel.style.backgroundColor = '#8fa8c1';
+                        foldersPanel.style.borderBottomColor = '#5a7a9a';
+                        gridContainer.style.backgroundColor = '#7298bc';
+                        gridContainer.style.borderColor = '#5a7a9a';
+                        headerContainer.style.backgroundColor = '#8fa8c1';
+                        headerContainer.style.borderBottomColor = '#5a7a9a';
+                        if (displayStyleControl) {
+                            displayStyleControl.style.backgroundColor = '#7298bc';
+                        }
+                        
+                        // 文本颜色 - 使用更深的颜色确保可读性
+                        if (headerTitle) headerTitle.style.color = '#0d1b2a';
+                        if (styleLabel) styleLabel.style.color = '#1a237e';
+                        zmlBatchLoraSelectedCountDisplay.style.color = '#0d1b2a';
+                        
+                        // 按钮颜色
+                        if (addSelectedBtn) {
+                            addSelectedBtn.style.backgroundColor = '#4CAF50';
+                            addSelectedBtn.style.borderColor = '#3e8e41';
+                            addSelectedBtn.style.color = 'white';
+                        }
+                        if (closeBtn) {
+                            closeBtn.style.backgroundColor = '#f44336';
+                            closeBtn.style.borderColor = '#da190b';
+                            closeBtn.style.color = 'white';
+                        }
+                        
+                        // 样式按钮颜色
+                        if (styleButtons) {
+                            styleButtons.forEach(btn => {
+                                const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
+                                              btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
+                                              btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square' ||
+                                              btn.textContent === 'MP4预览' && zmlBatchLoraPreviewMp4Mode;
+                                              
+                                btn.style.borderColor = isActive ? '#1a237e' : '#90caf9';
+                                btn.style.backgroundColor = isActive ? '#283593' : '#90caf9';
+                                btn.style.color = '#fff';
+                            });
+                        }
+                        
+                        // 文件夹按钮颜色
+                        if (folderButtons) {
+                            folderButtons.forEach(btn => {
+                                btn.style.color = '#1a237e';
+                            });
+                        }
+                        
+                        // LoRA网格项文本颜色
+                        if (loraItemTexts) {
+                            loraItemTexts.forEach(text => {
+                                text.style.color = '#0d1b2a';
+                            });
+                        }
+                        
+                        // 路径链接和分隔符颜色
+                        if (pathLinks) {
+                            pathLinks.forEach(link => {
+                                link.style.color = '#0d1b2a';
+                            });
+                        }
+                        if (pathSeparators) {
+                            pathSeparators.forEach(sep => {
+                                sep.style.color = '#78a5cd';
+                            });
+                        }
+                        
+                        // 无预览图样式
+                        if (imageWrappers) {
+                            imageWrappers.forEach(wrapper => {
+                                if (wrapper.style.backgroundColor === 'transparent' || !wrapper.style.backgroundColor) return;
+                                wrapper.style.backgroundColor = '#78a5cd';
+                                wrapper.style.color = '#0d1b2a';
+                            });
+                        }
+                        
+                        // 添加LoRA按钮样式
+                        if (addIcons) {
+                            addIcons.forEach(icon => {
+                                icon.style.backgroundColor = 'rgba(33, 150, 243, 0.8)';
+                                icon.style.color = 'white';
+                            });
+                        }
+                        
+                        // LoRA名称显示样式
+                        if (nameDisplays) {
+                            nameDisplays.forEach(display => {
+                                display.style.backgroundColor = 'rgba(120, 165, 205, 0.7)';
+                                display.style.color = '#0d1b2a';
+                            });
+                        }
+                        
+                        // 元数据获取按钮样式
+                        if (fetchMetadataBtns) {
+                            fetchMetadataBtns.forEach(btn => {
+                                btn.style.backgroundColor = 'rgba(120, 165, 205, 0.5)';
+                                btn.style.color = '#0d1b2a';
+                            });
+                        }
+                        
+                        // 选中覆盖层样式
+                        if (overlays) {
+                            overlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(120, 165, 205, 0.5)';
+                            });
+                        }
+                        
+                        // 删除标记样式
+                        if (deletedOverlays) {
+                            deletedOverlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(211, 47, 47, 0.3)';
+                            });
+                        }
+                        if (deletedTexts) {
+                            deletedTexts.forEach(text => {
+                                text.style.color = '#d32f2f';
+                                text.style.backgroundColor = 'rgba(120, 165, 205, 0.5)';
+                            });
+                        }
+                    } else if (themeId === 'white') {
+                        // 白色主题 - 明亮背景，深色文本
+                        modalContainer.style.backgroundColor = '#ffffff';
+                        modalContainer.style.borderColor = '#e0e0e0';
+                        foldersPanel.style.backgroundColor = '#f5f5f5';
+                        foldersPanel.style.borderBottomColor = '#e0e0e0';
+                        gridContainer.style.backgroundColor = '#fafafa';
+                        gridContainer.style.borderColor = '#e0e0e0';
+                        headerContainer.style.backgroundColor = '#ffffff';
+                        headerContainer.style.borderBottomColor = '#e0e0e0';
+                        if (displayStyleControl) {
+                            displayStyleControl.style.backgroundColor = '#fafafa';
+                        }
+
+                        // 文本颜色 - 深色确保可读性
+                        if (headerTitle) headerTitle.style.color = '#333333';
+                        if (styleLabel) styleLabel.style.color = '#555555';
+                        zmlBatchLoraSelectedCountDisplay.style.color = '#333333';
+
+                        // 按钮颜色
+                        if (addSelectedBtn) {
+                            addSelectedBtn.style.backgroundColor = '#4285f4';
+                            addSelectedBtn.style.borderColor = '#2b71d9';
+                            addSelectedBtn.style.color = 'white';
+                        }
+                        if (closeBtn) {
+                            closeBtn.style.backgroundColor = '#c62828';
+                            closeBtn.style.borderColor = '#8e0000';
+                            closeBtn.style.color = 'white';
+                        }
+
+                        // 样式按钮颜色
+                        if (styleButtons) {
+                            styleButtons.forEach(btn => {
+                                const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
+                                              btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
+                                              btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square' ||
+                                              btn.textContent === '关闭视频预览' && zmlBatchLoraPreviewMp4Mode;
+
+                                btn.style.borderColor = isActive ? '#4285f4' : '#e0e0e0';
+                                btn.style.backgroundColor = isActive ? '#4285f4' : '#ffffff';
+                                btn.style.color = isActive ? '#fff' : '#555555';
+                            });
+                        }
+
+                        // 文件夹按钮颜色
+                        if (folderButtons) {
+                            folderButtons.forEach(btn => {
+                                btn.style.color = '#4285f4';
+                            });
+                        }
+
+                        // LoRA网格项文本颜色
+                        if (loraItemTexts) {
+                            loraItemTexts.forEach(text => {
+                                text.style.color = '#333333';
+                            });
+                        }
+
+                        // 路径链接和分隔符颜色
+                        if (pathLinks) {
+                            pathLinks.forEach(link => {
+                                link.style.color = '#4285f4';
+                            });
+                        }
+                        if (pathSeparators) {
+                            pathSeparators.forEach(sep => {
+                                sep.style.color = '#e0e0e0';
+                            });
+                        }
+
+                        // 无预览图样式
+                        if (imageWrappers) {
+                            imageWrappers.forEach(wrapper => {
+                                if (wrapper.style.backgroundColor === 'transparent' || !wrapper.style.backgroundColor) return;
+                                wrapper.style.backgroundColor = '#e0e0e0';
+                                wrapper.style.color = '#333333';
+                            });
+                        }
+
+                        // 添加LoRA按钮样式
+                        if (addIcons) {
+                            addIcons.forEach(icon => {
+                                icon.style.backgroundColor = 'rgba(66, 133, 244, 0.8)';
+                                icon.style.color = 'white';
+                            });
+                        }
+
+                        // LoRA名称显示样式
+                        if (nameDisplays) {
+                            nameDisplays.forEach(display => {
+                                display.style.backgroundColor = 'rgba(224, 224, 224, 0.7)';
+                                display.style.color = '#333333';
+                            });
+                        }
+
+                        // 元数据获取按钮样式
+                        if (fetchMetadataBtns) {
+                            fetchMetadataBtns.forEach(btn => {
+                                btn.style.backgroundColor = 'rgba(224, 224, 224, 0.5)';
+                                btn.style.color = '#333333';
+                            });
+                        }
+
+                        // 选中覆盖层样式
+                        if (overlays) {
+                            overlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(66, 133, 244, 0.3)';
+                            });
+                        }
+
+                        // 删除标记样式
+                        if (deletedOverlays) {
+                            deletedOverlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(211, 47, 47, 0.3)';
+                            });
+                        }
+                        if (deletedTexts) {
+                            deletedTexts.forEach(text => {
+                                text.style.color = '#d32f2f';
+                                text.style.backgroundColor = 'rgba(224, 224, 224, 0.5)';
+                            });
+                        }
+                    } else if (themeId === 'lightgreen') {
+                        // 浅绿色主题 - 降低亮度，确保文本清晰
+                        modalContainer.style.backgroundColor = '#a5c09c';
+                        modalContainer.style.borderColor = '#4d9a51';
+                        foldersPanel.style.backgroundColor = '#a5c09c';
+                        foldersPanel.style.borderBottomColor = '#4d9a51';
+                        gridContainer.style.backgroundColor = '#7dac58';
+                        gridContainer.style.borderColor = '#4d9a51';
+                        headerContainer.style.backgroundColor = '#a5c09c';
+                        headerContainer.style.borderBottomColor = '#4d9a51';
+                        if (displayStyleControl) {
+                            displayStyleControl.style.backgroundColor = '#7dac58';
+                        }
+                        
+                        // 文本颜色 - 使用更深的颜色确保可读性
+                        if (headerTitle) headerTitle.style.color = '#1b5e20';
+                        if (styleLabel) styleLabel.style.color = '#2e7d32';
+                        zmlBatchLoraSelectedCountDisplay.style.color = '#1b5e20';
+                        
+                        // 按钮颜色
+                        if (addSelectedBtn) {
+                            addSelectedBtn.style.backgroundColor = '#2e7d32';
+                            addSelectedBtn.style.borderColor = '#1b5e20';
+                            addSelectedBtn.style.color = 'white';
+                        }
+                        if (closeBtn) {
+                            closeBtn.style.backgroundColor = '#c62828';
+                            closeBtn.style.borderColor = '#8e0000';
+                            closeBtn.style.color = 'white';
+                        }
+                        
+                        // 样式按钮颜色
+                        if (styleButtons) {
+                            styleButtons.forEach(btn => {
+                                const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
+                                              btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
+                                              btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square' ||
+                                              btn.textContent === 'MP4预览' && zmlBatchLoraPreviewMp4Mode;
+                                              
+                                btn.style.borderColor = isActive ? '#1b5e20' : '#81c784';
+                                btn.style.backgroundColor = isActive ? '#2e7d32' : '#81c784';
+                                btn.style.color = '#fff';
+                            });
+                        }
+                        
+                        // 文件夹按钮颜色
+                        if (folderButtons) {
+                            folderButtons.forEach(btn => {
+                                btn.style.color = '#2e7d32';
+                            });
+                        }
+                        
+                        // LoRA网格项文本颜色
+                        if (loraItemTexts) {
+                            loraItemTexts.forEach(text => {
+                                text.style.color = '#1b5e20';
+                            });
+                        }
+                        
+                        // 路径链接和分隔符颜色
+                        if (pathLinks) {
+                            pathLinks.forEach(link => {
+                                link.style.color = '#1b5e20';
+                            });
+                        }
+                        if (pathSeparators) {
+                            pathSeparators.forEach(sep => {
+                                sep.style.color = '#66bb6a';
+                            });
+                        }
+                        
+                        // 无预览图样式
+                        if (imageWrappers) {
+                            imageWrappers.forEach(wrapper => {
+                                if (wrapper.style.backgroundColor === 'transparent' || !wrapper.style.backgroundColor) return;
+                                wrapper.style.backgroundColor = '#66bb6a';
+                                wrapper.style.color = '#1b5e20';
+                            });
+                        }
+                        
+                        // 添加LoRA按钮样式
+                        if (addIcons) {
+                            addIcons.forEach(icon => {
+                                icon.style.backgroundColor = 'rgba(76, 175, 80, 0.8)';
+                                icon.style.color = 'white';
+                            });
+                        }
+                        
+                        // LoRA名称显示样式
+                        if (nameDisplays) {
+                            nameDisplays.forEach(display => {
+                                display.style.backgroundColor = 'rgba(102, 187, 106, 0.7)';
+                                display.style.color = '#1b5e20';
+                            });
+                        }
+                        
+                        // 元数据获取按钮样式
+                        if (fetchMetadataBtns) {
+                            fetchMetadataBtns.forEach(btn => {
+                                btn.style.backgroundColor = 'rgba(102, 187, 106, 0.5)';
+                                btn.style.color = '#1b5e20';
+                            });
+                        }
+                        
+                        // 选中覆盖层样式
+                        if (overlays) {
+                            overlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(102, 187, 106, 0.5)';
+                            });
+                        }
+                        
+                        // 删除标记样式
+                        if (deletedOverlays) {
+                            deletedOverlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(220, 0, 0, 0.3)';
+                            });
+                        }
+                        if (deletedTexts) {
+                            deletedTexts.forEach(text => {
+                                text.style.color = '#dc0000';
+                                text.style.backgroundColor = 'rgba(102, 187, 106, 0.5)';
+                            });
+                        }
+                    } else if (themeId === 'pink') {
+                        // 粉色主题 - 柔和粉色背景，深色文本
+                        modalContainer.style.backgroundColor = '#ffebee';
+                        modalContainer.style.borderColor = '#f48fb1';
+                        foldersPanel.style.backgroundColor = '#ffebee';
+                        foldersPanel.style.borderBottomColor = '#f48fb1';
+                        gridContainer.style.backgroundColor = '#fce4ec';
+                        gridContainer.style.borderColor = '#f48fb1';
+                        headerContainer.style.backgroundColor = '#ffebee';
+                        headerContainer.style.borderBottomColor = '#f48fb1';
+                        if (displayStyleControl) {
+                            displayStyleControl.style.backgroundColor = '#fce4ec';
+                        }
+
+                        // 文本颜色 - 深色确保可读性
+                        if (headerTitle) headerTitle.style.color = '#880e4f';
+                        if (styleLabel) styleLabel.style.color = '#ad1457';
+                        zmlBatchLoraSelectedCountDisplay.style.color = '#880e4f';
+
+                        // 按钮颜色
+                        if (addSelectedBtn) {
+                            addSelectedBtn.style.backgroundColor = '#e91e63';
+                            addSelectedBtn.style.borderColor = '#c2185b';
+                            addSelectedBtn.style.color = 'white';
+                        }
+                        if (closeBtn) {
+                            closeBtn.style.backgroundColor = '#c62828';
+                            closeBtn.style.borderColor = '#8e0000';
+                            closeBtn.style.color = 'white';
+                        }
+
+                        // 样式按钮颜色
+                        if (styleButtons) {
+                            styleButtons.forEach(btn => {
+                                const isActive = btn.textContent === '竖向矩形' && zmlBatchLoraDisplayStyle === 'vertical' ||
+                                              btn.textContent === '横向矩形' && zmlBatchLoraDisplayStyle === 'horizontal' ||
+                                              btn.textContent === '方形' && zmlBatchLoraDisplayStyle === 'square' ||
+                                              btn.textContent === '关闭视频预览' && zmlBatchLoraPreviewMp4Mode;
+
+                                btn.style.borderColor = isActive ? '#c2185b' : '#f8bbd0';
+                                btn.style.backgroundColor = isActive ? '#e91e63' : '#f8bbd0';
+                                btn.style.color = '#fff';
+                            });
+                        }
+
+                        // 文件夹按钮颜色
+                        if (folderButtons) {
+                            folderButtons.forEach(btn => {
+                                btn.style.color = '#ad1457';
+                            });
+                        }
+
+                        // LoRA网格项文本颜色
+                        if (loraItemTexts) {
+                            loraItemTexts.forEach(text => {
+                                text.style.color = '#880e4f';
+                            });
+                        }
+
+                        // 路径链接和分隔符颜色
+                        if (pathLinks) {
+                            pathLinks.forEach(link => {
+                                link.style.color = '#e91e63';
+                            });
+                        }
+                        if (pathSeparators) {
+                            pathSeparators.forEach(sep => {
+                                sep.style.color = '#f8bbd0';
+                            });
+                        }
+
+                        // 无预览图样式
+                        if (imageWrappers) {
+                            imageWrappers.forEach(wrapper => {
+                                if (wrapper.style.backgroundColor === 'transparent' || !wrapper.style.backgroundColor) return;
+                                wrapper.style.backgroundColor = '#f8bbd0';
+                                wrapper.style.color = '#880e4f';
+                            });
+                        }
+
+                        // 添加LoRA按钮样式
+                        if (addIcons) {
+                            addIcons.forEach(icon => {
+                                icon.style.backgroundColor = 'rgba(233, 30, 99, 0.8)';
+                                icon.style.color = 'white';
+                            });
+                        }
+
+                        // LoRA名称显示样式
+                        if (nameDisplays) {
+                            nameDisplays.forEach(display => {
+                                display.style.backgroundColor = 'rgba(248, 187, 208, 0.7)';
+                                display.style.color = '#880e4f';
+                            });
+                        }
+
+                        // 元数据获取按钮样式
+                        if (fetchMetadataBtns) {
+                            fetchMetadataBtns.forEach(btn => {
+                                btn.style.backgroundColor = 'rgba(248, 187, 208, 0.5)';
+                                btn.style.color = '#880e4f';
+                            });
+                        }
+
+                        // 选中覆盖层样式
+                        if (overlays) {
+                            overlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(233, 30, 99, 0.3)';
+                            });
+                        }
+
+                        // 删除标记样式
+                        if (deletedOverlays) {
+                            deletedOverlays.forEach(overlay => {
+                                overlay.style.backgroundColor = 'rgba(211, 47, 47, 0.3)';
+                            });
+                        }
+                        if (deletedTexts) {
+                            deletedTexts.forEach(text => {
+                                text.style.color = '#d32f2f';
+                                text.style.backgroundColor = 'rgba(248, 187, 208, 0.5)';
+                            });
+                        }
+                    }
+                }
 
                 const buttonGroupRight = zmlCreateEl("div", { // 使用 zmlCreateEl
                     style: `display: flex; gap: 12px;`
@@ -1558,6 +2383,71 @@ app.registerExtension({
                 modalContainer.append(headerContainer, zmlBatchLoraParentPathDisplay, zmlBatchLoraFoldersPanel, zmlBatchLoraGridContainer, modalFooter);
                 zmlBatchLoraModalOverlay.appendChild(modalContainer);
                 document.body.appendChild(zmlBatchLoraModalOverlay);
+
+                // 添加窗口拖动功能
+                let isDragging = false;
+                let offsetX, offsetY;
+                let originalPosition;
+                
+                headerContainer.onmousedown = function(e) {
+                    // 防止在点击按钮时触发拖动
+                    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SPAN') {
+                        return;
+                    }
+                    
+                    isDragging = true;
+                    
+                    // 获取模态框当前位置
+                    const modalRect = modalContainer.getBoundingClientRect();
+                    
+                    // 计算鼠标相对于模态框的位置
+                    offsetX = e.clientX - modalRect.left;
+                    offsetY = e.clientY - modalRect.top;
+                    
+                    // 记录初始位置
+                    originalPosition = {
+                        left: modalRect.left,
+                        top: modalRect.top
+                    };
+                    
+                    // 提升模态框层级，防止拖动时被其他元素覆盖
+                    modalContainer.style.zIndex = 10002;
+                };
+                
+                document.onmousemove = function(e) {
+                    if (!isDragging) return;
+                    
+                    // 计算新位置
+                    let newLeft = e.clientX - offsetX;
+                    let newTop = e.clientY - offsetY;
+                    
+                    // 限制在视口内
+                    const viewportWidth = window.innerWidth;
+                    const viewportHeight = window.innerHeight;
+                    const modalWidth = modalContainer.offsetWidth;
+                    const modalHeight = modalContainer.offsetHeight;
+                    
+                    newLeft = Math.max(0, Math.min(newLeft, viewportWidth - modalWidth));
+                    newTop = Math.max(0, Math.min(newTop, viewportHeight - modalHeight));
+                    
+                    // 应用新位置
+                    modalContainer.style.left = `${newLeft}px`;
+                    modalContainer.style.top = `${newTop}px`;
+                    modalContainer.style.transform = 'none'; // 禁用transform以确保left和top生效
+                };
+                
+                document.onmouseup = function() {
+                    if (isDragging) {
+                        isDragging = false;
+                        modalContainer.style.zIndex = ''; // 恢复默认层级
+                    }
+                };
+                
+                // 添加样式，确保模态框可以被定位
+                modalContainer.style.position = 'fixed';
+                modalContainer.style.left = '50%';
+                modalContainer.style.top = '50%';
+                modalContainer.style.transform = 'translate(-50%, -50%)';
 
                 zmlBatchLoraModalOverlay.onclick = (e) => {
                     if (e.target === zmlBatchLoraModalOverlay) {
@@ -1674,7 +2564,7 @@ app.registerExtension({
                 const rootLink = zmlCreateEl("a", { // 使用 zmlCreateEl
                     textContent: "Root",
                     href: "#",
-                    style: `color: ${zmlBatchLoraCurrentPath.length === 0 && !isShowingAllLoras ? '#e0e0e0' : '#5d99f2'}; text-decoration: none; cursor: pointer;`
+                    style: `color: ${zmlBatchLoraCurrentPath.length === 0 && !isShowingAllLoras ? '#ffffff' : '#4da6ff'}; text-decoration: none; cursor: pointer; font-weight: 500;`
                 });
                 rootLink.onmouseenter = (e) => e.target.style.textDecoration = 'underline';
                 rootLink.onmouseleave = (e) => e.target.style.textDecoration = 'none';
@@ -1693,13 +2583,14 @@ app.registerExtension({
                         if (part === ALL_LORAS_VIEW_PATH_IDENTIFIER) return; 
 
                         currentPathAccumulate.push(part);
-                        const separator = zmlCreateEl("span", { textContent: " > ", style: "color:#888;" }); // 使用 zmlCreateEl
+                        // 增强路径显示样式，使用更鲜明的颜色
+                        const separator = zmlCreateEl("span", { textContent: " > ", style: "color:#ccc; font-weight: bold;" }); // 使用 zmlCreateEl
                         zmlBatchLoraParentPathDisplay.appendChild(separator);
 
                         const pathLink = zmlCreateEl("a", { // 使用 zmlCreateEl
                             textContent: part,
                             href: "#",
-                            style: `color: ${index === zmlBatchLoraCurrentPath.length - 1 ? '#e0e0e0' : '#5d99f2'}; text-decoration: none; cursor: pointer;`
+                            style: `color: ${index === zmlBatchLoraCurrentPath.length - 1 ? '#ffffff' : '#4da6ff'}; text-decoration: none; cursor: pointer; font-weight: 500;`
                         });
                         pathLink.onmouseenter = (e) => e.target.style.textDecoration = 'underline';
                         pathLink.onmouseleave = (e) => e.target.style.textDecoration = 'none';
@@ -1790,7 +2681,7 @@ app.registerExtension({
                         style: `
                             position: relative;
                         width: 100%;
-                        aspect-ratio: ${zmlBatchLoraDisplayStyle === 'horizontal' ? '16/9' : zmlBatchLoraDisplayStyle === 'vertical' ? '9/16' : '1/1'} !important; /* 横向/竖向/方形模式 */
+                        height: 100%; /* 让 itemEl 占据网格单元格的全部高度 */
                         border: 1px solid ${isDeleted ? '#ff5252' : (isSelected ? '#4CAF50' : '#555')};
                         border-radius: 4px;
                         overflow: hidden;
@@ -1813,9 +2704,37 @@ app.registerExtension({
                     };
 
 
+                    // 根据当前主题获取无预览图的样式
+                    let noPreviewBgColor = '#252525';
+                    let noPreviewTextColor = '#888';
+                    if (globalThis.zmlCurrentTheme === 'none') {
+                        noPreviewBgColor = '#252525';
+                        noPreviewTextColor = '#888';
+                    } else if (globalThis.zmlCurrentTheme === 'white') {
+                        noPreviewBgColor = '#f5f5f5';
+                        noPreviewTextColor = '#333';
+                    } else if (globalThis.zmlCurrentTheme === 'lightblue') {
+                        noPreviewBgColor = '#d1e3f0';
+                        noPreviewTextColor = '#1a237e';
+                    } else if (globalThis.zmlCurrentTheme === 'lightgreen') {
+                        noPreviewBgColor = '#d6e9d6';
+                        noPreviewTextColor = '#1b5e20';
+                    } else if (globalThis.zmlCurrentTheme === 'pink') {
+                        noPreviewBgColor = '#f8d7da';
+                        noPreviewTextColor = '#721c24';
+                    }
+
                     const imageWrapper = zmlCreateEl("div", { // 使用 zmlCreateEl
                         className: "zml-batch-lora-image-wrapper",
                         style: `
+                            width: 100%;
+                            height: 100%;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            overflow: hidden;
+                            position: relative;
+                            background-color: ${noPreviewBgColor};
                             position: absolute;
                             top: 0;
                             left: 0;
@@ -1825,10 +2744,10 @@ app.registerExtension({
                             align-items: center;
                             justify-content: center;
                             flex-direction: column; /* 确保文字也在中间 */
-                            color: #888;
+                            color: ${hasPreview ? '#888' : noPreviewTextColor};
                             font-size: 11px;
                             text-align: center;
-                            background-color: ${hasPreview ? 'transparent' : '#333'};
+                            background-color: ${hasPreview ? 'transparent' : noPreviewBgColor};
                         `
                     });
 
@@ -2469,25 +3388,23 @@ app.registerExtension({
                         }
                         .zml-batch-lora-item {
                             position: relative;
-                            width: 120px;
-                            height: 120px;
                             box-sizing: border-box;
                             transition: border-color 0.2s, transform 0.1s;
+                            /* 默认样式，会被 .horizontal, .vertical, .square 覆盖 */
+                            width: 100%;
+                            height: 100%;
                         }
                         /* 横向矩形展示样式 */
                         .zml-batch-lora-item.horizontal {
-                            width: 200px;
-                            height: 120px;
+                            /* 宽度由 grid-template-columns 控制，高度由 grid-auto-rows 控制 */
                         }
                         /* 竖向矩形展示样式 */
                         .zml-batch-lora-item.vertical {
-                            width: 120px;
-                            height: 200px;
+                            /* 宽度由 grid-template-columns 控制，高度由 grid-auto-rows 控制 */
                         }
                         /* 方形展示样式 */
                         .zml-batch-lora-item.square {
-                            width: 120px;
-                            height: 120px;
+                            /* 宽度由 grid-template-columns 控制，高度由 grid-auto-rows 控制 */
                         }
                         /* 确保图片在不同尺寸容器中正确显示 */
                         .zml-batch-lora-item-image {
@@ -2604,13 +3521,17 @@ app.registerExtension({
                      loraNameWidthInput.value = this.loraNameWidth;
                      loraNameWidthInput.title = "LoRA 名称框宽度 (像素)";
                      loraNameWidthInput.oninput = (e) => {
+                         // 实时更新值，但不触发渲染和保存
+                         this.loraNameWidth = parseInt(e.target.value, 10);
+                     };
+                     loraNameWidthInput.onblur = (e) => {
                          let val = parseInt(e.target.value, 10);
                          if (isNaN(val)) val = 65;
                          val = Math.max(10, Math.min(300, val));
                          this.loraNameWidth = val;
-                         e.target.value = val;
-                         this.renderLoraEntries();
-                         this.triggerSlotChanged();
+                         e.target.value = val; // 纠正显示值
+                         this.renderLoraEntries(); // 失去焦点时重新渲染
+                         this.triggerSlotChanged(); // 失去焦点时触发保存
                      };
                      loraNameWidthGroup.append(loraNameWidthLabel, loraNameWidthInput);
                      topControls.appendChild(loraNameWidthGroup);
@@ -2624,13 +3545,17 @@ app.registerExtension({
                      customTextWidthInput.value = this.customTextWidth;
                      customTextWidthInput.title = "自定义文本框宽度 (像素)";
                      customTextWidthInput.oninput = (e) => {
+                         // 实时更新值，但不触发渲染和保存
+                         this.customTextWidth = parseInt(e.target.value, 10);
+                     };
+                     customTextWidthInput.onblur = (e) => {
                          let val = parseInt(e.target.value, 10);
                          if (isNaN(val)) val = 80;
                          val = Math.max(10, Math.min(300, val));
                          this.customTextWidth = val;
-                         e.target.value = val;
-                         this.renderLoraEntries();
-                         this.triggerSlotChanged();
+                         e.target.value = val; // 纠正显示值
+                         this.renderLoraEntries(); // 失去焦点时重新渲染
+                         this.triggerSlotChanged(); // 失去焦点时触发保存
                      };
                      customTextWidthGroup.append(customTextWidthLabel, customTextWidthInput);
                      topControls.appendChild(customTextWidthGroup);
