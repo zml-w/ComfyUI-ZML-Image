@@ -381,34 +381,48 @@ class ZML_TextFilter:
     FUNCTION = "filter_text"
     
     def filter_text(self, 文本, 过滤标签):
-        """过滤掉指定的标签"""
-        # 修改：不再对整个输入文本进行strip()，以保留其内部的换行符
-        # 仅在判断是否为空时使用.strip()
+        """过滤掉指定的标签，按行保留结构"""
         if not 文本.strip():
             return ("", self.help_text, "")
         
-        # 将过滤标签字符串按逗号分割，并去除每个标签两边的空格
-        # 过滤标签通常是单行，所以strip()是合适的
         filter_list = [tag.strip() for tag in 过滤标签.split(',') if tag.strip()]
         
-        # 分割输入文本，允许分割符前后有任意空白（包括换行）
-        # re.split(r'[,，]\s*', 文本) 可以处理逗号后跟换行的情况
-        # 使用正则表达式分割文本，并过滤掉空字符串（可能是连续逗号或开头/结尾的空白导致）
-        original_tags = [tag.strip() for tag in re.split(r'[,，]+', 文本) if tag.strip()]
+        # 按行处理输入文本
+        input_lines = 文本.splitlines()
         
-        # 过滤掉在filter_list中的标签（注意：大小写敏感）
-        filtered_tags = [tag for tag in original_tags if tag not in filter_list]
+        processed_lines = []
+        removed_lines = []
+
+        for line in input_lines:
+            # 检查原始行是否以逗号结尾（忽略行尾空白）
+            original_line_ends_with_comma = line.rstrip().endswith(',')
+            
+            # 对于每一行，进行标签分割和过滤
+            original_tags_on_line = [tag.strip() for tag in re.split(r'[,，]+', line) if tag.strip()]
+            
+            filtered_tags_on_line = [tag for tag in original_tags_on_line if tag not in filter_list]
+            removed_tags_on_line = [tag for tag in original_tags_on_line if tag in filter_list]
+            
+            # 重新组合行
+            processed_line_content = ','.join(filtered_tags_on_line)
+            removed_line_content = ','.join(removed_tags_on_line)
+            
+            # 应用全局标点格式化
+            processed_line_content = format_punctuation_global(processed_line_content)
+            removed_line_content = format_punctuation_global(removed_line_content)
+
+            # 在格式化之后，如果原始行以逗号结尾，则添加逗号
+            if original_line_ends_with_comma:
+                processed_line_content += ','
+            if original_line_ends_with_comma:
+                removed_line_content += ','
+            
+            processed_lines.append(processed_line_content)
+            removed_lines.append(removed_line_content)
         
-        # 找出被过滤掉的标签
-        removed_tags = [tag for tag in original_tags if tag in filter_list]
-        
-        # 重新组合成字符串，保留原始标签的顺序
-        result = ','.join(filtered_tags) # 重新组合时可以使用逗号，然后通过format_punctuation_global处理
-        removed_result = ','.join(removed_tags)
-        
-        # 额外处理一下结果，移除多余的逗号，保持格式整洁
-        result = format_punctuation_global(result)
-        removed_result = format_punctuation_global(removed_result)
+        # 使用原始换行符重新组合所有行
+        result = '\n'.join(processed_lines)
+        removed_result = '\n'.join(removed_lines)
 
         return (result, self.help_text, removed_result)
 
@@ -788,7 +802,7 @@ class ZML_MultiTextInput5:
         # 使用分隔符连接文本
         combined = processed_separator.join(non_empty_texts)
         
-        # 应用标点符号格式化
+        # 应用标点符号格式化 (在连接后进行)
         if 格式化标点符号:
             combined = format_punctuation_global(combined)
         
