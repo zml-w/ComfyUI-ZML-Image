@@ -15,6 +15,15 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import re # 导入正则表达式模块
+import copy
+
+try:
+    from nunchaku.lora.flux import to_diffusers
+except ImportError:
+    print("警告: 无法导入 nunchaku.lora.flux.to_diffusers。ZML_名称加载lora(nunchaku) 节点可能无法正确处理特殊 LoRA。请确保 nunchaku 库已安装。")
+    def to_diffusers(path): # 提供一个临时的替代函数以避免崩溃
+        print(f"警告: to_diffusers 功能缺失，无法解析 {path}")
+        return {}
 
 ZML_API_PREFIX = "/zml/lora"
 
@@ -957,6 +966,88 @@ class ZmlNameLoraLoader:
         
         return (current_model, current_clip)
 
+# --- ZML Nunchaku LoRA 名称加载器---
+class ZmlNunchakuNameLoraLoader:
+    ZML_LORA_STACK_TYPE = ( "LORA_STACK", )
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "LoRA名称列表": (s.ZML_LORA_STACK_TYPE, {"forceInput": True}), 
+            }
+        }
+
+    RETURN_TYPES = ("MODEL",)
+    RETURN_NAMES = ("输出_模型",)
+    FUNCTION = "load_nunchaku_loras_from_list"
+    CATEGORY = "图像/ZML_图像/lora加载器"
+
+    def load_nunchaku_loras_from_list(self, model, LoRA名称列表):
+        try:
+            # 1. 深入访问到模型包装器对象
+            model_wrapper = model.model.diffusion_model
+
+            # 2. 从对象实例中直接获取它的类定义
+            ComfyFluxWrapper_class = model_wrapper.__class__
+
+            # 3. 通过类名进行验证，这比 import 更稳定
+            if 'ComfyFluxWrapper' not in ComfyFluxWrapper_class.__name__:
+                 raise AttributeError("模型包装器的类名不是 'ComfyFluxWrapper'。")
+
+        except AttributeError as e:
+            print(f"错误: ZML_名称加载lora(nunchaku) 节点的输入模型结构不正确 ({e})。请确保它是由 Nunchaku FLUX DiT Loader 加载的。")
+            return (model,)
+        # --------------------------------------------------------------------
+
+        # 验证输入列表是否有效
+        if not isinstance(LoRA名称列表, list) or not LoRA名称列表:
+            return (model,)
+
+        # 采用 Nunchaku 的高效内存复制策略：只复制一次外壳
+        # 注意：这里的 copy 和 to_diffusers 的 import 语句需要保留在文件顶部
+        import copy
+        try:
+            from nunchaku.lora.flux import to_diffusers
+        except ImportError:
+            def to_diffusers(path): return {}
+
+        transformer = model_wrapper.model
+        model_wrapper.model = None
+        ret_model = copy.deepcopy(model)
+        ret_model_wrapper = ret_model.model.diffusion_model
+        model_wrapper.model = transformer
+        ret_model_wrapper.model = transformer
+
+        # 循环处理 LoRA 列表 (此部分逻辑不变)
+        for lora_info in LoRA名称列表:
+            if not isinstance(lora_info, dict) or "lora_name" not in lora_info or "weight" not in lora_info:
+                continue
+
+            lora_name = lora_info["lora_name"]
+            lora_strength = lora_info["weight"]
+
+            if abs(lora_strength) < 1e-5:
+                continue
+
+            lora_path = folder_paths.get_full_path("loras", lora_name)
+            if not lora_path or not os.path.exists(lora_path):
+                print(f"警告: LoRA 文件未找到，已跳过: {lora_name}")
+                continue
+
+            ret_model_wrapper.loras.append((lora_path, lora_strength))
+
+            sd = to_diffusers(lora_path)
+            if "transformer.x_embedder.lora_A.weight" in sd:
+                new_in_channels = sd["transformer.x_embedder.lora_A.weight"].shape[1]
+                if new_in_channels % 4 == 0:
+                    new_in_channels = new_in_channels // 4
+                    old_in_channels = ret_model.model.model_config.unet_config.get("in_channels", 0)
+                    if old_in_channels < new_in_channels:
+                        ret_model.model.model_config.unet_config["in_channels"] = new_in_channels
+
+        return (ret_model,)
 
 # 注册节点
 NODE_CLASS_MAPPINGS = {
@@ -964,7 +1055,8 @@ NODE_CLASS_MAPPINGS = {
     "ZmlLoraLoaderFive": ZmlLoraLoaderFive,
     "ZmlLoraMetadataParser": ZmlLoraMetadataParser,
     "ZmlPowerLoraLoader": ZmlPowerLoraLoader,
-    "ZmlNameLoraLoader": ZmlNameLoraLoader, # 新增节点
+    "ZmlNameLoraLoader": ZmlNameLoraLoader,
+    "ZmlNunchakuNameLoraLoader": ZmlNunchakuNameLoraLoader,
 }
 
 # 节点显示名称映射
@@ -973,5 +1065,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZmlLoraLoaderFive": "ZML_LoRA加载器_五",
     "ZmlLoraMetadataParser": "ZML_解析LoRA元数据",
     "ZmlPowerLoraLoader": "ZML_强力lora加载器",
-    "ZmlNameLoraLoader": "ZML_名称加载lora", # 新增节点显示名称
+    "ZmlNameLoraLoader": "ZML_名称加载lora",
+    "ZmlNunchakuNameLoraLoader": "ZML_名称加载lora(nunchaku)",
 }

@@ -150,7 +150,7 @@ class ZML_AutoCensorNode:
 
 class ZML_CustomCensorNode(ZML_AutoCensorNode):
     @classmethod
-    def INPUT_TYPES(cls): return {"required": {"原始图像": ("IMAGE",), "遮罩": ("MASK",), "覆盖模式": (["图像", "马赛克"],), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128}), }, "optional": { "覆盖图": ("IMAGE",), }}
+    def INPUT_TYPES(cls): return {"required": {"原始图像": ("IMAGE",), "遮罩": ("MASK",), "覆盖模式": (["图像", "马赛克"],), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128}), }, "optional": { "覆盖图": ("IMAGE",), }}
     RETURN_TYPES = ("IMAGE", "MASK", "STRING"); RETURN_NAMES = ("处理后图像", "处理后遮罩", "Help")
     def process(self, 原始图像, 遮罩, 覆盖模式, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
         help_text = self.increment_and_get_help_text(); source_cv2 = cv2.cvtColor(np.array(self.tensor_to_pil(原始图像)), cv2.COLOR_RGB2BGR)
@@ -908,8 +908,8 @@ class ZML_UnifyImageResolution:
         return {
             "required": {
                 "图像": ("IMAGE",),
-                "宽度": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 8}),
-                "高度": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 8}),
+                "宽度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
+                "高度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
                 "处理模式": (["拉伸", "中心裁剪", "填充黑", "填充白"],),
             },
             "optional": {
