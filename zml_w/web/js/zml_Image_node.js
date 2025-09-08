@@ -734,10 +734,342 @@ app.registerExtension({
                     const rememberPathBtn = $el("button.zml-action-btn.zml-remember-btn", { textContent: "记住打开位置" });
                     // --- 🔴 MODIFICATION END ---
                     
+                    // --- 🔴 NEW FEATURE: 预设路径下拉列表 --- 
+                    const LS_PRESET_PATHS_KEY = "zml.tagImageLoader.presetPaths";
+                    let presetPaths = [];
+                    
+                    // 从localStorage加载预设路径，并限制数量为5个
+                    try {
+                        const savedPresets = localStorage.getItem(LS_PRESET_PATHS_KEY);
+                        if (savedPresets) {
+                            presetPaths = JSON.parse(savedPresets);
+                            // 限制预设数量不超过5个
+                            if (presetPaths.length > 5) {
+                                presetPaths = presetPaths.slice(0, 5);
+                                localStorage.setItem(LS_PRESET_PATHS_KEY, JSON.stringify(presetPaths));
+                            }
+                        }
+                    } catch (e) {
+                        console.error("ZML_TagImageLoader: 无法加载预设路径。", e);
+                    }
+                    
+                    // 创建下拉列表容器
+                    const presetSelectorContainer = $el("div.zml-preset-selector-container", {
+                        style: {
+                            position: "relative",
+                            display: "inline-block"
+                        }
+                    });
+                    
+                    // 创建预设选择按钮
+                    const presetSelectBtn = $el("button.zml-preset-select-btn", {
+                        textContent: "常用预设",
+                        style: {
+                            padding: "3px 10px",
+                            border: "1px solid var(--zml-border-color)",
+                            backgroundColor: "var(--zml-accent-color)",
+                            color: "var(--zml-button-text)",
+                            cursor: "pointer",
+                            borderRadius: "4px 0 0 4px",
+                            height: "24px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            transition: "all 0.2s ease-in-out",
+                            fontSize: "11px"
+                        }
+                    });
+
+                    // 常用预设按钮悬停效果
+                    presetSelectBtn.onmouseover = () => {
+                        presetSelectBtn.style.backgroundColor = "var(--zml-accent-hover)";
+                        presetSelectBtn.style.borderColor = "var(--zml-accent-color)";
+                    };
+                    presetSelectBtn.onmouseout = () => {
+                        presetSelectBtn.style.backgroundColor = "var(--zml-accent-color)";
+                        presetSelectBtn.style.borderColor = "var(--zml-border-color)";
+                    };
+                    
+                    // 创建下拉内容容器
+                    const dropdownContent = $el("div.zml-preset-dropdown-content", {
+                        style: {
+                            display: "none",
+                            position: "absolute",
+                            backgroundColor: "var(--zml-bg-color, #ffffff)", // 默认为白色背景
+                            minWidth: "180px",
+                            border: "1px solid var(--zml-border-color)",
+                            borderRadius: "4px",
+                            zIndex: 1000,
+                            maxHeight: "200px",
+                            overflowY: "auto",
+                            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)", // 添加阴影增加层次感
+                            opacity: "1" // 确保完全不透明
+                        }
+                    });
+                    
+                    // 显示/隐藏下拉菜单
+                    presetSelectBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        dropdownContent.style.display = dropdownContent.style.display === "block" ? "none" : "block";
+                    };
+                    
+                    // 点击外部关闭下拉菜单
+                    document.addEventListener("click", (e) => {
+                          if (!presetSelectorContainer.contains(e.target)) {
+                              dropdownContent.style.display = "none";
+                          }
+                      });
+
+                      // 设置下拉菜单背景色以统一按钮缝隙颜色
+                      dropdownContent.style.backgroundColor = "var(--zml-modal-bg-color)";
+                    
+                    // 创建保存预设按钮
+                    const addPresetBtn = $el("button.zml-add-preset-btn", {
+                        textContent: "保存当前路径到预设",
+                        style: {
+                            width: "calc(100% - 20px)",
+                            padding: "6px 12px",
+                            margin: "6px auto",
+                            border: "1px solid var(--zml-accent-color)",
+                            backgroundColor: "var(--zml-accent-color)",
+                            color: "var(--zml-button-text)",
+                            cursor: "pointer",
+                            textAlign: "center",
+                            borderRadius: "8px",
+                            display: "block",
+                            transition: "all 0.3s ease",
+                            fontWeight: "500",
+                            fontSize: "11px",
+                            boxShadow: "0 2px 5px rgba(0, 0, 0, 0.1)"
+                        }
+                    });
+
+                    // 按钮悬停和点击效果
+                    addPresetBtn.onmouseover = () => {
+                        addPresetBtn.style.backgroundColor = "var(--zml-accent-hover)";
+                        addPresetBtn.style.transform = "translateY(-2px)";
+                        addPresetBtn.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.15)";
+                    };
+                    addPresetBtn.onmouseout = () => {
+                        addPresetBtn.style.backgroundColor = "var(--zml-accent-color)";
+                        addPresetBtn.style.transform = "translateY(0)";
+                        addPresetBtn.style.boxShadow = "0 2px 5px rgba(0, 0, 0, 0.1)";
+                    };
+                    addPresetBtn.onmousedown = () => {
+                        addPresetBtn.style.transform = "translateY(0)";
+                        addPresetBtn.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
+                    };
+                    addPresetBtn.onmouseup = () => {
+                        addPresetBtn.style.transform = "translateY(-2px)";
+                        addPresetBtn.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.15)";
+                    };
+                    addPresetBtn.onmouseleave = () => {
+                        addPresetBtn.style.transform = "translateY(0)";
+                        addPresetBtn.style.boxShadow = "0 2px 5px rgba(0, 0, 0, 0.1)";
+                    };
+                    
+                    addPresetBtn.onclick = () => {
+                        const currentPath = pathInput.value.trim();
+                        if (currentPath) {
+                            const presetName = prompt("请输入预设名称：");
+                            if (presetName && presetName.trim()) {
+                                // 检查是否已存在同名预设
+                                const existingIndex = presetPaths.findIndex(p => p.name === presetName.trim());
+                                if (existingIndex >= 0) {
+                                    if (confirm(`预设名称'${presetName}'已存在，是否覆盖？`)) {
+                                        presetPaths[existingIndex] = { name: presetName.trim(), path: currentPath };
+                                    } else {
+                                        return;
+                                    }
+                                } else {
+                                    presetPaths.push({ name: presetName.trim(), path: currentPath });
+                                }
+                                
+                                // 保存到localStorage
+                                localStorage.setItem(LS_PRESET_PATHS_KEY, JSON.stringify(presetPaths));
+                                
+                                // 重新渲染预设列表
+                                renderPresetList();
+                            }
+                        } else {
+                            alert("请先输入有效的路径再创建预设。");
+                        }
+                    };
+                    
+                    // 渲染预设列表
+                    const renderPresetList = () => {
+                        // 清空现有内容
+                        dropdownContent.innerHTML = "";
+                        
+                        // 添加新建预设按钮
+                        dropdownContent.appendChild(addPresetBtn);
+                        
+                        // 如果没有预设，添加提示
+                        if (presetPaths.length === 0) {
+                            const emptyMsg = $el("div.zml-empty-preset-msg", {
+                                textContent: "暂无预设路径",
+                                style: {
+                                    padding: "12px",
+                                    textAlign: "center",
+                                    color: "#1890ff"
+                                }
+                            });
+                            dropdownContent.appendChild(emptyMsg);
+                            return;
+                        }
+                        
+                        // 添加预设项目
+                        presetPaths.forEach((preset, index) => {
+                            const presetItem = $el("div.zml-preset-item", {
+                                style: {
+                                    width: "calc(100% - 20px)",
+                                    padding: "6px 12px",
+                                    cursor: "pointer",
+                                    position: "relative",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    transition: "all 0.3s ease",
+                                    backgroundColor: "var(--zml-accent-color)",
+                                    border: "1px solid var(--zml-accent-color)",
+                                    color: "var(--zml-button-text)",
+                                    borderRadius: "8px",
+                                    margin: "6px auto",
+                                    fontWeight: "500",
+                                    fontSize: "11px",
+                                    boxShadow: "0 2px 5px rgba(0, 0, 0, 0.1)"
+                                }
+                            });
+
+                            // 预设项悬停和点击效果
+                            presetItem.onmouseover = () => {
+                                presetItem.style.backgroundColor = "var(--zml-accent-hover)";
+                                presetItem.style.transform = "translateY(-2px)";
+                                presetItem.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.15)";
+                                presetItem.style.borderColor = "var(--zml-accent-color)";
+                            };
+                            presetItem.onmouseout = () => {
+                                presetItem.style.backgroundColor = "var(--zml-accent-color)";
+                                presetItem.style.transform = "translateY(0)";
+                                presetItem.style.boxShadow = "0 2px 5px rgba(0, 0, 0, 0.1)";
+                                presetItem.style.borderColor = "var(--zml-accent-color)";
+                            };
+                            presetItem.onmousedown = () => {
+                                presetItem.style.transform = "translateY(0)";
+                                presetItem.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
+                            };
+                            presetItem.onmouseup = () => {
+                                presetItem.style.transform = "translateY(-2px)";
+                                presetItem.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.15)";
+                            };
+                            presetItem.onmouseleave = () => {
+                                presetItem.style.transform = "translateY(0)";
+                                presetItem.style.boxShadow = "0 2px 5px rgba(0, 0, 0, 0.1)";
+                            };
+                            
+                            // 预设名称和路径
+                            const presetInfo = $el("div.zml-preset-info", {
+                                style: {
+                                    maxWidth: "150px",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap"
+                                }
+                            });
+                            
+                            const presetName = $el("div.zml-preset-name", {
+                                textContent: preset.name,
+                                title: preset.name,
+                                style: {
+                                    fontWeight: "bold",
+                                    fontSize: "11px",
+                                    color: "var(--zml-secondary-text)"
+                                }
+                            });
+                            
+                            const presetPath = $el("div.zml-preset-path", {
+                                textContent: preset.path,
+                                title: preset.path,
+                                style: {
+                                    fontSize: "11px",
+                                    color: "var(--zml-secondary-text)"
+                                }
+                            });
+                            
+                            presetInfo.append(presetName, presetPath);
+                            
+                            // 删除按钮
+                            const deleteBtn = $el("button.zml-delete-preset-btn", {
+                                textContent: "×",
+                                style: {
+                                    border: "1px solid var(--zml-danger-color, #ff4d4f)",
+                                    backgroundColor: "transparent",
+                                    color: "var(--zml-danger-color, #ff4d4f)",
+                                    cursor: "pointer",
+                                    fontSize: "14px",
+                                    width: "20px",
+                                    height: "20px",
+                                    padding: "0",
+                                    borderRadius: "50%",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    opacity: "0.7",
+                                    transition: "all 0.2s ease-in-out"
+                                }
+                            });
+
+                            // 删除按钮悬停效果
+                            deleteBtn.onmouseover = () => {
+                                deleteBtn.style.opacity = "1";
+                                deleteBtn.style.backgroundColor = "var(--zml-danger-color, #ff4d4f)";
+                                deleteBtn.style.color = "white";
+                            };
+                            deleteBtn.onmouseout = () => {
+                                deleteBtn.style.opacity = "0.7";
+                                deleteBtn.style.backgroundColor = "transparent";
+                                deleteBtn.style.color = "var(--zml-danger-color, #ff4d4f)";
+                            };
+                            
+                            deleteBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                if (confirm(`确定要删除预设'${preset.name}'吗？`)) {
+                                    presetPaths.splice(index, 1);
+                                    localStorage.setItem(LS_PRESET_PATHS_KEY, JSON.stringify(presetPaths));
+                                    renderPresetList();
+                                }
+                            };
+                            
+                            presetItem.append(presetInfo, deleteBtn);
+                            
+                            // 选择预设时填充到输入框
+                            presetItem.onclick = () => {
+                                pathInput.value = preset.path;
+                                dropdownContent.style.display = "none";
+                                // 添加选择反馈
+                                const originalBg = presetItem.style.backgroundColor;
+                                presetItem.style.backgroundColor = "#e6f7ff";
+                                setTimeout(() => {
+                                    presetItem.style.backgroundColor = originalBg;
+                                }, 300);
+                            };
+                            
+                            dropdownContent.appendChild(presetItem);
+                        });
+                    };
+                    
+                    // 初始化预设列表
+                    renderPresetList();
+                    
+                    // 将下拉内容添加到容器
+                    presetSelectorContainer.append(presetSelectBtn, dropdownContent);
+                    // --- 🔴 NEW FEATURE END ---
+                    
                     const pathInput = $el("input.zml-path-input", { type: "text", placeholder: "自定义图片文件夹路径 (留空使用output)" });
                     const refreshPathBtn = $el("button.zml-path-refresh-btn", { textContent: "刷新路径" });
                     const pathInputGroup = $el("div.zml-path-input-group", [
                         $el("span", { textContent: "路径:", style: {color: 'var(--zml-secondary-text)'} }),
+                        presetSelectorContainer,
                         pathInput,
                         refreshPathBtn,
                     ]);
@@ -761,6 +1093,13 @@ app.registerExtension({
                     ]);
 
                     // [新增] 创建并添加主题切换器
+                    const THEMES = {
+                        blue: { name: '天空蓝', color: '#87ceeb', vars: { '--zml-bg-color': '#2c3e50', '--zml-modal-bg-color': '#34495e', '--zml-secondary-bg-color': '#4a6fa5', '--zml-input-bg-color': '#283747', '--zml-border-color': '#5d7bb2', '--zml-text-color': '#ecf0f1', '--zml-text-color-secondary': '#bdc3c7', '--zml-button-text': '#ffffff' } },
+                        green: { name: '抹茶绿', color: '#90ee90', vars: { '--zml-bg-color': '#2e463c', '--zml-modal-bg-color': '#385449', '--zml-secondary-bg-color': '#4CAF50', '--zml-input-bg-color': '#263a31', '--zml-border-color': '#5a7e6b', '--zml-text-color': '#e8f5e9', '--zml-text-color-secondary': '#c8e6c9', '--zml-button-text': '#ffffff' } },
+                        yellow: { name: '活力黄', color: '#ffd700', vars: { '--zml-bg-color': '#53431b', '--zml-modal-bg-color': '#614d20', '--zml-secondary-bg-color': '#7a622a', '--zml-input-bg-color': '#4a3b16', '--zml-border-color': '#8a723a', '--zml-text-color': '#fffde7', '--zml-text-color-secondary': '#fff9c4', '--zml-button-text': '#000000' } },
+                        black: { name: '深邃黑', color: '#616161', vars: { '--zml-bg-color': '#282c34', '--zml-modal-bg-color': '#313642', '--zml-secondary-bg-color': '#3c4250', '--zml-input-bg-color': '#262a32', '--zml-border-color': '#4a5162', '--zml-text-color': '#e0e2e6', '--zml-text-color-secondary': '#a0a6b3', '--zml-button-text': '#ffffff' } },
+                        pink: { name: '浪漫粉', color: '#ffb6c1', vars: { '--zml-bg-color': '#5d4954', '--zml-modal-bg-color': '#705c68', '--zml-secondary-bg-color': '#846e7a', '--zml-input-bg-color': '#53414c', '--zml-border-color': '#987b87', '--zml-text-color': '#fce4ec', '--zml-text-color-secondary': '#f8bbd0', '--zml-button-text': '#000000' } },
+                    };
                     const themes = [
                         { name: 'blue', color: '#87ceeb' },
                         { name: 'green', color: '#90ee90' },
@@ -776,12 +1115,20 @@ app.registerExtension({
                             dataset: { theme: theme.name },
                         });
                         btn.onclick = () => {
-                            modal.dataset.theme = theme.name;
-                            localStorage.setItem("zml.tagImageLoader.theme", theme.name);
-                            // 更新激活状态
-                            Object.values(themeButtons).forEach(b => b.classList.remove('active'));
-                            btn.classList.add('active');
-                        };
+                        const themeKey = btn.dataset.theme;
+                        modal.dataset.theme = themeKey;
+                        localStorage.setItem("zml.tagImageLoader.theme", themeKey);
+                        // 应用主题变量
+                        const selectedTheme = THEMES[themeKey];
+                        if (selectedTheme) {
+                            for (const [key, value] of Object.entries(selectedTheme.vars)) {
+                                modal.style.setProperty(key, value);
+                            }
+                        }
+                        // 更新激活状态
+                        Object.values(themeButtons).forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                    };
                         themeSwitcher.appendChild(btn);
                         themeButtons[theme.name] = btn;
                     });
@@ -790,6 +1137,13 @@ app.registerExtension({
                     // 应用保存的主题
                     const savedTheme = localStorage.getItem("zml.tagImageLoader.theme") || 'blue';
                     modal.dataset.theme = savedTheme;
+                    // 应用主题变量
+                    const theme = THEMES[savedTheme];
+                    if (theme) {
+                        for (const [key, value] of Object.entries(theme.vars)) {
+                            modal.style.setProperty(key, value);
+                        }
+                    }
                     if(themeButtons[savedTheme]) {
                         themeButtons[savedTheme].classList.add('active');
                     }
