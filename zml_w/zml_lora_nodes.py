@@ -20,7 +20,7 @@ import copy
 try:
     from nunchaku.lora.flux import to_diffusers
 except ImportError:
-    print("警告: 无法导入 nunchaku.lora.flux.to_diffusers。ZML_名称加载lora(nunchaku) 节点可能无法正确处理特殊 LoRA。请确保 nunchaku 库已安装。")
+    print("警告: 无法导入 nunchaku.lora.flux.to_diffusers。ZML_名称加载lora(nunchaku) 节点将无法使用，请确保 nunchaku 库已安装（不使用nunchaku的用户可忽略）。")
     def to_diffusers(path): # 提供一个临时的替代函数以避免崩溃
         print(f"警告: to_diffusers 功能缺失，无法解析 {path}")
         return {}
@@ -785,7 +785,7 @@ class ZmlPowerLoraLoader:
     # 图像输出仍然是列表 (OUTPUT_IS_LIST 的第三个元素，索引为2)。
     OUTPUT_IS_LIST = (False, False, False, True, False, False) # 新增的 lora名称列表 也不是列表输出，因为它自己就是一个列表对象 (字典列表)。
     
-    RETURN_TYPES = ("MODEL", "CLIP", ZML_LORA_STACK_TYPE, "IMAGE", "STRING", "STRING") # 增加 ZML_LORA_STACK_TYPE 类型
+    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "IMAGE", "STRING", "STRING") # 增加 ZML_LORA_STACK_TYPE 类型
     RETURN_NAMES = ("MODEL", "CLIP", "lora名称列表", "预览_图", "触发词", "自定义文本") # 增加 "lora名称列表" 的名称
     FUNCTION = "load_loras"
     CATEGORY = "图像/ZML_图像/lora加载器"
@@ -889,7 +889,7 @@ class ZmlPowerLoraLoader:
                         except Exception as e:
                             # 文件损坏或读取出错的错误信息保留（因为它实际的异常）
                             print(f"ZML_PowerLoraLoader: 读取txt文件 '{txt_filepath}' 时出错: {e}")
-                
+                    
                 except Exception as e:
                     # 任何其他 LoRA 处理中的意外错误也保留
                     print(f"ZML_PowerLoraLoader: 处理 LoRA '{lora_name}' 时发生意外错误: {e}")
@@ -903,8 +903,11 @@ class ZmlPowerLoraLoader:
             output_images.append(torch.zeros((1, 1, 1, 3), dtype=torch.float32))
         # --------------------------------------------------------------------------------------
 
+        # 将loaded_lora_names_and_weights列表转换为JSON字符串
+        loaded_lora_names_and_weights_str = json.dumps(loaded_lora_names_and_weights, ensure_ascii=False)
+
         # 返回所有输出
-        return (current_model, current_clip, loaded_lora_names_and_weights, output_images, final_txt_output, final_custom_text_output)
+        return (current_model, current_clip, loaded_lora_names_and_weights_str, output_images, final_txt_output, final_custom_text_output)
 
 
 # --- 新增节点：ZML_名称加载lora ---
@@ -918,7 +921,7 @@ class ZmlNameLoraLoader:
             "required": {
                 "模型": ("MODEL",),
                 "CLIP": ("CLIP",),
-                                "LoRA名称列表": (ZML_LORA_STACK_TYPE, {"forceInput": True}), 
+                "LoRA名称列表": ("STRING", {"forceInput": True}), 
             }
         }
 
@@ -932,11 +935,17 @@ class ZmlNameLoraLoader:
         current_model = 模型
         current_clip = CLIP
 
-        if not isinstance(LoRA名称列表, list):
-            print(f"ZML_名称加载lora: 'lora名称列表' 输入不是一个有效的列表类型，跳过LoRA加载。")
+        # 尝试解析输入的字符串为JSON列表
+        try:
+            lora_list = json.loads(LoRA名称列表)
+            if not isinstance(lora_list, list):
+                print(f"ZML_名称加载lora: 'lora名称列表' 输入不是一个有效的列表类型，跳过LoRA加载。")
+                return (模型, CLIP) # 返回原始模型和CLIP，不报错
+        except json.JSONDecodeError:
+            print(f"ZML_名称加载lora: 'lora名称列表' 输入不是有效的JSON格式，跳过LoRA加载。")
             return (模型, CLIP) # 返回原始模型和CLIP，不报错
 
-        for lora_info in LoRA名称列表: # 遍历包含字典的列表
+        for lora_info in lora_list: # 遍历包含字典的列表
             if not isinstance(lora_info, dict) or "lora_name" not in lora_info or "weight" not in lora_info:
                 print(f"ZML_名称加载lora: 'lora名称列表' 中的LoRA信息格式不正确: {lora_info}，跳过。")
                 continue
@@ -968,14 +977,15 @@ class ZmlNameLoraLoader:
 
 # --- ZML Nunchaku LoRA 名称加载器---
 class ZmlNunchakuNameLoraLoader:
-    ZML_LORA_STACK_TYPE = ( "LORA_STACK", )
+    def __init__(self):
+        pass
 
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
                 "model": ("MODEL",),
-                "LoRA名称列表": (s.ZML_LORA_STACK_TYPE, {"forceInput": True}), 
+                "LoRA名称列表": ("STRING", {"forceInput": True}), 
             }
         }
 
@@ -1001,8 +1011,18 @@ class ZmlNunchakuNameLoraLoader:
             return (model,)
         # --------------------------------------------------------------------
 
+        # 尝试解析输入的字符串为JSON列表
+        try:
+            lora_list = json.loads(LoRA名称列表)
+            if not isinstance(lora_list, list):
+                print(f"ZML_名称加载lora(nunchaku): 'lora名称列表' 输入不是一个有效的列表类型，跳过LoRA加载。")
+                return (model,) # 返回原始模型，不报错
+        except json.JSONDecodeError:
+            print(f"ZML_名称加载lora(nunchaku): 'lora名称列表' 输入不是有效的JSON格式，跳过LoRA加载。")
+            return (model,) # 返回原始模型，不报错
+
         # 验证输入列表是否有效
-        if not isinstance(LoRA名称列表, list) or not LoRA名称列表:
+        if not lora_list:
             return (model,)
 
         # 采用 Nunchaku 的高效内存复制策略：只复制一次外壳
@@ -1021,7 +1041,7 @@ class ZmlNunchakuNameLoraLoader:
         ret_model_wrapper.model = transformer
 
         # 循环处理 LoRA 列表 (此部分逻辑不变)
-        for lora_info in LoRA名称列表:
+        for lora_info in lora_list:
             if not isinstance(lora_info, dict) or "lora_name" not in lora_info or "weight" not in lora_info:
                 continue
 

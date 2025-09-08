@@ -803,7 +803,7 @@ class ZML_SequentialIntegerLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "起始数": ("INT", {"default": 1, "min": -999999, "max": 999999, "step": 1}),
+                "起始数": ("INT", {"default": 0, "min": -999999, "max": 999999, "step": 1}),
                 "最终数": ("INT", {"default": 3, "min": -999999, "max": 999999, "step": 1}),
                 "间隔": ("INT", {"default": 1, "min": 1, "max": 999999, "step": 1}),
             }

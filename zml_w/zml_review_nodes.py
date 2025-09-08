@@ -159,6 +159,75 @@ class ZML_CustomCensorNode(ZML_AutoCensorNode):
         final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
         return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(Image.fromarray(processed_mask_cv)).squeeze(-1), help_text)
 
+class ZML_MaskCropNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE",),
+                "遮罩": ("MASK",),
+                "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 3.0, "step": 0.05}),
+            }
+        }
+    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK")
+    RETURN_NAMES = ("裁剪图像", "反转裁剪", "反转遮罩")
+    FUNCTION = "process_mask_crop"
+    CATEGORY = "image/ZML_图像/遮罩"
+
+    def process_mask_crop(self, 图像, 遮罩, 遮罩缩放系数):
+        # 将tensor转换为PIL图像
+        source_pil = self.tensor_to_pil(图像)
+        h, w = source_pil.height, source_pil.width
+        
+        # 处理遮罩
+        mask_pil = Image.fromarray((遮罩.squeeze(0).cpu().numpy() * 255).astype(np.uint8), mode='L')
+        
+        # 应用遮罩缩放系数
+        if 遮罩缩放系数 != 1.0 and np.any(遮罩.squeeze(0).cpu().numpy()):
+            mask_cv = np.array(mask_pil)
+            # 计算质心
+            M = cv2.moments(mask_cv)
+            if M["m00"] != 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                # 应用缩放变换
+                T = cv2.getRotationMatrix2D((cX, cY), 0, 遮罩缩放系数)
+                mask_cv = cv2.warpAffine(mask_cv, T, (w, h))
+                mask_pil = Image.fromarray(mask_cv, mode='L')
+        
+        # 创建裁剪图像 (基于遮罩保留内容)
+        crop_pil = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        source_rgba = source_pil.convert('RGBA')
+        crop_pil.paste(source_rgba, (0, 0), mask_pil)
+        
+        # 创建反转裁剪图像 (基于遮罩移除内容)
+        inverted_mask_pil = Image.fromarray(255 - np.array(mask_pil), mode='L')
+        inverted_crop_pil = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        inverted_crop_pil.paste(source_rgba, (0, 0), inverted_mask_pil)
+        
+        # 计算反转遮罩
+        inverted_mask_tensor = 1.0 - 遮罩
+        
+        # 将PIL图像转换回tensor
+        crop_tensor = self.pil_to_tensor(crop_pil)
+        inverted_crop_tensor = self.pil_to_tensor(inverted_crop_pil)
+        
+        return (crop_tensor, inverted_crop_tensor, inverted_mask_tensor)
+    
+    def tensor_to_pil(self, tensor):
+        # 处理RGBA和RGB情况
+        if tensor.shape[-1] == 4:
+            return Image.fromarray((tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8), mode='RGBA')
+        else:
+            return Image.fromarray((tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
+    
+    def pil_to_tensor(self, pil_image):
+        # 处理RGBA和RGB情况
+        if pil_image.mode == 'RGBA':
+            return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+        else:
+            return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
 class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复用其工具函数
     @classmethod
     def INPUT_TYPES(cls):
@@ -595,22 +664,23 @@ class ZML_ImageMemory:
     # 启用OUTPUT_NODE，使其能在UI中预览图像。
     OUTPUT_NODE = True
 
-    # self.stored_image 将在同一个 ComfyUI 会话中，即不关闭 ComfyUI 程序的情况下保持其值。
-    # 当 ComfyUI 关闭或加载新工作流时，此值将被重置。
     def __init__(self):
         self.stored_image = None
-        # 定义一个用于存储ComfyUI临时预览图像的子目录
+        # 定义临时预览图像子目录
         self.temp_subfolder = "zml_image_memory_previews"
         self.temp_output_dir = folder_paths.get_temp_directory()
+        # 本地持久化文件路径
+        self.persistence_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "image_memory_cache.png")
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "关闭输入": ("BOOLEAN", {"default": False}), # 新增布尔开关
+                "关闭输入": ("BOOLEAN", {"default": False}),
+                "保存模式": (["仅内存", "仅本地", "内存+本地"], {"default": "仅内存"}),
             },
             "optional": {
-                "输入图像": ("IMAGE",), # 可选输入
+                "输入图像": ("IMAGE",),
             }
         }
 
@@ -619,20 +689,40 @@ class ZML_ImageMemory:
     FUNCTION = "store_and_retrieve_image"
     CATEGORY = "image/ZML_图像/图像"
 
-    def store_and_retrieve_image(self, 关闭输入, 输入图像=None):
-
+    def store_and_retrieve_image(self, 关闭输入, 保存模式, 输入图像=None):
         image_to_output = None
 
         if 关闭输入:
-            image_to_output = self.stored_image
+            # 关闭输入时，根据保存模式获取图像
+            if 保存模式 == "仅内存":
+                image_to_output = self.stored_image
+            elif 保存模式 == "仅本地":
+                image_to_output = self._load_from_local()
+            else:  # 内存+本地
+                image_to_output = self.stored_image if self.stored_image is not None else self._load_from_local()
         elif 输入图像 is not None:
-            self.stored_image = 输入图像
-            image_to_output = self.stored_image
+            # 有新输入图像时，根据保存模式存储
+            if 保存模式 == "仅内存":
+                self.stored_image = 输入图像
+                image_to_output = 输入图像
+            elif 保存模式 == "仅本地":
+                self._save_to_local(输入图像)
+                image_to_output = 输入图像
+            else:  # 内存+本地
+                self.stored_image = 输入图像
+                self._save_to_local(输入图像)
+                image_to_output = 输入图像
         else:
-            image_to_output = self.stored_image
+            # 无新输入图像时，根据保存模式获取
+            if 保存模式 == "仅内存":
+                image_to_output = self.stored_image
+            elif 保存模式 == "仅本地":
+                image_to_output = self._load_from_local()
+            else:  # 内存+本地
+                image_to_output = self.stored_image if self.stored_image is not None else self._load_from_local()
 
         if image_to_output is None:
-            default_size = 1 # 默认尺寸改为 1x1
+            default_size = 1
             image_to_output = torch.zeros((1, default_size, default_size, 3), dtype=torch.float32, device="cpu")
 
         # ====== 处理UI预览图像 ======
@@ -660,6 +750,25 @@ class ZML_ImageMemory:
 
         # 返回结果：(图像,), 同时返回UI信息
         return {"ui": {"images": ui_image_data}, "result": (image_to_output,)}
+
+    def _save_to_local(self, image_tensor):
+        """将图像张量保存到本地文件"""
+        try:
+            pil_image = Image.fromarray((image_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
+            pil_image.save(self.persistence_file, "PNG")
+        except Exception as e:
+            print(f"保存图像到本地失败: {e}")
+
+    def _load_from_local(self):
+        """从本地文件加载图像张量"""
+        if os.path.exists(self.persistence_file):
+            try:
+                pil_image = Image.open(self.persistence_file).convert('RGB')
+                image_np = np.array(pil_image).astype(np.float32) / 255.0
+                return torch.from_numpy(image_np).unsqueeze(0)
+            except Exception as e:
+                print(f"从本地加载图像失败: {e}")
+        return None
 
 # ============================== 遮罩分离-2 节点 ==============================
 class ZML_MaskSeparateDistance:
@@ -908,6 +1017,7 @@ class ZML_UnifyImageResolution:
         return {
             "required": {
                 "图像": ("IMAGE",),
+                "分辨率": (["根据首张图像", "根据最大图像", "根据最小图像", "自定义"], {"default": "根据首张图像"}),
                 "宽度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
                 "高度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
                 "处理模式": (["拉伸", "中心裁剪", "填充黑", "填充白"],),
@@ -927,12 +1037,19 @@ class ZML_UnifyImageResolution:
 
     def tensor_to_pil(self, tensor):
         # 确保转换为RGBA以正确处理透明度（尤其是填充模式）
-        img_np = np.clip(255. * tensor.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
+        # 如果是批次维度，只取第一张进行转换，因为通常输入是 (B, H, W, C)
+        # Squeeze dim 0 if it exists and is 1
+        img_np = np.clip(255. * tensor.cpu().numpy().squeeze(0), 0, 255).astype(np.uint8)
+        
+        # 针对单通道图像 (如灰度图或遮罩) 转换为3通道，以适应RGBA转换
+        if img_np.ndim == 2:
+            img_np = np.stack([img_np, img_np, img_np], axis=-1)
+
         if img_np.ndim == 3 and img_np.shape[-1] == 4:
             return Image.fromarray(img_np, 'RGBA')
         elif img_np.ndim == 3 and img_np.shape[-1] == 3:
             return Image.fromarray(img_np, 'RGB').convert('RGBA')
-        else: # Handle grayscale or single-channel, convert to RGBA
+        else: # Handle unexpected, try to convert to RGBA
             return Image.fromarray(img_np).convert('RGBA')
 
     def pil_to_tensor(self, pil_image):
@@ -941,54 +1058,108 @@ class ZML_UnifyImageResolution:
     # 辅助函数：根据处理模式获取默认填充颜色
     def _get_default_fill_color(self, 处理模式):
         if 处理模式 == "填充黑":
-            return (0, 0, 0, 255)
+            return (0, 0, 0, 255) # 黑色透明度255
         elif 处理模式 == "填充白":
-            return (255, 255, 255, 255)
+            return (255, 255, 255, 255) # 白色透明度255
         else: # 对于拉伸和中心裁剪，实际上不会用到填充色，但为了RGBA统一返回透明
-            return (0, 0, 0, 0) # Transparent
+            return (0, 0, 0, 0) # 完全透明
 
-    def unify_resolution(self, 图像, 宽度, 高度, 处理模式, 图像_2=None, 图像_3=None, 图像_4=None, 图像_5=None):
+    def unify_resolution(self, 图像, 分辨率, 宽度, 高度, 处理模式, 图像_2=None, 图像_3=None, 图像_4=None, 图像_5=None):
         all_input_images_batches = [图像, 图像_2, 图像_3, 图像_4, 图像_5]
 
         # 过滤掉None的输入图像批次，并展平为一个列表，包含所有批次中的所有图像张量
-        all_individual_images = []
+        all_individual_images_tensors = []
         for batch_tensor in all_input_images_batches:
             if batch_tensor is not None:
+                # 遍历批次中的每个单张图像
                 for img_t in batch_tensor:
-                    all_individual_images.append(img_t.unsqueeze(0)) # 重新添加批次维度以便tensor_to_pil处理
+                    # 确保每张图像都有一个批次维度 (1, H, W, C)
+                    all_individual_images_tensors.append(img_t.unsqueeze(0))
 
-        # 如果所有输入图像都为空，特殊处理
-        if not all_individual_images:
-            default_fill_color = self._get_default_fill_color(处理模式)
-            new_image = Image.new("RGBA", (宽度, 高度), default_fill_color)
-            return (self.pil_to_tensor(new_image), 宽度, 高度)
+        # 初始化目标分辨率
+        target_width = 宽度 # 默认使用节点输入的宽度
+        target_height = 高度 # 默认使用节点输入的高度
 
+        if 分辨率 == "自定义":
+            # 如果是自定义模式，直接使用节点中输入的宽度和高度
+            target_width = 宽度
+            target_height = 高度
+        else:
+            # 根据所有传入的图像来计算目标分辨率
+            if all_individual_images_tensors:
+                first_image_dims = None
+                max_w, max_h = 0, 0
+                min_w, min_h = float('inf'), float('inf')
+
+                # 遍历所有实际传入的图像，获取它们的尺寸信息
+                for img_tensor_item in all_individual_images_tensors:
+                    # tensor_to_pil 期望 (1, H, W, C)，所以我们传递单个图像张量
+                    pil_img = self.tensor_to_pil(img_tensor_item) 
+                    current_w, current_h = pil_img.size
+
+                    if first_image_dims is None:
+                        first_image_dims = (current_w, current_h)
+                    
+                    max_w = max(max_w, current_w)
+                    max_h = max(max_h, current_h)
+                    min_w = min(min_w, current_w)
+                    min_h = min(min_h, current_h)
+                
+                # 根据“分辨率”选项设置最终目标分辨率
+                if 分辨率 == "根据首张图像" and first_image_dims:
+                    target_width, target_height = first_image_dims
+                elif 分辨率 == "根据最大图像":
+                    target_width, target_height = max_w, max_h
+                elif 分辨率 == "根据最小图像":
+                    target_width, target_height = min_w, min_h
+                # 如果没有实际图像，或者选了根据图片但图片尺寸无效，则回到默认的宽度和高度
+                else: 
+                     if not first_image_dims or (target_width <= 0 or target_height <= 0):
+                        logging.warning("ZML_UnifyImageResolution: No valid input images or chosen resolution source has zero dimensions. Falling back to custom width/height.")
+                        target_width = 宽度
+                        target_height = 高度
+            else:
+                # 如果没有任何图像输入，也使用节点中输入的宽度和高度
+                logging.warning("ZML_UnifyImageResolution: No input images provided. Falling back to custom width/height.")
+                target_width = 宽度
+                target_height = 高度
+
+        # 确保目标宽度和高度有效
+        target_width = max(1, target_width)
+        target_height = max(1, target_height)
 
         processed_images = []
-        fill_color_rgba = self._get_default_fill_color(处理模式) # 获取当前处理模式的默认填充色
+        # 获取当前处理模式的默认填充色
+        fill_color_rgba = self._get_default_fill_color(处理模式) 
 
-        for img_tensor_batch_item in all_individual_images: # 遍历所有单独的图像张量
+        # 如果没有有效的输入图像，返回一个指定分辨率的纯色图像
+        if not all_individual_images_tensors:
+            new_image = Image.new("RGBA", (target_width, target_height), fill_color_rgba)
+            final_output_batch = self.pil_to_tensor(new_image)
+            return (final_output_batch, target_width, target_height)
+
+        for img_tensor_batch_item in all_individual_images_tensors: # 遍历所有单独的图像张量
             pil_image = self.tensor_to_pil(img_tensor_batch_item).convert("RGBA")
             original_width, original_height = pil_image.size
 
             if original_width == 0 or original_height == 0:
                 # 处理空图像情况，直接生成目标尺寸填充颜色的图像
-                new_image = Image.new("RGBA", (宽度, 高度), fill_color_rgba)
+                new_image = Image.new("RGBA", (target_width, target_height), fill_color_rgba)
                 processed_images.append(self.pil_to_tensor(new_image))
                 continue
 
-            target_aspect = float(宽度) / 高度
+            target_aspect = float(target_width) / target_height
             image_aspect = float(original_width) / original_height
 
             if 处理模式 == "拉伸":
-                new_pil_image = pil_image.resize((宽度, 高度), resample=Image.Resampling.LANCZOS)
+                new_pil_image = pil_image.resize((target_width, target_height), resample=Image.Resampling.LANCZOS)
             elif 处理模式 == "中心裁剪":
                 # 计算缩放后的尺寸，使图像能够完全覆盖目标区域
                 if image_aspect > target_aspect:  # 图像宽于目标比例，以高度为基准缩放
-                    resize_height = 高度
+                    resize_height = target_height
                     resize_width = int(resize_height * image_aspect)
                 else:  # 图像高于目标比例，以宽度为基准缩放
-                    resize_width = 宽度
+                    resize_width = target_width
                     resize_height = int(resize_width / image_aspect)
 
                 # 确保尺寸至少为1
@@ -998,20 +1169,20 @@ class ZML_UnifyImageResolution:
                 resized_image = pil_image.resize((resize_width, resize_height), resample=Image.Resampling.LANCZOS)
 
                 # 计算裁剪区域
-                cropped_left = (resize_width - 宽度) / 2
-                cropped_top = (resize_height - 高度) / 2
-                cropped_right = (resize_width + 宽度) / 2
-                cropped_bottom = (resize_height + 高度) / 2
+                cropped_left = (resize_width - target_width) / 2
+                cropped_top = (resize_height - target_height) / 2
+                cropped_right = (resize_width + target_width) / 2
+                cropped_bottom = (resize_height + target_height) / 2
                 new_pil_image = resized_image.crop((int(cropped_left), int(cropped_top), int(cropped_right), int(cropped_bottom)))
 
             elif 处理模式 in ["填充黑", "填充白"]: # 填充模式
                 # 计算缩放后的尺寸，使图像能够完全适应目标区域
                 if image_aspect > target_aspect:  # 图像宽于目标比例，以宽度为基准缩放
-                    scaled_width = 宽度
-                    scaled_height = int(宽度 / image_aspect)
+                    scaled_width = target_width
+                    scaled_height = int(target_width / image_aspect)
                 else:  # 图像高于目标比例，以高度为基准缩放
-                    scaled_height = 高度
-                    scaled_width = int(高度 * image_aspect)
+                    scaled_height = target_height
+                    scaled_width = int(target_height * image_aspect)
 
                 # 确保尺寸至少为1
                 scaled_width = max(1, scaled_width)
@@ -1020,25 +1191,22 @@ class ZML_UnifyImageResolution:
                 resized_image = pil_image.resize((scaled_width, scaled_height), resample=Image.Resampling.LANCZOS)
 
                 # 创建新背景图像
-                new_pil_image = Image.new("RGBA", (宽度, 高度), fill_color_rgba)
+                new_pil_image = Image.new("RGBA", (target_width, target_height), fill_color_rgba)
 
                 # 计算粘贴位置 (居中)
-                paste_x = (宽度 - scaled_width) // 2
-                paste_y = (高度 - scaled_height) // 2
+                paste_x = (target_width - scaled_width) // 2
+                paste_y = (target_height - scaled_height) // 2
 
                 new_pil_image.paste(resized_image, (paste_x, paste_y), resized_image)
-            # else: # 确保所有模式都有处理，避免意外情况，这里可以省略，因为所有模式都已在上面处理
-            #     new_pil_image = pil_image.resize((宽度, 高度), resample=Image.Resampling.LANCZOS)
 
             processed_images.append(self.pil_to_tensor(new_pil_image))
 
         # 将所有处理过的单个图像张量合并成一个批次
         final_output_batch = torch.cat(processed_images, dim=0)
 
-        return (final_output_batch, 宽度, 高度) # 返回处理后的图像和输出宽高
+        return (final_output_batch, target_width, target_height) # 返回处理后的图像和输出宽高
 
-
-# ============================== 限制遮罩形状节点 (最终精确边界检测版) ==============================
+# ============================== 限制遮罩形状节点 ==============================
 class ZML_LimitMaskShape:
     @classmethod
     def INPUT_TYPES(cls):
@@ -1352,6 +1520,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_UnifyImageResolution": ZML_UnifyImageResolution,
     "ZML_LimitMaskShape": ZML_LimitMaskShape,
     "ZML_LimitImageAspect": ZML_LimitImageAspect,
+    "ZML_MaskCropNode": ZML_MaskCropNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1369,4 +1538,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_UnifyImageResolution": "ZML_统一图像分辨率",
     "ZML_LimitMaskShape": "ZML_限制遮罩形状",
     "ZML_LimitImageAspect": "ZML_限制图像比例",
+    "ZML_MaskCropNode": "ZML_遮罩裁剪",
 }

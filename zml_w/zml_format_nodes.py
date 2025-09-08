@@ -636,13 +636,13 @@ class ZML_TextLine:
         return (output_line, self.help_text)
 
 # ============================== 随机权重文本行节点==============================
-class ZML_RandomWeightedTextLine:
-    """ZML 随机权重文本行节点 (支持从文本框或文件读取)"""
+class ZML_RandomTextWeight:
+    """ZML 随机文本权重节点 (支持从文本框或文件读取)"""
     
     def __init__(self):
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.txt_dir = os.path.join(self.base_dir, "txt")
-        self.help_text = "你好~欢迎使用ZML节点~\n此节点会自动读取'zml_w/txt'文件夹下的txt文件。从下拉菜单中选择一个文件，节点将从中随机选取指定数量的行，并为每行赋予一个在你设定的最小值和最大值之间（包含边界）的随机权重。你还可以设置权重的的小数位数。如果每行都的结尾都带逗号，节点会自动删除来确保权重格式正确。节点自带1000画师的txt文件，你也可以自己加入其它的txt文件。\n不读取txt文件的情况下会加载文本框里的tag，并对tag随机添加权重！\n好啦~祝你玩得开心！"
+        self.help_text = "你好~欢迎使用ZML节点~\n此节点会自动读取'zml_w/txt'文件夹下的txt文件。从下拉菜单中选择一个文件，节点将从中随机选取指定数量的行或标签，并为每行/标签赋予一个在你设定的最小值和最大值之间（包含边界）的随机权重。你还可以设置权重的的小数位数。如果每行都的结尾都带逗号，节点会自动删除来确保权重格式正确。节点自带1000画师的txt文件，你也可以自己加入其它的txt文件。\n不读取txt文件的情况下会加载文本框里的tag，并对tag随机添加权重！\n好啦~祝你玩得开心！"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -654,7 +654,7 @@ class ZML_RandomWeightedTextLine:
             # 排除 Preset text 目录，或者只列出顶级txt文件
             files = [f for f in os.listdir(txt_dir) if f.startswith('Preset text') == False and f.endswith(".txt") and os.path.isfile(os.path.join(txt_dir, f))]
         except Exception as e:
-            print(f"ZML_RandomWeightedTextLine [错误]: 扫描目录时出错 {txt_dir}: {e}")
+            print(f"ZML_RandomTextWeight [错误]: 扫描目录时出错 {txt_dir}: {e}")
             files = []
         
         # 将'禁用'选项放在列表最前面，作为模式开关
@@ -666,6 +666,7 @@ class ZML_RandomWeightedTextLine:
         return {
             "required": {
                 "文件": (file_list, ),
+                "随机模式": (["按行随机", "按标签随机"], {"default": "按行随机"}), # 新增随机模式
                 "小数位数": (["两位", "一位"], {"default": "两位"}),
                 "随机个数": ("INT", {"default": 1, "min": 1, "step": 1}), # 默认改为1
                 "最小权重": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 3.0, "step": 0.01}),
@@ -690,7 +691,7 @@ class ZML_RandomWeightedTextLine:
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
 
-    def generate_weighted_lines(self, 文件, 小数位数, 随机个数, 最小权重, 最大权重, 格式化标点符号, 文本=None):
+    def generate_weighted_lines(self, 文件, 随机模式, 小数位数, 随机个数, 最小权重, 最大权重, 格式化标点符号, 文本=None):
         # 确保最小权重不大于最大权重
         min_w = min(最小权重, 最大权重)
         max_w = max(最小权重, 最大权重)
@@ -698,7 +699,7 @@ class ZML_RandomWeightedTextLine:
         # 根据选项确定小数精度
         precision = 2 if 小数位数 == "两位" else 1
 
-        all_input_lines = [] # 存储所有可能的候选项，无论是来自文件还是文本框
+        all_candidates = [] # 存储所有可能的候选项，无论是来自文件还是文本框，根据随机模式进行处理
 
         # 模式判断：是使用文本框还是文件
         if 文件 == "禁用 (使用文本框)":
@@ -706,11 +707,14 @@ class ZML_RandomWeightedTextLine:
             if not 文本 or not 文本.strip(): # 仅判断是否为空白字符串
                 return ("", self.help_text)
 
-            # 修改：按换行符分割，但不对每行做strip()，以便保留每行的前后空白和内部换行
-            # 过滤掉完全为空白内容的行
-            all_input_lines = [line for line in 文本.splitlines() if line.strip()]
+            if 随机模式 == "按行随机":
+                # 按换行符分割，过滤掉完全为空白内容的行
+                all_candidates = [line for line in 文本.splitlines() if line.strip()]
+            elif 随机模式 == "按标签随机":
+                # 按逗号分割，过滤掉完全为空白内容的标签
+                all_candidates = [tag.strip() for tag in 文本.split(',') if tag.strip()]
             
-            if not all_input_lines:
+            if not all_candidates:
                 return ("", self.help_text)
 
         else:
@@ -722,25 +726,30 @@ class ZML_RandomWeightedTextLine:
             
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    # 修改：读取文件时只移除右侧换行符，并移除行末逗号，保留行内以及左侧空白
-                    all_input_lines = [line.rstrip('\n').rstrip(',，').strip() for line in f.readlines() if line.strip()]
+                    raw_content = f.read()
+                    if 随机模式 == "按行随机":
+                        # 读取文件时只移除右侧换行符，并移除行末逗号，保留行内以及左侧空白
+                        all_candidates = [line.rstrip('\n').rstrip(',，').strip() for line in raw_content.splitlines() if line.strip()]
+                    elif 随机模式 == "按标签随机":
+                        # 读取文件时，将所有内容视为一个大字符串，然后按逗号分割
+                        all_candidates = [tag.strip() for tag in raw_content.replace('\n', ',').split(',') if tag.strip()]
             except FileNotFoundError:
                 return (f"错误: 文件 '{文件}' 未在目录 '{self.txt_dir}' 中找到。", self.help_text)
             except Exception as e:
                 return (f"错误: 读取文件 '{文件}' 时发生错误: {e}", self.help_text)
 
-            if not all_input_lines:
+            if not all_candidates:
                 return ("", self.help_text)
 
-        # 从所有候选项中随机选择指定数量的行
-        count_to_select = min(随机个数, len(all_input_lines))
+        # 从所有候选项中随机选择指定数量的行/标签
+        count_to_select = min(随机个数, len(all_candidates))
         # 使用 random.sample 进行不重复抽取
-        selected_raw_lines = random.sample(all_input_lines, count_to_select)
+        selected_raw_items = random.sample(all_candidates, count_to_select)
         
         weighted_output = []
-        for line_content in selected_raw_lines:
-            # 对每一选中的行内容进行格式化和权重添加
-            processed_content = line_content
+        for item_content in selected_raw_items:
+            # 对每一选中的内容进行格式化和权重添加
+            processed_content = item_content
             if 格式化标点符号:
                 processed_content = format_punctuation_global(processed_content)
             
@@ -807,6 +816,51 @@ class ZML_MultiTextInput5:
             combined = format_punctuation_global(combined)
         
         return (combined,)
+
+# ============================== 多文本输入_五V2 节点 ==============================
+class ZML_MultiTextInput5V2:
+    """ZML 多文本输入_五V2 节点：提供五个单行文本输入和五个独立文本输出。"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "文本1_输入": ("STRING", {
+                    "multiline": False, # 单行输入
+                    "default": "",
+                    "placeholder": "输入文本 1"
+                }),
+                "文本2_输入": ("STRING", {
+                    "multiline": False, # 单行输入
+                    "default": "",
+                    "placeholder": "输入文本 2"
+                }),
+                "文本3_输入": ("STRING", {
+                    "multiline": False, # 单行输入
+                    "default": "",
+                    "placeholder": "输入文本 3"
+                }),
+                "文本4_输入": ("STRING", {
+                    "multiline": False, # 单行输入
+                    "default": "",
+                    "placeholder": "输入文本 4"
+                }),
+                "文本5_输入": ("STRING", {
+                    "multiline": False, # 单行输入
+                    "default": "",
+                    "placeholder": "输入文本 5"
+                }),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING",)
+    RETURN_NAMES = ("文本1", "文本2", "文本3", "文本4", "文本5",)
+    FUNCTION = "passthrough_texts"
+
+    def passthrough_texts(self, 文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入):
+        """简单地将五个输入文本作为五个独立输出返回。"""
+        return (文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入,)
 
 # ============================== 多文本输入节点（三个输入框）==============================
 class ZML_MultiTextInput3:
@@ -1009,18 +1063,69 @@ class ZML_SelectTextV3:
         
         return (output_text,)
 
+# ============================== 文本分离节点 ==============================
+class ZML_SplitText:
+    """ZML 文本分离节点：根据指定字符或字符串将文本分割成两部分。"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "分隔符_字符": ("STRING", {
+                    "multiline": False, # 单行输入
+                    "default": ",",
+                    "placeholder": "输入用于分割文本的字符或字符串"
+                }),
+            },
+            "optional": {
+                "文本_输入": ("STRING", {
+                    "forceInput": True, 
+                    "default": "",
+                }),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("文本_前缀", "文本_后缀")
+    FUNCTION = "split_text_by_char"
+
+    def split_text_by_char(self, 分隔符_字符, 文本_输入=""): 
+        """根据分隔符_字符将文本_输入分割成两部分。"""
+        
+        # 如果文本_输入为空或纯空白，直接返回空字符串
+        if not 文本_输入.strip():
+            return ("", "")
+
+        # 如果分隔符为空，则不进行分割，将整个文本作为前缀输出，后缀为空
+        if not 分隔符_字符:
+            return (文本_输入, "")
+
+        # 使用 str.partition 方法进行分割，它会在找到第一个分隔符时停止
+        # 返回一个元组 (前缀, 分隔符, 后缀)
+        before_separator, found_separator, after_separator = 文本_输入.partition(分隔符_字符)
+
+        # 如果分隔符未找到，partition会将整个字符串放在before_separator，后两者为空
+        if not found_separator:
+            return (文本_输入, "") # 或者 (文本_输入, "") 根据实际需求，这里是返回整个文本作为前缀，后缀为空
+
+        # 不再进行标点符号格式化，直接返回分割后的文本
+        return (before_separator, after_separator,)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
     "ZML_TextFilter": ZML_TextFilter,
     "ZML_DeleteText": ZML_DeleteText,
     "ZML_TextLine": ZML_TextLine,
-    "ZML_RandomWeightedTextLine": ZML_RandomWeightedTextLine,
+    "ZML_RandomTextWeight": ZML_RandomTextWeight,
     "ZML_MultiTextInput5": ZML_MultiTextInput5,
+    "ZML_MultiTextInput5V2": ZML_MultiTextInput5V2,
     "ZML_MultiTextInput3": ZML_MultiTextInput3,
     "ZML_SelectText": ZML_SelectText,
     "ZML_SelectTextV2": ZML_SelectTextV2,
     "ZML_SelectTextV3": ZML_SelectTextV3,
+    "ZML_SplitText": ZML_SplitText,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1028,10 +1133,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFilter": "ZML_筛选提示词",
     "ZML_DeleteText": "ZML_删除文本",
     "ZML_TextLine": "ZML_文本行",
-    "ZML_RandomWeightedTextLine": "ZML_随机权重文本行",
+    "ZML_RandomTextWeight": "ZML_随机文本权重",
     "ZML_MultiTextInput5": "ZML_多文本输入_五",
+    "ZML_MultiTextInput5V2": "ZML_多文本输入_五V2",
     "ZML_MultiTextInput3": "ZML_多文本输入_三",
     "ZML_SelectText": "ZML_选择文本",
     "ZML_SelectTextV2": "ZML_选择文本V2",
     "ZML_SelectTextV3": "ZML_选择文本V3",
+    "ZML_SplitText": "ZML_文本分离",
 }

@@ -703,13 +703,14 @@ class ZML_LoadImage:
                 "图像": (sorted(files), {"image_upload": True}),
                 "正规化": (["禁用", "仅名称", "正规", "反向"], {"default": "正规"}),
                 "读取文本块": (["启用", "禁用"], {"default": "禁用"}),
+                "输出透明": (["启用", "禁用"], {"default": "启用"}),
             }
         }
     
     CATEGORY = "image/ZML_图像/图像"
     
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT")
-    RETURN_NAMES = ("图像", "文本块", "Name", "宽", "高")
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING",)
+    RETURN_NAMES = ("图像", "文本块", "Name",)
     FUNCTION = "load_image"
     
     def normalize_name(self, filename, level):
@@ -729,7 +730,7 @@ class ZML_LoadImage:
             parts = base_name.split("#-#")
             return parts[-1].strip() if len(parts) > 0 else base_name
     
-    def load_image(self, 图像, 正规化, 读取文本块):
+    def load_image(self, 图像, 正规化, 读取文本块, 输出透明):
         """
         加载图像的主要函数
         读取PNG文本块内容并支持透明通道
@@ -746,10 +747,9 @@ class ZML_LoadImage:
                         text_content = "未找到文本块内容"
                 
                 img = ImageOps.exif_transpose(img)
-                width, height = img.size
                 
-                # [修改] 检查图像是否包含透明通道，并相应地进行转换
-                if img.mode == 'RGBA' or img.mode == 'LA' or (img.mode == 'P' and 'transparency' in img.info):
+                # 根据“输出透明”选项处理图像模式
+                if 输出透明 == "启用" and (img.mode == 'RGBA' or img.mode == 'LA' or (img.mode == 'P' and 'transparency' in img.info)):
                     image = img.convert('RGBA')  # 转换为RGBA以保留透明通道
                 else:
                     image = img.convert('RGB')   # 转换为RGB（不含透明通道）
@@ -759,21 +759,21 @@ class ZML_LoadImage:
                 
                 normalized_name = self.normalize_name(os.path.basename(image_path), 正规化)
                 
-                return (image_tensor, text_content, normalized_name, int(width), int(height))
+                return (image_tensor, text_content, normalized_name)
         
         except Exception as e:
             # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
             print(f"ZML_LoadImage Error: {e}") 
             error_image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-            return (error_image, "加载失败", "加载失败", 64, 64)
+            return (error_image, "加载失败", "加载失败")
     
     @classmethod
-    def IS_CHANGED(cls, 图像, 正规化="正规", 读取文本块="禁用"):
+    def IS_CHANGED(cls, 图像, 正规化="正规", 读取文本块="禁用", 输出透明="启用"):
         image_path = folder_paths.get_annotated_filepath(图像)
         return float("nan")
     
     @classmethod
-    def VALIDATE_INPUTS(cls, 图像, 正规化="正规", 读取文本块="禁用"):
+    def VALIDATE_INPUTS(cls, 图像, 正规化="正规", 读取文本块="禁用", 输出透明="启用"):
         if not folder_paths.exists_annotated_filepath(图像):
             return "无效图像文件: {}".format(图像)
         return True

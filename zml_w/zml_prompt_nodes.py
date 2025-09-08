@@ -47,7 +47,7 @@ class ZML_PromptUINode:
         }
 
     RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("正向提示词",)
+    RETURN_NAMES = ("提示词",)
     FUNCTION = "get_prompt"
     CATEGORY = "image/ZML_图像/工具"
     
