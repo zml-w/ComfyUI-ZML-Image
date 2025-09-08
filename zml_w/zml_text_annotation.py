@@ -107,9 +107,49 @@ class ZML_AddTextWatermark:
             return max(1, w), max(1, h)
 
     def _prepare_lines(self, text, font, char_spacing, orientation, max_dim=None):
-        # 只保留用户手动换行，不进行自动换行
-        lines = text.split('\n')
-        return lines
+        # 首先按用户手动换行符分割文本
+        manual_lines = text.split('\n')
+        
+        # 当没有最大尺寸限制或不是输入图像模式时，直接返回手动换行的结果
+        if max_dim is None or max_dim <= 0:
+            return manual_lines
+        
+        result_lines = []
+        
+        # 对于每一行手动换行的文本，检查是否需要自动换行
+        for manual_line in manual_lines:
+            if not manual_line.strip():
+                result_lines.append('')
+                continue
+                
+            # 根据书写方向决定如何自动换行
+            if orientation == "横排":
+                current_line = ''
+                current_width = 0
+                
+                for char in manual_line:
+                    char_width = self._get_char_size(char, font)[0]
+                    # 检查添加当前字符是否会超出最大宽度
+                    if current_line and (current_width + char_width + char_spacing > max_dim):
+                        result_lines.append(current_line)
+                        current_line = char
+                        current_width = char_width
+                    else:
+                        if current_line:  # 如果不是行首，添加字符间距
+                            current_width += char_spacing
+                        current_line += char
+                        current_width += char_width
+                
+                if current_line:  # 添加最后一行
+                    result_lines.append(current_line)
+            else:  # 竖排
+                # 对于竖排，我们仍然可以进行适当的行分割，特别是当文本非常长时
+                # 这里采用简单的按字符数分割，确保每行长不会导致显示问题
+                MAX_VERTICAL_CHARS_PER_LINE = 100  # 一个合理的默认值
+                for i in range(0, len(manual_line), MAX_VERTICAL_CHARS_PER_LINE):
+                    result_lines.append(manual_line[i:i+MAX_VERTICAL_CHARS_PER_LINE])
+        
+        return result_lines
 
 
     def _get_text_block_size(self, lines, font, char_spacing, line_spacing, orientation):
@@ -421,9 +461,49 @@ class ZML_TextToImage:
             return max(1, w), max(1, h)
 
     def _prepare_lines(self, text, font, char_spacing, orientation, max_dim=None):
-        # 只保留用户手动换行，不进行自动换行
-        lines = text.split('\n')
-        return lines
+        # 首先按用户手动换行符分割文本
+        manual_lines = text.split('\n')
+        
+        # 当没有最大尺寸限制或不是输入图像模式时，直接返回手动换行的结果
+        if max_dim is None or max_dim <= 0:
+            return manual_lines
+        
+        result_lines = []
+        
+        # 对于每一行手动换行的文本，检查是否需要自动换行
+        for manual_line in manual_lines:
+            if not manual_line.strip():
+                result_lines.append('')
+                continue
+                
+            # 根据书写方向决定如何自动换行
+            if orientation == "横排":
+                current_line = ''
+                current_width = 0
+                
+                for char in manual_line:
+                    char_width = self._get_char_size(char, font)[0]
+                    # 检查添加当前字符是否会超出最大宽度
+                    if current_line and (current_width + char_width + char_spacing > max_dim):
+                        result_lines.append(current_line)
+                        current_line = char
+                        current_width = char_width
+                    else:
+                        if current_line:  # 如果不是行首，添加字符间距
+                            current_width += char_spacing
+                        current_line += char
+                        current_width += char_width
+                
+                if current_line:  # 添加最后一行
+                    result_lines.append(current_line)
+            else:  # 竖排
+                # 对于竖排，我们仍然可以进行适当的行分割，特别是当文本非常长时
+                # 这里采用简单的按字符数分割，确保每行长不会导致显示问题
+                MAX_VERTICAL_CHARS_PER_LINE = 100  # 一个合理的默认值
+                for i in range(0, len(manual_line), MAX_VERTICAL_CHARS_PER_LINE):
+                    result_lines.append(manual_line[i:i+MAX_VERTICAL_CHARS_PER_LINE])
+        
+        return result_lines
 
     def _get_text_block_size(self, lines, font, char_spacing, line_spacing, orientation):
         if not lines:
