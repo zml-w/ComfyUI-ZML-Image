@@ -301,7 +301,7 @@ class ZML_VisualCropImage:
     RETURN_TYPES = ("IMAGE", "IMAGE", "MASK",) # 添加了第二个 IMAGE 类型
     RETURN_NAMES = ("图像", "裁剪掉的图像", "遮罩",) # 添加了对应的名称
     FUNCTION = "crop_visually"
-    CATEGORY = "image/ZML_图像/图像"
+    CATEGORY = "image/ZML_图像/高级图像工具"
 
     def tensor_to_pil(self, t): 
         # 确保转换为RGBA以正确处理透明度
@@ -447,7 +447,7 @@ class ZML_MergeImages:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("图像",)
     FUNCTION = "merge_images"
-    CATEGORY = "image/ZML_图像/图像"
+    CATEGORY = "image/ZML_图像/高级图像工具"
 
     def _tensor_to_pil(self, tensor_slice): 
         # Convert tensor to PIL Image, ensuring it has an alpha channel if needed
@@ -547,7 +547,7 @@ class ZML_ImagePainter:
     RETURN_TYPES = ("IMAGE", "MASK")
     RETURN_NAMES = ("图像", "遮罩")
     FUNCTION = "paint_image"
-    CATEGORY = "image/ZML_图像/图像"
+    CATEGORY = "image/ZML_图像/高级图像工具"
 
     def tensor_to_pil(self, tensor, mode='RGBA'):
         img_np = np.clip(255. * tensor.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
