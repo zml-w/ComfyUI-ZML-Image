@@ -89,11 +89,29 @@ function showVisualEditorModal(node, widgets) {
     }
 }
 
+// 获取当前扩展的基础路径
+function get_extension_base_path() {
+    const scriptUrl = import.meta.url;
+    const parts = scriptUrl.split('/');
+    const extensionsIndex = parts.indexOf('extensions');
+    if (extensionsIndex !== -1 && parts.length > extensionsIndex + 1) {
+        return '/' + parts.slice(extensionsIndex, extensionsIndex + 2).join('/') + '/';
+    }
+    console.error('ZML Visual Cropper: 无法自动推断扩展基础路径');
+    // 尝试从全局变量获取，防止完全失败
+    if (window.zmlExtensionBasePath) {
+        return window.zmlExtensionBasePath;
+    }
+    return '/extensions/ComfyUI-ZML-Image/'; // 最后的回退
+}
+
+const extensionBasePath = get_extension_base_path();
+
 function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node, modal) {
-    const cropperUrl = '/extensions/ComfyUI-ZML-Image/lib/cropper.min.js';
+    const cropperUrl = extensionBasePath + 'lib/cropper.min.js';
     const cropperCss = document.createElement('link');
     cropperCss.rel = 'stylesheet';
-    cropperCss.href = '/extensions/ComfyUI-ZML-Image/lib/cropper.min.css';
+    cropperCss.href = extensionBasePath + 'lib/cropper.min.css';
     document.head.appendChild(cropperCss);
 
     mainContainer.innerHTML = `<img id="zml-cropper-image" src="${imageUrl}" style="display: block; max-width: 100%; max-height: 75vh;">`;
@@ -161,7 +179,7 @@ function setupCropper(mainContainer, controlsContainer, widgets, imageUrl, node,
 }
 
 function setupFabric(mainContainer, controlsContainer, widgets, imageUrl, node, modal) {
-    const fabricUrl = '/extensions/ComfyUI-ZML-Image/lib/fabric.min.js';
+    const fabricUrl = extensionBasePath + 'lib/fabric.min.js';
     mainContainer.innerHTML = `<canvas id="zml-fabric-canvas"></canvas>`;
 
     const cropMode = widgets.mode.value;
@@ -320,7 +338,7 @@ function showMergeModal(node, widget) {
     const opacitySlider = modal.querySelector('#zml-opacity-slider');
     // MODIFICATION END
 
-    loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => {
+    loadScript(extensionBasePath + 'lib/fabric.min.js').then(() => {
         let uiCanvas, uiCanvasScale = 1.0;
         let fabricLayers = [];
         let allLayerParams = [];
@@ -875,7 +893,7 @@ function showPainterModal(node, widget) {
     const tipElement = modal.querySelector('#zml-editor-tip');
 
 
-    loadScript('/extensions/ComfyUI-ZML-Image/lib/fabric.min.js').then(() => {
+    loadScript(extensionBasePath + 'lib/fabric.min.js').then(() => {
         // Initialize canvas
         const canvas = new fabric.Canvas(canvasElement, { stopContextMenu: true });
         let isPanning = false, lastPanPoint = null;
