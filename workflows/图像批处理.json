@@ -1,0 +1,563 @@
+{
+  "id": "c847a0eb-a860-4415-bed9-b5c203892f77",
+  "revision": 0,
+  "last_node_id": 57,
+  "last_link_id": 75,
+  "nodes": [
+    {
+      "id": 48,
+      "type": "PreviewAny",
+      "pos": [
+        4620,
+        1910
+      ],
+      "size": [
+        210,
+        150
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 65
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.51",
+        "Node name for S&R": "PreviewAny",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.0.1"
+        }
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 50,
+      "type": "ZML_SequentialIntegerLoader",
+      "pos": [
+        4620,
+        1750
+      ],
+      "size": [
+        210,
+        126
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "最终数",
+          "type": "INT",
+          "widget": {
+            "name": "最终数"
+          },
+          "link": 75
+        }
+      ],
+      "outputs": [
+        {
+          "name": "整数",
+          "type": "INT",
+          "links": [
+            65,
+            71
+          ]
+        },
+        {
+          "name": "浮点",
+          "type": "FLOAT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_SequentialIntegerLoader"
+      },
+      "widgets_values": [
+        0,
+        3,
+        1
+      ],
+      "shape": 1
+    },
+    {
+      "id": 53,
+      "type": "PreviewAny",
+      "pos": [
+        5130,
+        1810
+      ],
+      "size": [
+        250,
+        210
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.51",
+        "Node name for S&R": "PreviewAny",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.0.1"
+        }
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 52,
+      "type": "ZML_LoadImageFromPath",
+      "pos": [
+        5130,
+        1490
+      ],
+      "size": [
+        250,
+        274
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "文件夹路径",
+          "type": "STRING",
+          "widget": {
+            "name": "文件夹路径"
+          },
+          "link": 70
+        },
+        {
+          "name": "图像索引",
+          "type": "INT",
+          "widget": {
+            "name": "图像索引"
+          },
+          "link": 71
+        }
+      ],
+      "outputs": [
+        {
+          "name": "图像列表",
+          "shape": 6,
+          "type": "IMAGE",
+          "links": [
+            72
+          ]
+        },
+        {
+          "name": "文本块",
+          "type": "STRING",
+          "links": [
+            74
+          ]
+        },
+        {
+          "name": "Name",
+          "type": "STRING",
+          "links": [
+            73
+          ]
+        },
+        {
+          "name": "宽",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "高",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "图像路径",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "图像数量",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_LoadImageFromPath"
+      },
+      "widgets_values": [
+        "",
+        "固定索引",
+        0,
+        "正规",
+        "启用"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 49,
+      "type": "ZML_TextInput",
+      "pos": [
+        4620,
+        1490
+      ],
+      "size": [
+        480,
+        200
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "文本",
+          "type": "STRING",
+          "links": [
+            62,
+            70
+          ]
+        }
+      ],
+      "title": "文件交路径",
+      "properties": {
+        "Node name for S&R": "ZML_TextInput"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "color": "#c09430",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": 1
+    },
+    {
+      "id": 46,
+      "type": "ZML_LoadImageFromPath",
+      "pos": [
+        4850,
+        1750
+      ],
+      "size": [
+        250,
+        274
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "文件夹路径",
+          "type": "STRING",
+          "widget": {
+            "name": "文件夹路径"
+          },
+          "link": 62
+        }
+      ],
+      "outputs": [
+        {
+          "name": "图像列表",
+          "shape": 6,
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "文本块",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "Name",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "宽",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "高",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "图像路径",
+          "shape": 6,
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "图像数量",
+          "type": "INT",
+          "links": [
+            75
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_LoadImageFromPath",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "文件夹路径": true,
+            "图像索引": true
+          },
+          "version": "7.0.1"
+        }
+      },
+      "widgets_values": [
+        "",
+        "固定索引",
+        0,
+        "禁用",
+        "禁用"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 55,
+      "type": "Note",
+      "pos": [
+        4390,
+        1750
+      ],
+      "size": [
+        210,
+        240
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "顺序加载整数节点\n修改任意参数即可刷新节点计数"
+      ],
+      "color": "#c09430",
+      "bgcolor": "rgba(24,24,27,.9)"
+    },
+    {
+      "id": 37,
+      "type": "ZML_SaveImage",
+      "pos": [
+        5590,
+        1500
+      ],
+      "size": [
+        290,
+        342
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "图像",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 72
+        },
+        {
+          "name": "文件名前缀",
+          "type": "STRING",
+          "widget": {
+            "name": "文件名前缀"
+          },
+          "link": 73
+        },
+        {
+          "name": "文本块存储",
+          "type": "STRING",
+          "widget": {
+            "name": "文本块存储"
+          },
+          "link": 74
+        }
+      ],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "Help",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_SaveImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.0.1"
+        }
+      },
+      "widgets_values": [
+        "保存图像",
+        "ZML",
+        "output/分类图像/无数据",
+        "禁用",
+        "禁用",
+        "",
+        "启用",
+        "",
+        "禁用",
+        "禁用",
+        1,
+        "禁用"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 56,
+      "type": "Note",
+      "pos": [
+        5590,
+        1190
+      ],
+      "size": [
+        210,
+        240
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "清除元数据\n缩放图像\n其它操作\n\n都可以在这里修改和添加"
+      ],
+      "color": "#c09430",
+      "bgcolor": "rgba(24,24,27,.9)"
+    },
+    {
+      "id": 57,
+      "type": "Note",
+      "pos": [
+        5120,
+        1170
+      ],
+      "size": [
+        210,
+        240
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "使用方法为：\n\n将comfyui的运行模式改为实时，输入文件夹路径，点击运行\n\n注意顺序加载整数节点下面的索引值，不要跑过头了"
+      ],
+      "color": "#c09430",
+      "bgcolor": "rgba(24,24,27,.9)"
+    }
+  ],
+  "links": [
+    [
+      62,
+      49,
+      0,
+      46,
+      0,
+      "STRING"
+    ],
+    [
+      65,
+      50,
+      0,
+      48,
+      0,
+      "*"
+    ],
+    [
+      70,
+      49,
+      0,
+      52,
+      0,
+      "STRING"
+    ],
+    [
+      71,
+      50,
+      0,
+      52,
+      1,
+      "INT"
+    ],
+    [
+      72,
+      52,
+      0,
+      37,
+      0,
+      "IMAGE"
+    ],
+    [
+      73,
+      52,
+      2,
+      37,
+      1,
+      "STRING"
+    ],
+    [
+      74,
+      52,
+      1,
+      37,
+      2,
+      "STRING"
+    ],
+    [
+      75,
+      46,
+      6,
+      50,
+      0,
+      "INT"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6934334949441439,
+      "offset": [
+        -4525.232911659458,
+        -1164.0243795709898
+      ]
+    },
+    "frontendVersion": "1.25.11",
+    "ue_links": [],
+    "links_added_by_ue": [],
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
