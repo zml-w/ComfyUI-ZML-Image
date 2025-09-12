@@ -1,5 +1,4 @@
 # zml_ps_node.py
-# 版本: 7.0 (优化 ZML_PanoViewer 节点，修复视角拖动控制方向，改进透视控制，添加相机距离调节，增加内外视角切换功能)
 import torch
 import numpy as np
 from PIL import Image
@@ -257,14 +256,202 @@ class ZML_PanoViewer:
         # 直接返回全景图像，不做任何处理
         return (全景图像,)
 
+# --- ZML_ImageColorAdjust 节点 (图像颜色调整) ---
+class ZML_ImageColorAdjust:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE",),
+            },
+            "optional": {
+                "color_data": ("STRING", {"multiline": True, "default": "{}", "widget": "hidden"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("调整后图像",)
+    FUNCTION = "adjust_color"
+    CATEGORY = "image/ZML_图像/高级图像工具"
+
+    def tensor_to_pil(self, tensor):
+        if tensor.dim() == 4:
+            tensor = tensor[0] # 从batch中取出第一张图像
+        return Image.fromarray(np.clip(255. * tensor.cpu().numpy(), 0, 255).astype(np.uint8))
+
+    def pil_to_tensor(self, pil_image):
+        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def adjust_color(self, 图像, color_data="{}"):
+        # 解析颜色调整数据
+        try:
+            data = json.loads(color_data)
+            brightness = data.get('brightness', 0.0) / 100.0  # 前端用的是-100到100范围，这里转为-1到1
+            contrast = data.get('contrast', 0.0) / 100.0
+            saturation = data.get('saturation', 0.0) / 100.0
+            hue = data.get('hue', 0.0)
+            sharpness = data.get('sharpen', 0.0)  # 注意前端用的是sharpen参数名
+            gamma = data.get('gamma', 1.0)
+            exposure = data.get('exposure', 0.0) / 100.0
+            blur = data.get('blur', 0.0)
+            noise = data.get('noise', 0.0) / 100.0
+            vignette = data.get('vignette', 0.0) / 100.0
+            # 调试信息：输出接收到的模糊参数值
+            # print(f"接收到的模糊参数值: {blur}")
+        except Exception as e:
+            # 如果解析失败，使用默认值并输出错误
+            print(f"颜色数据解析错误: {e}")
+            brightness = 0.0
+            contrast = 0.0
+            saturation = 0.0
+            hue = 0.0
+            sharpness = 0.0
+            gamma = 1.0
+            exposure = 0.0
+            blur = 0.0
+            noise = 0.0
+            vignette = 0.0
+        if not cv2:
+            print("错误: OpenCV未安装，无法执行颜色调整。")
+            return (图像,)
+
+        # 将张量转换为PIL图像，再转换为OpenCV格式
+        image_pil = self.tensor_to_pil(图像)
+        # 检查图像是否有透明度通道
+        if image_pil.mode == 'RGBA':
+            # 分离RGB和Alpha通道
+            rgb = image_pil.convert('RGB')
+            alpha = np.array(image_pil.split()[-1])
+            image_cv = cv2.cvtColor(np.array(rgb), cv2.COLOR_RGB2BGR)
+        else:
+            image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
+            alpha = None
+
+        # 亮度调整
+        if brightness != 0:
+            # 创建一个相同大小的图像，填充为亮度增量
+            brightness_scalar = brightness * 255.0
+            image_cv = cv2.add(image_cv, brightness_scalar)
+
+        # 对比度调整
+        if contrast != 0:
+            # 对比度公式: output = input * (1 + contrast) - contrast * 128
+            alpha_contrast = 1.0 + contrast
+            beta_contrast = -contrast * 128.0
+            image_cv = cv2.convertScaleAbs(image_cv, alpha=alpha_contrast, beta=beta_contrast)
+
+        # 转换到HSV色彩空间进行色相和饱和度调整
+        hsv = cv2.cvtColor(image_cv, cv2.COLOR_BGR2HSV).astype(np.float32)
+
+        # 色相调整
+        if hue != 0:
+            # H通道范围是0-180，所以调整量需要取模
+            hsv[:, :, 0] = (hsv[:, :, 0] + hue) % 180
+
+        # 饱和度调整
+        if saturation != 0:
+            # 饱和度调整，1.0 + saturation因子
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * (1.0 + saturation), 0, 255)
+
+        # 转换回BGR色彩空间
+        image_cv = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+        # 伽马调整
+        if gamma != 1.0:
+            # 伽马查找表
+            gamma_table = np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in np.arange(0, 256)]).astype(np.uint8)
+            image_cv = cv2.LUT(image_cv, gamma_table)
+
+        # 锐化调整
+        if sharpness > 0:
+            # 创建锐化核
+            kernel = np.array([[-1, -1, -1],
+                              [-1, 9 + sharpness, -1],
+                              [-1, -1, -1]])
+            # 应用锐化滤波器
+            image_cv = cv2.filter2D(image_cv, -1, kernel)
+        
+        # 曝光调整
+        if exposure != 0:
+            # 曝光调整类似于亮度，但通常范围更大
+            exposure_scalar = exposure * 255.0
+            image_cv = cv2.add(image_cv, exposure_scalar)
+        
+        # 模糊调整
+        if blur > 0:
+            # 前端模糊滑块范围是0-20，我们直接使用这个值来计算模糊程度
+            # 根据前端输入范围(0-20)调整模糊强度
+            # 从前端范围映射到合理的核大小：3-21的奇数
+            # 调整模糊计算方式，确保即使是较小的值也能产生明显效果
+            kernel_size = int(blur * 0.5) * 2 + 1  # 确保是奇数
+            kernel_size = min(max(3, kernel_size), 21)  # 限制在3-21之间
+            # 使用固定的sigma值来增强模糊效果
+            sigma = blur * 0.5  # 根据模糊值计算sigma
+            # 调试信息：输出实际使用的核大小
+            # print(f"使用的模糊核大小: {kernel_size}, sigma: {sigma}")
+            image_cv = cv2.GaussianBlur(image_cv, (kernel_size, kernel_size), sigma)
+        
+        # 噪点调整
+        if noise > 0:
+            # 添加高斯噪声
+            mean = 0
+            std_dev = noise * 255.0
+            noise = np.random.normal(mean, std_dev, image_cv.shape).astype(np.float32)
+            image_cv = np.clip(image_cv + noise, 0, 255).astype(np.uint8)
+        
+        # 暗角调整
+        if vignette != 0:
+            # 创建暗角效果
+            rows, cols = image_cv.shape[:2]
+            # 计算图像中心
+            center_x, center_y = cols // 2, rows // 2
+            # 计算到中心的最大距离
+            max_dist = np.sqrt(center_x**2 + center_y**2)
+            # 创建网格
+            x = np.linspace(0, cols-1, cols)
+            y = np.linspace(0, rows-1, rows)
+            xx, yy = np.meshgrid(x, y)
+            # 计算每个像素到中心的距离
+            dist = np.sqrt((xx - center_x)**2 + (yy - center_y)**2)
+            # 归一化距离
+            dist_norm = dist / max_dist
+            # 创建暗角蒙版（值越大，暗角越强）
+            vignette_mask = 1.0 - vignette * np.power(dist_norm, 2)
+            # 确保蒙版值在0-1之间
+            vignette_mask = np.clip(vignette_mask, 0, 1)
+            # 将蒙版应用到每个通道
+            if len(image_cv.shape) == 3:
+                # 彩色图像
+                for c in range(3):
+                    image_cv[:, :, c] = np.clip(image_cv[:, :, c] * vignette_mask, 0, 255).astype(np.uint8)
+            else:
+                # 灰度图像
+                image_cv = np.clip(image_cv * vignette_mask, 0, 255).astype(np.uint8)
+
+        # 将OpenCV图像转换回PIL Image
+        if image_pil.mode == 'RGBA' and alpha is not None:
+            # 转换回RGB，然后合并Alpha通道
+            rgb_pil = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
+            rgba_pil = Image.new('RGBA', rgb_pil.size)
+            rgba_pil.paste(rgb_pil)
+            rgba_pil.putalpha(Image.fromarray(alpha))
+            adjusted_image = rgba_pil
+        else:
+            adjusted_image = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
+
+        # 转换回张量并返回
+        return (self.pil_to_tensor(adjusted_image),)
+
 # --- 节点映射 ---
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageDeform": ZML_ImageDeform,
     "ZML_CylindricalProjection": ZML_CylindricalProjection,
     "ZML_PanoViewer": ZML_PanoViewer,
+    "ZML_ImageColorAdjust": ZML_ImageColorAdjust,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageDeform": "ZML_图像形变",
     "ZML_CylindricalProjection": "ZML_圆柱投影",
     "ZML_PanoViewer": "ZML_全景图预览",
+    "ZML_ImageColorAdjust": "ZML_可视化调色",
 }

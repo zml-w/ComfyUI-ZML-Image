@@ -666,12 +666,11 @@ class ZML_RandomTextWeight:
         return {
             "required": {
                 "文件": (file_list, ),
-                "随机模式": (["按行随机", "按标签随机"], {"default": "按行随机"}), # 新增随机模式
+                "随机模式": (["按行随机", "按标签随机"], {"default": "按行随机"}),
                 "小数位数": (["两位", "一位"], {"default": "两位"}),
-                "随机个数": ("INT", {"default": 1, "min": 1, "step": 1}), # 默认改为1
+                "随机个数": ("INT", {"default": 1, "min": 1, "step": 1}),
                 "最小权重": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 3.0, "step": 0.01}),
                 "最大权重": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 3.0, "step": 0.01}),
-                "格式化标点符号": ([True, False], {"default": True}),
             },
             "optional": {
                 "文本": ("STRING", {
@@ -691,7 +690,7 @@ class ZML_RandomTextWeight:
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
 
-    def generate_weighted_lines(self, 文件, 随机模式, 小数位数, 随机个数, 最小权重, 最大权重, 格式化标点符号, 文本=None):
+    def generate_weighted_lines(self, 文件, 随机模式, 小数位数, 随机个数, 最小权重, 最大权重, 文本=None):
         # 确保最小权重不大于最大权重
         min_w = min(最小权重, 最大权重)
         max_w = max(最小权重, 最大权重)
@@ -750,8 +749,6 @@ class ZML_RandomTextWeight:
         for item_content in selected_raw_items:
             # 对每一选中的内容进行格式化和权重添加
             processed_content = item_content
-            if 格式化标点符号:
-                processed_content = format_punctuation_global(processed_content)
             
             # 只有当内容非空时才添加权重
             if processed_content.strip():
@@ -854,13 +851,15 @@ class ZML_MultiTextInput5V2:
         }
 
     CATEGORY = "image/ZML_图像/文本"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING",)
-    RETURN_NAMES = ("文本1", "文本2", "文本3", "文本4", "文本5",)
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING",)
+    RETURN_NAMES = ("文本1", "文本2", "文本3", "文本4", "文本5", "合并文本",)
     FUNCTION = "passthrough_texts"
 
     def passthrough_texts(self, 文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入):
-        """简单地将五个输入文本作为五个独立输出返回。"""
-        return (文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入,)
+        """简单地将五个输入文本作为五个独立输出返回，并新增合并文本输出。"""
+        # 合并所有文本，不需要分隔符和格式化标点符号
+        merged_text = 文本1_输入 + 文本2_输入 + 文本3_输入 + 文本4_输入 + 文本5_输入
+        return (文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入, merged_text,)
 
 # ============================== 多文本输入节点（三个输入框）==============================
 class ZML_MultiTextInput3:

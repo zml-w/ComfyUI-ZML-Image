@@ -845,13 +845,13 @@ class ZML_LoadImageFromPath:
         }
     
     # 修改返回类型和名称：新增一个 "图像路径" 输出 和 "图像数量" 输出
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "INT", "INT", "STRING", "INT")
-    RETURN_NAMES = ("图像列表", "文本块", "Name", "宽", "高", "图像路径", "图像数量")
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING", "INT")
+    RETURN_NAMES = ("图像列表", "文本块", "Name", "图像路径", "图像数量")
     FUNCTION = "load_image"
     CATEGORY = "image/ZML_图像/图像"
 
     # 新增 OUTPUT_IS_LIST 属性，声明 "图像列表" 和 "图像路径" 是列表
-    OUTPUT_IS_LIST = (True, False, False, False, False, True, False)
+    OUTPUT_IS_LIST = (True, False, False, True, False)
     
     def _load_single_image_from_path(self, image_path, read_text_block):
         with Image.open(image_path) as img:
@@ -863,7 +863,6 @@ class ZML_LoadImageFromPath:
                     text_content = "未找到文本块内容"
             
             img = ImageOps.exif_transpose(img)
-            width, height = img.size
             
             if img.mode == 'RGBA' or img.mode == 'LA' or (img.mode == 'P' and 'transparency' in img.info):
                 image = img.convert('RGBA')
@@ -873,7 +872,7 @@ class ZML_LoadImageFromPath:
             image_np = np.array(image).astype(np.float32) / 255.0
             image_tensor = torch.from_numpy(image_np)[None,]
             
-            return (image_tensor, text_content, int(width), int(height))
+            return (image_tensor, text_content)
 
     def normalize_name(self, filename, level):
         if not filename: return ""
@@ -939,13 +938,11 @@ class ZML_LoadImageFromPath:
             # 使用一个默认值，以防 first_image_meta 无法初始化 (例如，所有图片都加载失败)
             first_image_text = "N/A"
             first_normalized_name = "N/A"
-            first_width = 0
-            first_height = 0
 
             for filename in self.cached_files:
                 image_path = str(actual_folder_path / filename) # 使用 pathlib 拼接路径
                 try:
-                    (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
+                    (tensor, text) = self._load_single_image_from_path(image_path, 读取文本块)
                     image_tensors.append(tensor)
                     all_image_paths_list.append(image_path) # 添加路径
                     all_text_blocks.append(text) # 添加文本块
@@ -955,8 +952,6 @@ class ZML_LoadImageFromPath:
                     if len(image_tensors) == 1: 
                         first_image_text = text
                         first_normalized_name = self.normalize_name(filename, 正规化)
-                        first_width = width
-                        first_height = height
                 except Exception as e:
                     # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
                     print(f"ZML_LoadImageFromPath: 加载图像失败: {filename}, 错误: {e}")
@@ -964,9 +959,9 @@ class ZML_LoadImageFromPath:
             
             if not image_tensors:
                 # 返回空的图像列表和空的图像路径列表，以及总数量
-                return ([], "加载失败", "文件夹中所有图像均加载失败", 0, 0, [], num_files) 
+                return ([], "加载失败", "文件夹中所有图像均加载失败", [], num_files) 
             
-            return (image_tensors, first_image_text, first_normalized_name, first_width, first_height, all_image_paths_list, num_files)
+            return (image_tensors, first_image_text, first_normalized_name, all_image_paths_list, num_files)
 
         # 处理单图模式 (固定、随机、顺序)
         index = 0
@@ -981,20 +976,20 @@ class ZML_LoadImageFromPath:
         image_path = str(actual_folder_path / selected_filename) # 使用 pathlib 拼接路径
 
         try:
-            (tensor, text, width, height) = self._load_single_image_from_path(image_path, 读取文本块)
+            (tensor, text) = self._load_single_image_from_path(image_path, 读取文本块)
             normalized_name = self.normalize_name(selected_filename, 正规化)
-            return ([tensor], text, normalized_name, width, height, [image_path], num_files) # 将单个路径也包装在列表中
+            return ([tensor], text, normalized_name, [image_path], num_files) # 将单个路径也包装在列表中
         except Exception as e:
             # 这里的 print 语句用于真正的加载错误，建议保留以进行调试
             print(f"ZML_LoadImageFromPath: 加载图片失败: {selected_filename}, 错误: {e}")
-            return ([], "加载失败", f"加载失败: {selected_filename}, {e}", 0, 0, [], num_files) 
+            return ([], "加载失败", f"加载失败: {selected_filename}, {e}", [], num_files) 
     
     @classmethod
     def IS_CHANGED(cls, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
         # 确保每次运行时都更新文件列表，因为文件夹内容可能变化。
         # 依赖于 load_image 内部的缓存机制来避免频繁的磁盘扫描。
-        # 对于 "顺序" 模式，每次执行都会改变内部计数器，因此总是返回 nan 强制执行
-        if 索引模式 == "顺序":
+        # 对于 "顺序" 或 "随机索引" 模式，每次执行都返回 nan 强制执行
+        if 索引模式 == "顺序" or 索引模式 == "随机索引":
             return float("nan")
         # 对于其他模式，只要路径或索引改变，就重新加载
         return (文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块)
@@ -1287,12 +1282,12 @@ class ZML_TagImageLoader:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING",)
-    RETURN_NAMES = ("图像列表", "文本块", "文本块验证",) 
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING",)
+    RETURN_NAMES = ("图像列表", "文本块", "文本块验证", "文件夹路径",) 
     FUNCTION = "load_images_by_tags"
     CATEGORY = "image/ZML_图像/工具"
 
-    OUTPUT_IS_LIST = (True, False, False,)
+    OUTPUT_IS_LIST = (True, False, False, False,)
 
     # --- 🔴 MODIFICATION START: 添加占位符图像创建函数 ---
     def _create_placeholder_image(self, size=1) -> torch.Tensor:
@@ -1305,13 +1300,13 @@ class ZML_TagImageLoader:
         placeholder_image = self._create_placeholder_image()
 
         if not selected_files_json or selected_files_json == "[]":
-            return ([placeholder_image], "", "未选择任何文件。")
+            return ([placeholder_image], "", "未选择任何文件。", "")
 
         try:
             data = json.loads(selected_files_json)
         except json.JSONDecodeError:
             print("ZML_TagImageLoader: JSON解析失败。")
-            return ([placeholder_image], "", "JSON解析失败")
+            return ([placeholder_image], "", "JSON解析失败", "")
         # --- 🔴 MODIFICATION END ---
 
         file_list = []
@@ -1328,7 +1323,7 @@ class ZML_TagImageLoader:
         
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if not file_list:
-            return ([placeholder_image], "", "选择列表为空或格式不正确。")
+            return ([placeholder_image], "", "选择列表为空或格式不正确。", current_custom_base_path)
         # --- 🔴 MODIFICATION END ---
 
         image_tensors = []
@@ -1340,7 +1335,7 @@ class ZML_TagImageLoader:
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if base_dir is None or not base_dir.is_dir():
             print(f"ZML_TagImageLoader: 基准目录无效或不存在: {current_custom_base_path or 'output'}")
-            return ([placeholder_image], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}")
+            return ([placeholder_image], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}", current_custom_base_path)
         # --- 🔴 MODIFICATION END ---
 
         for item in file_list:
@@ -1395,7 +1390,7 @@ class ZML_TagImageLoader:
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if not image_tensors:
             final_validation_output = "\n".join(validation_messages)
-            return ([placeholder_image], "", final_validation_output)
+            return ([placeholder_image], "", final_validation_output, current_custom_base_path)
         # --- 🔴 MODIFICATION END ---
 
         text_separator = "\n\n"
@@ -1404,7 +1399,7 @@ class ZML_TagImageLoader:
         validation_separator = "\n\n" + ("-"*25) + "\n\n"
         final_validation_output = validation_separator.join(validation_messages)
         
-        return (image_tensors, final_text_output, final_validation_output)
+        return (image_tensors, final_text_output, final_validation_output, current_custom_base_path)
 
     @classmethod
     def IS_CHANGED(cls, selected_files_json, **kwargs):

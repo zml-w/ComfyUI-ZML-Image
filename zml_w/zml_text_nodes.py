@@ -13,6 +13,48 @@ import json
 from aiohttp import web # 导入web模块
 import server # 导入server模块
 
+# ============================== 整数字符串互转节点 ==============================
+class ZML_IntegerStringConverter:
+    """
+    ZML 整数字符串互转节点
+    将整数的输入输出为字符串，将字符串的输入输出为整数
+    两个接口都是可选的
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "整数": ("INT", {"forceInput": True}),
+                "字符串": ("STRING", {"forceInput": True})
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/整数"
+    RETURN_TYPES = ("STRING", "INT")
+    RETURN_NAMES = ("字符串", "整数")
+    FUNCTION = "convert"
+    
+    def convert(self, 整数=None, 字符串=None):
+        """将整数转换为字符串，将字符串转换为整数"""
+        # 处理整数转字符串
+        if 整数 is not None:
+            str_result = str(整数)
+        else:
+            str_result = ""
+        
+        # 处理字符串转整数
+        int_result = 0
+        if 字符串 is not None:
+            try:
+                int_result = int(字符串)
+            except ValueError:
+                # 如果无法转换为整数，返回0
+                pass
+        
+        return (str_result, int_result)
+
+
 # ============================== 文本输入节点 ==============================
 
 # 定义 API 前缀
@@ -1192,6 +1234,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_DualIntegerV3": ZML_DualIntegerV3,
     "ZML_PresetResolution": ZML_PresetResolution,
     "ZML_SequentialIntegerLoader": ZML_SequentialIntegerLoader, 
+    "ZML_IntegerStringConverter": ZML_IntegerStringConverter,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1205,4 +1248,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_DualIntegerV3": "ZML_双整数V3（判断）",
     "ZML_PresetResolution": "ZML_预设分辨率",
     "ZML_SequentialIntegerLoader": "ZML_顺序加载整数", 
+    "ZML_IntegerStringConverter": "ZML_整数字符串互转",
 }
