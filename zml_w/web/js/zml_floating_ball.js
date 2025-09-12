@@ -17,6 +17,11 @@ function get_extension_base_path() {
         return "/" + parts.slice(extensionsIndex, extensionsIndex + 2).join('/') + "/";
     }
     console.error("ZML Floating Ball: 无法自动推断扩展基础路径。脚本URL:", scriptUrl);
+    // 尝试从全局变量获取，防止完全失败
+    if (window.zmlExtensionBasePath) {
+        return window.zmlExtensionBasePath;
+    }
+    // 最后的回退方案，尽量避免使用硬编码
     return "/extensions/ComfyUI-ZML-Image/"; // 回退到硬编码，以防万一
 }
 // ===========================================

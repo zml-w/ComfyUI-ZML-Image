@@ -227,6 +227,11 @@ app.registerExtension({
                     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
                     gap: 15px;
                 }
+                
+                /* 中图标模式下的图像容器 */
+                .zml-image-container.medium-icon-mode {
+                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                }
 
                 /* 文件夹/返回按钮样式 */
                 .zml-tag-btn {
@@ -292,6 +297,17 @@ app.registerExtension({
                     object-fit: contain;
                     margin-bottom: 5px;
                     border-radius: 3px;
+                }
+                
+                /* 中图标模式下的图像按钮 */
+                .zml-img-btn.medium-icon-mode {
+                    min-height: 180px;
+                }
+                
+                .zml-img-btn.medium-icon-mode img {
+                    max-width: 100%;
+                    max-height: 150px;
+                    margin-bottom: 0;
                 }
                 .zml-img-btn span {
                     word-break: break-all;
@@ -470,10 +486,21 @@ app.registerExtension({
     },
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name === "ZML_TextBlockLoader") {
-            // ZML_TextBlockLoader code remains unchanged
+            // 为ZML_TextBlockLoader实现与ZML_TagImageLoader相同的UI，但功能不同
             const onNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 onNodeCreated?.apply(this, arguments);
+
+                // SVG 图标常量
+                const pencilIconSVG = `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.56 2.44a4.2 4.2 0 0 0-5.94 0L3.4 10.66a1 1 0 0 0-.29.71L2 17l5.63-.88a1 1 0 0 0 .7-.29l8.22-8.23a4.2 4.2 0 0 0 0-5.94zM7.07 14.5l-2.12.33.33-2.12 6.37-6.36 1.79 1.8-6.37 6.35zM16.15 7l-1.8-1.79 1.1-1.1a2.82 2.82 0 1 1 4 4l-1.1 1.1-1.79-1.8.6-.6z"></path></svg>`;
+                const viewIconSVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`;
+
+                const DISPLAY_MODES = {
+                    TEXT_ONLY: "text_only",
+                    TEXT_HOVER: "text_hover",
+                    THUMBNAIL_ONLY: "thumbnail_only",
+                    MEDIUM_ICON_ONLY: "medium_icon_only",
+                };
 
                 const imageHost = $el("img.zml-image-preview");
                 const showImage = (relativeToEl) => {
@@ -486,104 +513,820 @@ app.registerExtension({
                 };
                 const hideImage = () => { imageHost.remove(); };
 
-                const button = this.addWidget("button", "打开图片浏览器", "open", () => {
-                    const modal = $el("div", {
-                        className: "zml-tag-modal",
+                // 创建图片查看器弹窗的函数
+                const createImageViewerModal = (imageUrl) => {
+                    const modal = $el("div.zml-image-viewer-modal");
+                    const content = $el("div.zml-image-viewer-content");
+                    const img = $el("img.zml-image-viewer-img", { src: imageUrl, alt: "Full Image" });
+                    const closeBtn = $el("button.zml-image-viewer-close-btn", { textContent: "✖" });
+
+                    const closeModal = () => { modal.remove(); };
+                    closeBtn.onclick = closeModal;
+                    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+                    content.append(img, closeBtn);
+                    modal.appendChild(content);
+                    document.body.appendChild(modal);
+                };
+
+                this.addWidget("button", "打开图片浏览器", "open", () => {
+                    const backdrop = $el("div.zml-backdrop");
+
+                    const displayModeSelector = $el("select.zml-display-mode-selector", [
+                        $el("option", { value: DISPLAY_MODES.TEXT_ONLY, textContent: "模式1: 仅名称" }),
+                        $el("option", { value: DISPLAY_MODES.TEXT_HOVER, textContent: "模式2: 名称+悬停预览" }),
+                        $el("option", { value: DISPLAY_MODES.THUMBNAIL_ONLY, textContent: "模式3: 名称+缩略图" }),
+                        $el("option", { value: DISPLAY_MODES.MEDIUM_ICON_ONLY, textContent: "模式4: 中图标" }),
+                    ]);
+
+                    const undoBtn = $el("button.zml-action-btn.zml-undo-btn", { textContent: "撤回" });
+                    const clearBtn = $el("button.zml-action-btn.zml-clear-btn", { textContent: "清空" });
+                    const randomBtn = $el("button.zml-action-btn.zml-random-btn.confirm", { textContent: "随机选择" });
+                    // 在随机选择按钮左侧添加随机个数选择器
+                    const randomCountSelect = $el("select.zml-random-count-select", { style: { minWidth: "80px", padding: "4px 8px", fontSize: "14px" } });
+                    // 创建选项并添加到选择器
+                    const options = [
+                        $el("option", { value: "1", textContent: "1个" }),
+                        $el("option", { value: "2", textContent: "2个" }),
+                        $el("option", { value: "3", textContent: "3个" }),
+                        $el("option", { value: "5", textContent: "5个" }),
+                        $el("option", { value: "10", textContent: "10个" }),
+                        $el("option", { value: "20", textContent: "20个" })
+                    ];
+                    options.forEach(option => randomCountSelect.appendChild(option));
+                    const countEl = $el("div.zml-tag-selected-count");
+
+                    // “记住位置”按钮
+                    const rememberPathBtn = $el("button.zml-action-btn.zml-remember-btn", { textContent: "记住打开位置" });
+
+                    // 预设路径下拉列表
+                    const LS_PRESET_PATHS_KEY = "zml.textBlockLoader.presetPaths";
+                    let presetPaths = [];
+
+                    // 从localStorage加载预设路径，并限制数量为5个
+                    try {
+                        const savedPresets = localStorage.getItem(LS_PRESET_PATHS_KEY);
+                        if (savedPresets) {
+                            presetPaths = JSON.parse(savedPresets);
+                            // 限制预设数量不超过5个
+                            if (presetPaths.length > 5) {
+                                presetPaths = presetPaths.slice(0, 5);
+                                localStorage.setItem(LS_PRESET_PATHS_KEY, JSON.stringify(presetPaths));
+                            }
+                        }
+                    } catch (e) {
+                        console.error("ZML_TextBlockLoader: 无法加载预设路径。", e);
+                    }
+
+                    // 创建下拉列表容器
+                    const presetSelectorContainer = $el("div.zml-preset-selector-container", {
                         style: {
-                            top: "unset", left: "unset", right: "unset", bottom: "unset",
-                            width: "600px", height: "auto", maxWidth: "90vw", maxHeight: "90vh",
-                            margin: "auto", position: "fixed",
-                            transform: "translate(-50%, -50%)",
-                            top: "50%", left: "50%",
-                        },
-                        children: [
-                            $el("div.zml-tag-modal-header", { textContent: "选择图片加载文本块" }),
-                            $el("div", {
+                            position: "relative",
+                            display: "inline-block"
+                        }
+                    });
+
+                    // 创建预设选择按钮
+                    const presetSelectBtn = $el("button.zml-preset-select-btn", {
+                        textContent: "常用预设",
+                        style: {
+                            padding: "3px 10px",
+                            border: "1px solid var(--zml-border-color)",
+                            backgroundColor: "var(--zml-accent-color)",
+                            color: "var(--zml-button-text)",
+                            cursor: "pointer",
+                            borderRadius: "4px 0 0 4px",
+                            height: "24px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            transition: "all 0.2s ease-in-out",
+                            fontSize: "11px"
+                        }
+                    });
+
+                    // 常用预设按钮悬停效果
+                    presetSelectBtn.onmouseover = () => {
+                        presetSelectBtn.style.backgroundColor = "var(--zml-accent-hover)";
+                        presetSelectBtn.style.borderColor = "var(--zml-accent-color)";
+                    };
+                    presetSelectBtn.onmouseout = () => {
+                        presetSelectBtn.style.backgroundColor = "var(--zml-accent-color)";
+                        presetSelectBtn.style.borderColor = "var(--zml-border-color)";
+                    };
+
+                    // 创建下拉内容容器
+                    const dropdownContent = $el("div.zml-preset-dropdown-content", {
+                        style: {
+                            display: "none",
+                            position: "absolute",
+                            backgroundColor: "var(--zml-bg-color, #ffffff)",
+                            minWidth: "180px",
+                            border: "1px solid var(--zml-border-color)",
+                            borderRadius: "4px",
+                            zIndex: 1000,
+                            maxHeight: "200px",
+                            overflowY: "auto",
+                            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
+                            opacity: "1"
+                        }
+                    });
+
+                    // 显示/隐藏下拉菜单
+                    presetSelectBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        dropdownContent.style.display = dropdownContent.style.display === "block" ? "none" : "block";
+                    };
+
+                    // 点击外部关闭下拉菜单
+                    document.addEventListener("click", (e) => {
+                        if (!presetSelectorContainer.contains(e.target)) {
+                            dropdownContent.style.display = "none";
+                        }
+                    });
+
+                    // 创建保存预设按钮
+                    const addPresetBtn = $el("button.zml-add-preset-btn", {
+                        textContent: "保存当前路径到预设",
+                        style: {
+                            width: "calc(100% - 20px)",
+                            padding: "6px 12px",
+                            margin: "6px auto",
+                            border: "1px solid var(--zml-accent-color)",
+                            backgroundColor: "var(--zml-accent-color)",
+                            color: "var(--zml-button-text)",
+                            cursor: "pointer",
+                            textAlign: "center",
+                            borderRadius: "8px",
+                            display: "block",
+                            transition: "all 0.3s ease",
+                            fontWeight: "500",
+                            fontSize: "11px",
+                            boxShadow: "0 2px 5px rgba(0, 0, 0, 0.1)"
+                        }
+                    });
+
+                    // 按钮悬停和点击效果
+                    addPresetBtn.onmouseover = () => {
+                        addPresetBtn.style.backgroundColor = "var(--zml-accent-hover)";
+                        addPresetBtn.style.transform = "translateY(-2px)";
+                        addPresetBtn.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.15)";
+                    };
+                    addPresetBtn.onmouseout = () => {
+                        addPresetBtn.style.backgroundColor = "var(--zml-accent-color)";
+                        addPresetBtn.style.transform = "translateY(0)";
+                        addPresetBtn.style.boxShadow = "0 2px 5px rgba(0, 0, 0, 0.1)";
+                    };
+
+                    addPresetBtn.onclick = () => {
+                        const currentPath = pathInput.value.trim();
+                        if (currentPath) {
+                            const presetName = prompt("请输入预设名称：");
+                            if (presetName && presetName.trim()) {
+                                // 检查是否已存在同名预设
+                                const existingIndex = presetPaths.findIndex(p => p.name === presetName.trim());
+                                if (existingIndex >= 0) {
+                                    if (confirm(`预设名称'${presetName}'已存在，是否覆盖？`)) {
+                                        presetPaths[existingIndex] = { name: presetName.trim(), path: currentPath };
+                                    } else {
+                                        return;
+                                    }
+                                } else {
+                                    presetPaths.push({ name: presetName.trim(), path: currentPath });
+                                }
+
+                                // 保存到localStorage
+                                localStorage.setItem(LS_PRESET_PATHS_KEY, JSON.stringify(presetPaths));
+
+                                // 重新渲染预设列表
+                                renderPresetList();
+                            }
+                        } else {
+                            alert("请先输入有效的路径再创建预设。");
+                        }
+                    };
+
+                    // 渲染预设列表
+                    const renderPresetList = () => {
+                        // 清空现有内容
+                        dropdownContent.innerHTML = "";
+
+                        // 添加新建预设按钮
+                        dropdownContent.appendChild(addPresetBtn);
+
+                        // 如果没有预设，添加提示
+                        if (presetPaths.length === 0) {
+                            const emptyMsg = $el("div.zml-empty-preset-msg", {
+                                textContent: "暂无预设路径",
                                 style: {
-                                    flexGrow: 1, padding: "15px", overflowY: "auto",
-                                    maxHeight: "75vh",
-                                },
-                                children: [
-                                    $el("p", { textContent: "正在加载图片列表..." })
-                                ],
-                            }),
-                            $el("div.zml-tag-modal-footer", {
-                                style: { justifyContent: "flex-end"},
-                                children: [
-                                    $el("button.zml-action-btn", { textContent: "关闭", onclick: () => { backdrop.remove(); modal.remove(); }, style: {backgroundColor: '#5bc0de'} })
-                                ]
-                            })
-                        ]
+                                    padding: "12px",
+                                    textAlign: "center",
+                                    color: "#1890ff"
+                                }
+                            });
+                            dropdownContent.appendChild(emptyMsg);
+                            return;
+                        }
+
+                        // 添加预设项目
+                        presetPaths.forEach((preset, index) => {
+                            const presetItem = $el("div.zml-preset-item", {
+                                style: {
+                                    width: "calc(100% - 20px)",
+                                    padding: "6px 12px",
+                                    cursor: "pointer",
+                                    position: "relative",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    transition: "all 0.3s ease",
+                                    backgroundColor: "var(--zml-accent-color)",
+                                    border: "1px solid var(--zml-accent-color)",
+                                    color: "var(--zml-button-text)",
+                                    borderRadius: "8px",
+                                    margin: "6px auto",
+                                    fontWeight: "500",
+                                    fontSize: "11px",
+                                    boxShadow: "0 2px 5px rgba(0, 0, 0, 0.1)"
+                                }
+                            });
+
+                            // 预设项悬停和点击效果
+                            presetItem.onmouseover = () => {
+                                presetItem.style.backgroundColor = "var(--zml-accent-hover)";
+                                presetItem.style.transform = "translateY(-2px)";
+                                presetItem.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.15)";
+                                presetItem.style.borderColor = "var(--zml-accent-color)";
+                            };
+                            presetItem.onmouseout = () => {
+                                presetItem.style.backgroundColor = "var(--zml-accent-color)";
+                                presetItem.style.transform = "translateY(0)";
+                                presetItem.style.boxShadow = "0 2px 5px rgba(0, 0, 0, 0.1)";
+                                presetItem.style.borderColor = "var(--zml-accent-color)";
+                            };
+
+                            // 预设名称和路径
+                            const presetInfo = $el("div.zml-preset-info", {
+                                style: {
+                                    maxWidth: "150px",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap"
+                                }
+                            });
+
+                            const presetName = $el("div.zml-preset-name", {
+                                textContent: preset.name,
+                                title: preset.name,
+                                style: {
+                                    fontWeight: "bold",
+                                    fontSize: "11px",
+                                    color: "var(--zml-secondary-text)"
+                                }
+                            });
+
+                            const presetPath = $el("div.zml-preset-path", {
+                                textContent: preset.path,
+                                title: preset.path,
+                                style: {
+                                    fontSize: "11px",
+                                    color: "var(--zml-secondary-text)"
+                                }
+                            });
+
+                            presetInfo.append(presetName, presetPath);
+
+                            // 删除按钮
+                            const deleteBtn = $el("button.zml-delete-preset-btn", {
+                                textContent: "×",
+                                style: {
+                                    border: "1px solid var(--zml-danger-color, #ff4d4f)",
+                                    backgroundColor: "transparent",
+                                    color: "var(--zml-danger-color, #ff4d4f)",
+                                    cursor: "pointer",
+                                    fontSize: "14px",
+                                    width: "20px",
+                                    height: "20px",
+                                    padding: "0",
+                                    borderRadius: "50%",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    opacity: "0.7",
+                                    transition: "all 0.2s ease-in-out"
+                                }
+                            });
+
+                            // 删除按钮悬停效果
+                            deleteBtn.onmouseover = () => {
+                                deleteBtn.style.opacity = "1";
+                                deleteBtn.style.backgroundColor = "var(--zml-danger-color, #ff4d4f)";
+                                deleteBtn.style.color = "white";
+                            };
+                            deleteBtn.onmouseout = () => {
+                                deleteBtn.style.opacity = "0.7";
+                                deleteBtn.style.backgroundColor = "transparent";
+                                deleteBtn.style.color = "var(--zml-danger-color, #ff4d4f)";
+                            };
+
+                            deleteBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                if (confirm(`确定要删除预设'${preset.name}'吗？`)) {
+                                    presetPaths.splice(index, 1);
+                                    localStorage.setItem(LS_PRESET_PATHS_KEY, JSON.stringify(presetPaths));
+                                    renderPresetList();
+                                }
+                            };
+
+                            presetItem.append(presetInfo, deleteBtn);
+
+                            // 选择预设时填充到输入框
+                            presetItem.onclick = () => {
+                                pathInput.value = preset.path;
+                                dropdownContent.style.display = "none";
+                                // 添加选择反馈
+                                const originalBg = presetItem.style.backgroundColor;
+                                presetItem.style.backgroundColor = "#e6f7ff";
+                                setTimeout(() => {
+                                    presetItem.style.backgroundColor = originalBg;
+                                }, 300);
+                            };
+
+                            dropdownContent.appendChild(presetItem);
+                        });
+                    };
+
+                    // 初始化预设列表
+                    renderPresetList();
+
+                    // 将下拉内容添加到容器
+                    presetSelectorContainer.append(presetSelectBtn, dropdownContent);
+
+                    const pathInput = $el("input.zml-path-input", { type: "text", placeholder: "自定义图片文件夹路径 (留空使用output)" });
+                    const refreshPathBtn = $el("button.zml-path-refresh-btn", { textContent: "刷新路径" });
+                    const pathInputGroup = $el("div.zml-path-input-group", [
+                        $el("span", { textContent: "路径:", style: {color: 'var(--zml-secondary-text)'} }),
+                        presetSelectorContainer,
+                        pathInput,
+                        refreshPathBtn,
+                    ]);
+
+                    const confirmBtn = $el("button.zml-confirm-btn-main", { textContent: "确认" });
+
+                    const modalHeader = $el("div.zml-tag-modal-header", { textContent: "文本块提取器" });
+
+                    const modal = $el("div.zml-tag-modal", [
+                        modalHeader,
+                        pathInputGroup,
+                        $el("div.zml-tag-modal-breadcrumbs"),
+                        $el("div.zml-tag-modal-content"),
+                        $el("div.zml-tag-modal-footer", [
+                            $el("div.zml-footer-group", [ displayModeSelector, rememberPathBtn, countEl ]),
+                            $el("div.zml-footer-group.center", [ confirmBtn ]),
+                            $el("div.zml-footer-group", [ randomCountSelect, randomBtn, undoBtn, clearBtn ])
+                        ])
+                    ]);
+
+                    // 创建并添加主题切换器
+                    const THEMES = {
+                        blue: { name: '天空蓝', color: '#87ceeb', vars: { '--zml-bg-color': '#2c3e50', '--zml-modal-bg-color': '#34495e', '--zml-secondary-bg-color': '#4a6fa5', '--zml-input-bg-color': '#283747', '--zml-border-color': '#5d7bb2', '--zml-text-color': '#ecf0f1', '--zml-text-color-secondary': '#bdc3c7', '--zml-button-text': '#ffffff' } },
+                        green: { name: '抹茶绿', color: '#90ee90', vars: { '--zml-bg-color': '#2e463c', '--zml-modal-bg-color': '#385449', '--zml-secondary-bg-color': '#4CAF50', '--zml-input-bg-color': '#263a31', '--zml-border-color': '#5a7e6b', '--zml-text-color': '#e8f5e9', '--zml-text-color-secondary': '#c8e6c9', '--zml-button-text': '#ffffff' } },
+                        yellow: { name: '活力黄', color: '#ffd700', vars: { '--zml-bg-color': '#53431b', '--zml-modal-bg-color': '#614d20', '--zml-secondary-bg-color': '#7a622a', '--zml-input-bg-color': '#4a3b16', '--zml-border-color': '#8a723a', '--zml-text-color': '#fffde7', '--zml-text-color-secondary': '#fff9c4', '--zml-button-text': '#000000' } },
+                        black: { name: '深邃黑', color: '#616161', vars: { '--zml-bg-color': '#282c34', '--zml-modal-bg-color': '#313642', '--zml-secondary-bg-color': '#3c4250', '--zml-input-bg-color': '#262a32', '--zml-border-color': '#4a5162', '--zml-text-color': '#e0e2e6', '--zml-text-color-secondary': '#a0a6b3', '--zml-button-text': '#ffffff' } },
+                        pink: { name: '浪漫粉', color: '#ffb6c1', vars: { '--zml-bg-color': '#5d4954', '--zml-modal-bg-color': '#705c68', '--zml-secondary-bg-color': '#846e7a', '--zml-input-bg-color': '#53414c', '--zml-border-color': '#987b87', '--zml-text-color': '#fce4ec', '--zml-text-color-secondary': '#f8bbd0', '--zml-button-text': '#000000' } },
+                    };
+                    const themes = [
+                        { name: 'blue', color: '#87ceeb' },
+                        { name: 'green', color: '#90ee90' },
+                        { name: 'yellow', color: '#ffd700' },
+                        { name: 'black', color: '#616161' },
+                        { name: 'pink', color: '#ffb6c1' },
+                    ];
+                    const themeSwitcher = $el("div.zml-theme-switcher");
+                    const themeButtons = {};
+                    themes.forEach(theme => {
+                        const btn = $el("button.zml-theme-button", {
+                            style: { backgroundColor: theme.color },
+                            dataset: { theme: theme.name },
+                        });
+                        btn.onclick = () => {
+                        const themeKey = btn.dataset.theme;
+                        modal.dataset.theme = themeKey;
+                        localStorage.setItem("zml.textBlockLoader.theme", themeKey);
+                        // 应用主题变量
+                        const selectedTheme = THEMES[themeKey];
+                        if (selectedTheme) {
+                            for (const [key, value] of Object.entries(selectedTheme.vars)) {
+                                modal.style.setProperty(key, value);
+                            }
+                        }
+                        // 更新激活状态
+                        Object.values(themeButtons).forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                    };
+                        themeSwitcher.appendChild(btn);
+                        themeButtons[theme.name] = btn;
                     });
-                    const backdrop = $el("div.zml-backdrop", {
-                        onclick: () => { backdrop.remove(); modal.remove(); }
-                    });
+                    modalHeader.appendChild(themeSwitcher);
+
+                    // 应用保存的主题
+                    const savedTheme = localStorage.getItem("zml.textBlockLoader.theme") || 'blue';
+                    modal.dataset.theme = savedTheme;
+                    // 应用主题变量
+                    const theme = THEMES[savedTheme];
+                    if (theme) {
+                        for (const [key, value] of Object.entries(theme.vars)) {
+                            modal.style.setProperty(key, value);
+                        }
+                    }
+                    if(themeButtons[savedTheme]) {
+                        themeButtons[savedTheme].classList.add('active');
+                    }
+
                     document.body.appendChild(backdrop);
                     document.body.appendChild(modal);
 
-                    const container = modal.querySelector("div:nth-child(2)");
+                    let fileTree = {}, currentPath = [], selectedFiles = [], historyStack = [];
 
-                    api.fetchApi(`${ZML_API_PREFIX}/get_output_images`)
-                        .then(response => response.json())
-                        .then(data => {
-                            container.innerHTML = "";
-                            const header = $el("h4", { textContent: `Output 文件夹中的图片 (路径: ${data.base_path_display}):`});
-                            container.appendChild(header);
+                    let currentDisplayMode = localStorage.getItem("zml.textBlockLoader.displayMode") || DISPLAY_MODES.TEXT_ONLY;
+                    displayModeSelector.value = currentDisplayMode;
+
+                    pathInput.value = localStorage.getItem("zml.textBlockLoader.lastPath") || "";
+
+                    // “记住位置”功能逻辑
+                    const LS_REMEMBER_ENABLED_KEY = "zml.textBlockLoader.rememberPathEnabled";
+                    const LS_LAST_FOLDER_PATH_KEY = "zml.textBlockLoader.lastFolderPath";
+
+                    let rememberPathEnabled = localStorage.getItem(LS_REMEMBER_ENABLED_KEY) !== 'false';
+                    rememberPathBtn.classList.toggle('active', rememberPathEnabled);
+
+                    rememberPathBtn.onclick = () => {
+                        rememberPathEnabled = !rememberPathEnabled;
+                        rememberPathBtn.classList.toggle('active', rememberPathEnabled);
+                        localStorage.setItem(LS_REMEMBER_ENABLED_KEY, rememberPathEnabled);
+                        // 如果关闭该功能，则清除已保存的路径
+                        if (!rememberPathEnabled) {
+                            localStorage.removeItem(LS_LAST_FOLDER_PATH_KEY);
+                        }
+                    };
+
+                    const updateUiState = () => { countEl.textContent = `已选: ${selectedFiles.length}`; undoBtn.disabled = historyStack.length === 0; };
+
+                    // 随机选择当前目录的图像
+                    randomBtn.onclick = () => {
+                        // 计算当前目录
+                        let currentLevel = fileTree;
+                        const tempCurrentPath = [...currentPath];
+
+                        for (const part of tempCurrentPath) {
+                            if (currentLevel && currentLevel[part]) {
+                                currentLevel = currentLevel[part];
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if (currentLevel && currentLevel.files && currentLevel.files.length > 0) {
+                            pushHistory();
+                            // 清空已选文件
+                            selectedFiles.length = 0;
+                            // 根据选择的个数随机选择文件
+                            const count = parseInt(randomCountSelect.value);
+
+                            if (count > 0) {
+                                // 如果选择的个数大于文件总数，则选择所有文件
+                                const filesToSelect = Math.min(count, currentLevel.files.length);
+
+                                // 随机打乱文件数组
+                                const shuffledFiles = [...currentLevel.files].sort(() => Math.random() - 0.5);
+
+                                // 选择前count个文件
+                                for (let i = 0; i < filesToSelect; i++) {
+                                    selectedFiles.push(shuffledFiles[i]);
+                                }
+                            }
+                            renderCurrentLevel();
+                            updateUiState();
+                        } else {
+                            alert("当前目录中没有可选择的图像文件");
+                        }
+                    };
+                    updateUiState();
+
+                    const closeModal = () => {
+                        // 关闭时保存位置
+                        if (rememberPathEnabled) {
+                            localStorage.setItem(LS_LAST_FOLDER_PATH_KEY, JSON.stringify(currentPath));
+                        }
+                        hideImage(); 
+                        backdrop.remove(); 
+                        modal.remove(); 
+                    };
+                    backdrop.onclick = closeModal;
+                    confirmBtn.onclick = () => {
+                        // 对于选中的多个文件，提取文本块并用两个换行符分隔
+                        if (selectedFiles.length > 0) {
+                            // 标记按钮为加载中状态
+                            const originalText = confirmBtn.textContent;
+                            confirmBtn.textContent = "正在提取文本块...";
+                            confirmBtn.disabled = true;
+
+                            // 并行提取所有选中文件的文本块
+                            const textPromises = selectedFiles.map(fileInfo => {
+                                const baseQueryParams = new URLSearchParams({
+                                    filename: fileInfo.filename,
+                                    subfolder: fileInfo.subfolder,
+                                });
+                                const customPath = pathInput.value.trim();
+                                if (customPath) baseQueryParams.append("custom_path", customPath);
+
+                                return api.fetchApi(`${ZML_API_PREFIX}/get_image_text_block?${baseQueryParams.toString()}`)
+                                    .then(res => res.json())
+                                    .then(data => data.text || "")
+                                    .catch(err => {
+                                        console.error(`提取文件 ${fileInfo.filename} 的文本块失败:`, err);
+                                        return `[错误: 无法提取 ${fileInfo.filename} 的文本块]`;
+                                    });
+                            });
+
+                            Promise.all(textPromises).then(textBlocks => {
+                                // 使用两个换行符连接所有文本块
+                                const combinedText = textBlocks.join("\n\n");
+                                // 填充到节点的文本小部件中
+                                this.widgets.find(w => w.name === "text_from_image").value = combinedText;
+                                // 保存最后路径
+                                localStorage.setItem("zml.textBlockLoader.lastPath", pathInput.value);
+                                // 关闭模态框
+                                closeModal();
+                            }).catch(err => {
+                                console.error("提取文本块失败:", err);
+                                alert("提取文本块失败，请重试");
+                                // 恢复按钮状态
+                                confirmBtn.textContent = originalText;
+                                confirmBtn.disabled = false;
+                            });
+                        } else {
+                            // 如果没有选中文件，直接关闭
+                            closeModal();
+                        }
+                    };
+
+                    displayModeSelector.onchange = () => {
+                        currentDisplayMode = displayModeSelector.value;
+                        localStorage.setItem("zml.textBlockLoader.displayMode", currentDisplayMode);
+                        renderCurrentLevel();
+                    };
+
+                    const pushHistory = () => {
+                        historyStack.push(JSON.parse(JSON.stringify(selectedFiles)));
+                        if (historyStack.length > 20) historyStack.shift();
+                        updateUiState();
+                    };
+
+                    undoBtn.onclick = () => {
+                        if (historyStack.length > 0) {
+                            selectedFiles = historyStack.pop();
+                            renderCurrentLevel();
+                            updateUiState();
+                        }
+                    };
+                    clearBtn.onclick = () => {
+                        if (selectedFiles.length > 0) {
+                            pushHistory();
+                            selectedFiles.length = 0;
+                            renderCurrentLevel();
+                            updateUiState();
+                        }
+                    };
+
+                    const fetchAndRenderFiles = async () => {
+                        currentPath = []; fileTree = {};
+                        contentEl.innerHTML = "<p>正在加载图片列表...</p>";
+                        breadcrumbsEl.textContent = "路径: /";
+
+                        const customPath = pathInput.value.trim();
+                        let apiUrl = `${ZML_API_PREFIX}/get_output_images`;
+                        if (customPath) {
+                            apiUrl += `?custom_path=${encodeRFC3986URIComponent(customPath)}`;
+                        }
+
+                        try {
+                            const response = await api.fetchApi(apiUrl);
+                            const data = await response.json();
 
                             if (data.files.length === 0) {
-                                container.innerHTML += "<p>Output 文件夹中没有找到图片。</p>";
+                                contentEl.innerHTML = `<p>在路径 '${customPath || "output"}' 中没有找到图片。</p>`;
                                 return;
                             }
-                            const folderMap = new Map(), itemsSymbol = Symbol("items"), splitBy = /\\|\//;
                             for (const fileInfo of data.files) {
-                                const path = (fileInfo.subfolder ? fileInfo.subfolder.split(splitBy) : []).concat(fileInfo.filename);
-                                let currentLevel = folderMap;
-                                for (let i = 0; i < path.length - 1; i++) {
-                                    if (!currentLevel.has(path[i])) currentLevel.set(path[i], new Map());
-                                    currentLevel = currentLevel.get(path[i]);
+                                const subfolderPath = fileInfo.subfolder || "";
+                                const pathParts = subfolderPath ? subfolderPath.split(/\\|\//) : [];
+                                let currentLevel = fileTree;
+                                for (let i = 0; i < pathParts.length; i++) {
+                                    const part = pathParts[i];
+                                    if (!part) continue;
+                                    if (!currentLevel[part]) { currentLevel[part] = {}; }
+                                    currentLevel = currentLevel[part];
                                 }
-                                if (!currentLevel.has(itemsSymbol)) currentLevel.set(itemsSymbol, []);
-                                currentLevel.get(itemsSymbol).push(fileInfo);
+                                if (!currentLevel.files) currentLevel.files = [];
+                                currentLevel.files.push(fileInfo);
                             }
-                            const insert = (parentEl, map) => {
-                                const files = map.get(itemsSymbol) || [];
-                                for (const fileInfo of files) {
-                                    const fileEl = $el("button.zml-image-browser-file", {textContent: fileInfo.filename, style: {backgroundColor: '#add8e6', borderColor: '#87ceeb', color: '#2a648b'}});
-                                    fileEl.addEventListener("mouseover", () => {
-                                        imageHost.src = `${ZML_API_PREFIX}/view_image?${new URLSearchParams({filename: fileInfo.filename, subfolder: fileInfo.subfolder, t: +new Date()})}`;
-                                        showImage(fileEl);
-                                    });
-                                    fileEl.addEventListener("mouseout", hideImage);
-                                    fileEl.onclick = () => {
-                                        hideImage();
-                                        api.fetchApi(`${ZML_API_PREFIX}/get_image_text_block?${new URLSearchParams({filename: fileInfo.filename, subfolder: fileInfo.subfolder})}`)
-                                            .then(res => res.json()).then(data => {
-                                                this.widgets.find(w => w.name === "text_from_image").value = data.text;
-                                                backdrop.remove(); modal.remove();
-                                            });
-                                    };
-                                    parentEl.appendChild(fileEl);
+
+                            // 加载并验证已保存的位置
+                            if (rememberPathEnabled) {
+                                const savedPathJSON = localStorage.getItem(LS_LAST_FOLDER_PATH_KEY);
+                                if (savedPathJSON) {
+                                    try {
+                                        const savedPath = JSON.parse(savedPathJSON);
+                                        if (Array.isArray(savedPath)) {
+                                            // 验证路径是否在当前文件树中有效
+                                            let tempLevel = fileTree;
+                                            let isPathValid = true;
+                                            for (const part of savedPath) {
+                                                if (tempLevel[part] && typeof tempLevel[part] === 'object') {
+                                                    tempLevel = tempLevel[part];
+                                                } else {
+                                                    isPathValid = false;
+                                                    break;
+                                                }
+                                            }
+                                            // 如果路径有效，则应用它
+                                            if (isPathValid) {
+                                                currentPath = savedPath;
+                                            } else {
+                                                // 如果路径无效，则清除保存的记录
+                                                localStorage.removeItem(LS_LAST_FOLDER_PATH_KEY);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error("解析已保存的文件夹路径失败:", e);
+                                        localStorage.removeItem(LS_LAST_FOLDER_PATH_KEY);
+                                    }
                                 }
-                                for (const [folderName, content] of map.entries()) {
-                                    if (folderName === itemsSymbol) continue;
-                                    const folderEl = $el("div.zml-image-browser-folder", [ $el("span", {textContent: "▶"}), $el("span", {textContent: folderName}) ]);
-                                    parentEl.appendChild(folderEl);
-                                    const contentContainer = $el("div.zml-image-browser-contents");
-                                    insert(contentContainer, content);
-                                    parentEl.appendChild(contentContainer);
-                                    folderEl.addEventListener("click", () => {
-                                        const arrow = folderEl.querySelector("span");
-                                        const isHidden = contentContainer.style.display === "none";
-                                        contentContainer.style.display = isHidden ? "block" : "none";
-                                        arrow.textContent = isHidden ? "▼" : "▶";
-                                    });
-                                }
-                            };
-                            insert(container, folderMap);
-                        }).catch(e => {
-                            container.innerHTML = `<p style="color:red;">加载图片列表失败: ${e.message}</p>`;
-                            console.error("Failed to load output images for ZML_TextBlockLoader:", e);
+                            }
+
+                            renderCurrentLevel();
+                        } catch (error) {
+                            contentEl.innerHTML = `<p style="color:red;">加载失败: ${error.message}</p>`;
+                            console.error("Failed to load images from API:", error);
+                        }
+                    };
+
+                    const handlePathRefresh = () => {
+                        if (selectedFiles.length > 0) {
+                            pushHistory(); 
+                            selectedFiles.length = 0;
+                            updateUiState();
+                        }
+                        fetchAndRenderFiles();
+                    };
+
+                    const renderCurrentLevel = () => {
+                        contentEl.innerHTML = "";
+                        const folderContainer = $el("div.zml-folder-container");
+                        const imageContainer = $el("div.zml-image-container");
+                        contentEl.appendChild(folderContainer);
+                        contentEl.appendChild(imageContainer);
+                        let currentLevel = fileTree;
+
+                        const tempCurrentPath = [...currentPath];
+                        currentPath.length = 0;
+                        for (const part of tempCurrentPath) {
+                            if (currentLevel[part]) {
+                                currentLevel = currentLevel[part];
+                                currentPath.push(part);
+                            } else {
+                                console.warn(`Path part '${part}' not found.`);
+                                break;
+                            }
+                        }
+
+                        breadcrumbsEl.textContent = `当前目录: ${currentPath.length > 0 ? `/ ${currentPath.join(" / ")}` : "/ (根目录)"}`;
+
+                        if (currentPath.length > 0) {
+                            const backBtn = $el("button.zml-tag-btn.back", { textContent: "⬅️ 返回上一级" });
+                            backBtn.onclick = () => { currentPath.pop(); renderCurrentLevel(); };
+                            folderContainer.appendChild(backBtn);
+                        }
+
+                        Object.keys(currentLevel).forEach(key => {
+                            if (typeof currentLevel[key] === 'object' && !Array.isArray(currentLevel[key])) {
+                                const tagBtn = $el("button.zml-tag-btn", { textContent: key });
+                                tagBtn.onclick = () => { currentPath.push(key); renderCurrentLevel(); };
+                                folderContainer.appendChild(tagBtn);
+                            }
                         });
+
+                        if (currentLevel.files) {
+                            currentLevel.files.sort((a,b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }));
+                            for (const fileInfo of currentLevel.files) {
+                                const [displayName] = fileInfo.filename.split('.');
+                                const imgInnerChildren = [$el("span", { textContent: displayName })];
+                                const imgBtn = $el("button.zml-img-btn", imgInnerChildren);
+                                const customPath = pathInput.value.trim();
+
+                                const baseQueryParams = new URLSearchParams({
+                                    filename: fileInfo.filename,
+                                    subfolder: fileInfo.subfolder,
+                                });
+                                if (customPath) baseQueryParams.append("custom_path", customPath);
+
+                                // 切换模式前先移除medium-icon-mode类
+                                imageContainer.classList.remove('medium-icon-mode');
+
+                                switch(currentDisplayMode) {
+                                    case DISPLAY_MODES.TEXT_HOVER:
+                                        imgBtn.addEventListener("mouseover", () => {
+                                            const hoverParams = new URLSearchParams(baseQueryParams);
+                                            hoverParams.append("t", +new Date());
+                                            imageHost.src = `${ZML_API_PREFIX}/view_image?${hoverParams.toString()}`;
+                                            showImage(imgBtn);
+                                        });
+                                        imgBtn.addEventListener("mouseout", hideImage);
+                                        break;
+
+                                    case DISPLAY_MODES.THUMBNAIL_ONLY:
+                                        const thumbParams = new URLSearchParams(baseQueryParams);
+                                        const thumb = $el("img", {
+                                            loading: "lazy",
+                                            src: `${ZML_API_PREFIX}/view_image_thumb?${thumbParams.toString()}`
+                                        });
+                                        imgBtn.prepend(thumb);
+
+                                        const viewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                        viewImageBtn.onclick = (event) => {
+                                            event.stopPropagation();
+                                            const fullImageUrl = `${ZML_API_PREFIX}/view_image?${baseQueryParams.toString()}`;
+                                            createImageViewerModal(fullImageUrl);
+                                        };
+                                        imgBtn.appendChild(viewImageBtn);
+                                        break;
+
+                                    case DISPLAY_MODES.MEDIUM_ICON_ONLY:
+                                        // 清空现有子元素，不显示名称
+                                        imgBtn.innerHTML = '';
+                                        // 为图像容器添加medium-icon-mode类
+                                        imageContainer.classList.add('medium-icon-mode');
+                                        imgBtn.classList.add('medium-icon-mode');
+
+                                        const mediumParams = new URLSearchParams(baseQueryParams);
+                                        // 使用view_image端点但调整尺寸参数
+                                        mediumParams.append('width', '300');
+                                        mediumParams.append('height', '300');
+                                        const mediumImg = $el("img", {
+                                            loading: "lazy",
+                                            src: `${ZML_API_PREFIX}/view_image?${mediumParams.toString()}`,
+                                            style: { width: '100%', maxHeight: '200px', objectFit: 'contain' }
+                                        });
+                                        imgBtn.appendChild(mediumImg);
+
+                                        // 添加查看大图按钮
+                                        const mediumViewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                        mediumViewImageBtn.onclick = (event) => {
+                                            event.stopPropagation();
+                                            const fullImageUrl = `${ZML_API_PREFIX}/view_image?${baseQueryParams.toString()}`;
+                                            createImageViewerModal(fullImageUrl);
+                                        };
+                                        imgBtn.appendChild(mediumViewImageBtn);
+                                        break;
+
+                                    case DISPLAY_MODES.TEXT_ONLY:
+                                    default:
+                                        break;
+                                }
+
+                                if (selectedFiles.some(f => f.filename === fileInfo.filename && f.subfolder === fileInfo.subfolder)) {
+                                    imgBtn.classList.add("selected");
+                                }
+
+                                imgBtn.onclick = () => {
+                                    pushHistory();
+                                    const index = selectedFiles.findIndex(f => f.filename === fileInfo.filename && f.subfolder === fileInfo.subfolder);
+                                    if (index > -1) {
+                                        selectedFiles.splice(index, 1);
+                                        imgBtn.classList.remove("selected");
+                                    } else {
+                                        selectedFiles.push(fileInfo);
+                                        imgBtn.classList.add("selected");
+                                    }
+                                    updateUiState();
+                                };
+                                imageContainer.appendChild(imgBtn);
+                            }
+                        }
+                    };
+
+                    const contentEl = modal.querySelector(".zml-tag-modal-content");
+                    const breadcrumbsEl = modal.querySelector(".zml-tag-modal-breadcrumbs");
+
+                    pathInput.addEventListener("keydown", (e) => {
+                        if (e.key === "Enter") {
+                            handlePathRefresh();
+                        }
+                    });
+                    refreshPathBtn.onclick = handlePathRefresh;
+
+                    fetchAndRenderFiles();
                 });
             };
         }
@@ -601,6 +1344,7 @@ app.registerExtension({
                     TEXT_ONLY: "text_only",
                     TEXT_HOVER: "text_hover",
                     THUMBNAIL_ONLY: "thumbnail_only",
+                    MEDIUM_ICON_ONLY: "medium_icon_only",
                 };
 
                 const imageHost = $el("img.zml-image-preview");
@@ -724,10 +1468,24 @@ app.registerExtension({
                         $el("option", { value: DISPLAY_MODES.TEXT_ONLY, textContent: "模式1: 仅名称" }),
                         $el("option", { value: DISPLAY_MODES.TEXT_HOVER, textContent: "模式2: 名称+悬停预览" }),
                         $el("option", { value: DISPLAY_MODES.THUMBNAIL_ONLY, textContent: "模式3: 名称+缩略图" }),
+                        $el("option", { value: DISPLAY_MODES.MEDIUM_ICON_ONLY, textContent: "模式4: 中图标" }),
                     ]);
 
                     const undoBtn = $el("button.zml-action-btn.zml-undo-btn", { textContent: "撤回" });
                     const clearBtn = $el("button.zml-action-btn.zml-clear-btn", { textContent: "清空" });
+                    const randomBtn = $el("button.zml-action-btn.zml-random-btn.confirm", { textContent: "随机选择" });
+                    // 在随机选择按钮左侧添加随机个数选择器
+                    const randomCountSelect = $el("select.zml-random-count-select", { style: { minWidth: "80px", padding: "4px 8px", fontSize: "14px" } });
+                    // 创建选项并添加到选择器
+                    const options = [
+                        $el("option", { value: "1", textContent: "1个" }),
+                        $el("option", { value: "2", textContent: "2个" }),
+                        $el("option", { value: "3", textContent: "3个" }),
+                        $el("option", { value: "5", textContent: "5个" }),
+                        $el("option", { value: "10", textContent: "10个" }),
+                        $el("option", { value: "20", textContent: "20个" })
+                    ];
+                    options.forEach(option => randomCountSelect.appendChild(option));
                     const countEl = $el("div.zml-tag-selected-count");
                     
                     // --- 🔴 MODIFICATION START: “记住位置”按钮 ---
@@ -1088,7 +1846,7 @@ app.registerExtension({
                             $el("div.zml-footer-group", [ displayModeSelector, rememberPathBtn, countEl ]),
                             // --- 🔴 MODIFICATION END ---
                             $el("div.zml-footer-group.center", [ confirmBtn ]),
-                            $el("div.zml-footer-group", [ undoBtn, clearBtn ])
+                            $el("div.zml-footer-group", [ randomCountSelect, randomBtn, undoBtn, clearBtn ])
                         ])
                     ]);
 
@@ -1196,7 +1954,47 @@ app.registerExtension({
                     const contentEl = modal.querySelector(".zml-tag-modal-content");
                     const breadcrumbsEl = modal.querySelector(".zml-tag-modal-breadcrumbs");
                     
-                    const updateUiState = () => { countEl.textContent = `已选: ${selectedFiles.length}`; undoBtn.disabled = historyStack.length === 0; };
+                    const updateUiState = () => { countEl.textContent = `已选: ${selectedFiles.length}`; undoBtn.disabled = historyStack.length === 0; };                    
+                    
+                    // 随机选择当前目录的图像
+                    randomBtn.onclick = () => {
+                        // 计算当前目录
+                        let currentLevel = fileTree;
+                        const tempCurrentPath = [...currentPath];
+                        
+                        for (const part of tempCurrentPath) {
+                            if (currentLevel && currentLevel[part]) {
+                                currentLevel = currentLevel[part];
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        if (currentLevel && currentLevel.files && currentLevel.files.length > 0) {
+                            pushHistory();
+                            // 清空已选文件
+                            selectedFiles.length = 0;
+                            // 根据选择的个数随机选择文件
+                            const count = parseInt(randomCountSelect.value);
+                            
+                            if (count > 0) {
+                                // 如果选择的个数大于文件总数，则选择所有文件
+                                const filesToSelect = Math.min(count, currentLevel.files.length);
+                                
+                                // 随机打乱文件数组
+                                const shuffledFiles = [...currentLevel.files].sort(() => Math.random() - 0.5);
+                                
+                                // 选择前count个文件
+                                for (let i = 0; i < filesToSelect; i++) {
+                                    selectedFiles.push(shuffledFiles[i]);
+                                }
+                            }
+                            renderCurrentLevel();
+                            updateUiState();
+                        } else {
+                            alert("当前目录中没有可选择的图像文件");
+                        }
+                    };
                     updateUiState();
 
                     const closeModal = () => {
@@ -1368,7 +2166,7 @@ app.registerExtension({
                         });
                         
                         if (currentLevel.files) {
-                            currentLevel.files.sort((a,b) => a.filename.localeCompare(b.filename));
+                            currentLevel.files.sort((a,b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }));
                             for (const fileInfo of currentLevel.files) {
                                 const [displayName] = fileInfo.filename.split('.');
                                 const imgInnerChildren = [$el("span", { textContent: displayName })];
@@ -1381,6 +2179,9 @@ app.registerExtension({
                                 });
                                 if (customPath) baseQueryParams.append("custom_path", customPath);
 
+                                // 切换模式前先移除medium-icon-mode类
+                                imageContainer.classList.remove('medium-icon-mode');
+                                
                                 switch(currentDisplayMode) {
                                     case DISPLAY_MODES.TEXT_HOVER:
                                         imgBtn.addEventListener("mouseover", () => {
@@ -1410,7 +2211,7 @@ app.registerExtension({
                                                 const res = await api.fetchApi(getTextUrl);
                                                 if (!res.ok) throw new Error("获取文本块失败: " + await res.text());
                                                 const data = await res.json();
-                                                
+                                                 
                                                 const newText = await createEditModal(data.text_content || "");
 
                                                 const writeData = {
@@ -1423,7 +2224,7 @@ app.registerExtension({
                                                     headers: {'Content-Type': 'application/json'},
                                                     body: JSON.stringify(writeData)
                                                 });
-                                                
+                                                 
                                                 const writeResult = await writeRes.json();
                                                 if (!writeRes.ok || writeResult.error) {
                                                     throw new Error(writeResult.error || "写入失败");
@@ -1448,6 +2249,75 @@ app.registerExtension({
                                             createImageViewerModal(fullImageUrl);
                                         };
                                         imgBtn.appendChild(viewImageBtn);
+                                        break;
+                                         
+                                    case DISPLAY_MODES.MEDIUM_ICON_ONLY:
+                                        // 清空现有子元素，不显示名称
+                                        imgBtn.innerHTML = '';
+                                        // 为图像容器添加medium-icon-mode类
+                                        imageContainer.classList.add('medium-icon-mode');
+                                        imgBtn.classList.add('medium-icon-mode');
+                                        
+                                        const mediumParams = new URLSearchParams(baseQueryParams);
+                                        // 使用view_image端点但调整尺寸参数
+                                        mediumParams.append('width', '300');
+                                        mediumParams.append('height', '300');
+                                        const mediumImg = $el("img", {
+                                            loading: "lazy",
+                                            src: `${ZML_API_PREFIX}/view_image?${mediumParams.toString()}`,
+                                            style: { width: '100%', maxHeight: '200px', objectFit: 'contain' }
+                                        });
+                                        imgBtn.appendChild(mediumImg);
+                                        
+                                        // 添加编辑按钮
+                                        const mediumEditBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
+                                        mediumEditBtn.onclick = async (event) => {
+                                            event.stopPropagation();
+                                            const originalContent = mediumEditBtn.innerHTML;
+                                            mediumEditBtn.innerHTML = '...';
+                                            try {
+                                                const getTextUrl = `${ZML_API_PREFIX}/get_single_text_block?${baseQueryParams.toString()}`;
+                                                const res = await api.fetchApi(getTextUrl);
+                                                if (!res.ok) throw new Error("获取文本块失败: " + await res.text());
+                                                const data = await res.json();
+                                                 
+                                                const newText = await createEditModal(data.text_content || "");
+
+                                                const writeData = {
+                                                    custom_path: customPath,
+                                                    ...fileInfo,
+                                                    text_content: newText
+                                                };
+                                                const writeRes = await api.fetchApi(`${ZML_API_PREFIX}/write_text_block`, {
+                                                    method: 'POST',
+                                                    headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify(writeData)
+                                                });
+                                                 
+                                                const writeResult = await writeRes.json();
+                                                if (!writeRes.ok || writeResult.error) {
+                                                    throw new Error(writeResult.error || "写入失败");
+                                                }
+                                                alert("写入成功！");
+
+                                            } catch (err) {
+                                                if (err.message !== "用户取消操作") {
+                                                     alert(`操作失败: ${err.message}`);
+                                                     console.error("编辑文本块失败:", err);
+                                                }
+                                            } finally {
+                                                mediumEditBtn.innerHTML = originalContent;
+                                            }
+                                        };
+                                        imgBtn.appendChild(mediumEditBtn);
+                                        
+                                        // 添加查看大图按钮
+                                        const mediumViewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                        mediumViewImageBtn.onclick = (event) => {
+                                            event.stopPropagation();
+                                            createImageViewerModal(fullImageUrl);
+                                        };
+                                        imgBtn.appendChild(mediumViewImageBtn);
                                         break;
                                     
                                     case DISPLAY_MODES.TEXT_ONLY:

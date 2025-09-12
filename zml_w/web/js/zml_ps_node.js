@@ -387,6 +387,1087 @@ async function showDeformEditorModal(node) {
 
 
 // 版本: 7.0 (优化 ZML_PanoViewer 节点，修复视角拖动控制方向，改进透视控制，添加相机距离调节，增加内外视角切换功能)
+// ======================= ZML_ImageColorAdjust 节点前端逻辑=======================
+app.registerExtension({
+    name: "ZML.ImageColorAdjust",
+    async beforeRegisterNodeDef(nodeType, nodeData, app) {
+        if (nodeData.name === "ZML_ImageColorAdjust") {
+            // 移除节点上的所有参数控件，只保留按钮
+            const origNodeCreated = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function() {
+                origNodeCreated?.apply(this, arguments);
+                // 确保color_data参数存在
+                if (!this.widgets.find(w => w.name === "color_data")) {
+                    this.addWidget("text", "color_data", "{}", () => {}, {"default": "{}", "visible": false});
+                }
+                // 添加一个按钮来触发调色模态框
+                this.addWidget("button", "打开调色编辑器", null, () => showColorAdjustModal(this));
+            };
+        }
+    },
+});
+
+async function showColorAdjustModal(node) {
+    // 获取上游图像的URL
+    const imageNode = node.getInputNode(0);
+    if (!imageNode?.imgs?.[0]?.src) { return alert("错误：需要连接一个图像输入！"); }
+    const imageUrl = imageNode.imgs[0].src;
+
+    // 模态框 HTML 和 CSS
+    const modalHtml = `
+    <div id="zml-color-adjust-modal" class="zml-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1001;">
+        <div class="zml-color-adjust-container" style="display: flex; background: #222; border-radius: 8px; overflow: hidden; max-width: 90%; max-height: 90%;">
+            <!-- 左侧工具面板 -->
+            <div id="zml-color-toolbar" style="background: #333; padding: 10px; border-right: 1px solid #555; width: 180px; min-width: 180px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="font-weight: bold; text-align: center; margin-bottom: 5px; font-size: 14px;">ZML 可视化调色器</div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">亮度:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-brightness-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-brightness-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-brightness-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-brightness" min="-100" max="100" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">对比度:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-contrast-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-contrast-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-contrast-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-contrast" min="-100" max="100" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">饱和度:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-saturation-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-saturation-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-saturation-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-saturation" min="-100" max="100" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">色相:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-hue-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-hue-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-hue-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-hue" min="-180" max="180" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">锐化:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-sharpen-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-sharpen-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-sharpen-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-sharpen" min="0" max="100" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">伽马:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-gamma-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-gamma-input" value="1.0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-gamma-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-gamma" min="0.1" max="3" step="0.1" value="1" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">曝光:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-exposure-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-exposure-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-exposure-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-exposure" min="-100" max="100" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">模糊:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-blur-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-blur-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-blur-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-blur" min="0" max="20" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">噪点:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-noise-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-noise-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-noise-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-noise" min="0" max="100" value="0" style="width: 100%;">
+                </div>
+                
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 11px;">暗角:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-vignette-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-vignette-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-vignette-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <input type="range" id="zml-vignette" min="0" max="100" value="0" style="width: 100%;">
+                </div>
+                
+                <div style="margin-top: auto; display: flex; flex-direction: column; gap: 5px;">
+                    <button id="zml-reset-color-btn" style="padding: 6px; background-color: #555; border: 1px solid #777; border-radius: 4px; cursor: pointer; color: white; font-size: 12px;">重置</button>
+                </div>
+            </div>
+            
+            <!-- 右侧预览区域 -->
+            <div style="display: flex; flex-direction: column; flex: 1;">
+                <div id="zml-color-preview-container" style="background-color: #111; display: flex; align-items: center; justify-content: center; position: relative; flex: 1;">
+                    <div style="text-align: center; color: white; position: relative;">
+                        <canvas id="zml-original-preview" style="max-width: 100%; max-height: 100%; display: none;"></canvas>
+                        <canvas id="zml-adjusted-preview" style="max-width: 100%; max-height: 100%;"></canvas>
+                        <button id="zml-compare-btn" title="按住显示原图" style="position: absolute; bottom: 10px; left: 10px; background-color: rgba(0,0,0,0.7); color: white; border: 1px solid white; width: 30px; height: 30px; border-radius: 4px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-size: 16px;">⇄</button>
+                    </div>
+                </div>
+                
+                <!-- 底部控制按钮 -->
+                <div class="zml-editor-controls" style="background: #333; padding: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+                    <button id="zml-confirm-color-btn" style="padding: 8px 16px; color: white; background-color: #4CAF50; border: none; border-radius: 4px; cursor: pointer;">确认</button>
+                    <button id="zml-cancel-color-btn" style="padding: 8px 16px; color: white; background-color: #f44336; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                </div>
+            </div>
+        </div>
+        
+        <style>
+            .zml-modal {
+                font-family: Arial, sans-serif;
+                color: #e0e0e0;
+            }
+            
+            .zml-color-adjust-container {
+                display: flex;
+                max-width: 90vw;
+                max-height: 90vh;
+            }
+            
+            .zml-modal button:hover {
+                opacity: 0.9;
+            }
+            
+            .zml-tool-panel input[type="range"] {
+                width: 50% !important;
+                height: 3px;
+                background: #555;
+                outline: none;
+                opacity: 0.7;
+                transition: opacity 0.2s;
+                -webkit-appearance: none;
+            }
+            
+            .zml-tool-panel input[type="range"]:hover {
+                opacity: 1;
+            }
+            
+            .zml-tool-panel input[type="range"]::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 8px;
+                height: 8px;
+                background: #4CAF50;
+                cursor: pointer;
+                border-radius: 50%;
+            }
+            
+            .zml-tool-panel input[type="range"]::-moz-range-thumb {
+                width: 8px;
+                height: 8px;
+                background: #4CAF50;
+                cursor: pointer;
+                border-radius: 50%;
+                border: none;
+            }
+            
+            .zml-tool-panel input[type="text"]:focus {
+                outline: none;
+                border-color: #4CAF50;
+            }
+            
+            .zml-adjust-btn {
+                transition: all 0.2s ease;
+            }
+            
+            .zml-adjust-btn:hover {
+                background-color: #555;
+                border-color: #4CAF50;
+            }
+            
+            .zml-adjust-btn:active {
+                background-color: #666;
+            }
+            
+            #zml-compare-btn:active {
+                background-color: rgba(255,255,255,0.7);
+                color: black;
+            }
+            
+            /* 工具面板中的输入框样式微调 */
+            .zml-tool-panel input[type="text"] {
+                font-size: 10px;
+                padding: 1px 3px;
+            }
+        </style>
+    </div>`;
+
+    const modal = createModal(modalHtml, 'zml-color-adjust-modal');
+    
+    // 获取UI元素
+    const originalCanvas = modal.querySelector('#zml-original-preview');
+    const adjustedCanvas = modal.querySelector('#zml-adjusted-preview');
+    const brightnessSlider = modal.querySelector('#zml-brightness');
+    const contrastSlider = modal.querySelector('#zml-contrast');
+    const saturationSlider = modal.querySelector('#zml-saturation');
+    const hueSlider = modal.querySelector('#zml-hue');
+    const sharpenSlider = modal.querySelector('#zml-sharpen');
+    const gammaSlider = modal.querySelector('#zml-gamma');
+    const exposureSlider = modal.querySelector('#zml-exposure');
+    const blurSlider = modal.querySelector('#zml-blur');
+    const noiseSlider = modal.querySelector('#zml-noise');
+    const vignetteSlider = modal.querySelector('#zml-vignette');
+    const brightnessInput = modal.querySelector('#zml-brightness-input');
+    const contrastInput = modal.querySelector('#zml-contrast-input');
+    const saturationInput = modal.querySelector('#zml-saturation-input');
+    const hueInput = modal.querySelector('#zml-hue-input');
+    const sharpenInput = modal.querySelector('#zml-sharpen-input');
+    const gammaInput = modal.querySelector('#zml-gamma-input');
+    const exposureInput = modal.querySelector('#zml-exposure-input');
+    const blurInput = modal.querySelector('#zml-blur-input');
+    const noiseInput = modal.querySelector('#zml-noise-input');
+    const vignetteInput = modal.querySelector('#zml-vignette-input');
+    
+    // 获取按钮元素
+    const brightnessMinusBtn = modal.querySelector('#zml-brightness-minus');
+    const brightnessPlusBtn = modal.querySelector('#zml-brightness-plus');
+    const contrastMinusBtn = modal.querySelector('#zml-contrast-minus');
+    const contrastPlusBtn = modal.querySelector('#zml-contrast-plus');
+    const saturationMinusBtn = modal.querySelector('#zml-saturation-minus');
+    const saturationPlusBtn = modal.querySelector('#zml-saturation-plus');
+    const hueMinusBtn = modal.querySelector('#zml-hue-minus');
+    const huePlusBtn = modal.querySelector('#zml-hue-plus');
+    const sharpenMinusBtn = modal.querySelector('#zml-sharpen-minus');
+    const sharpenPlusBtn = modal.querySelector('#zml-sharpen-plus');
+    const gammaMinusBtn = modal.querySelector('#zml-gamma-minus');
+    const gammaPlusBtn = modal.querySelector('#zml-gamma-plus');
+    const exposureMinusBtn = modal.querySelector('#zml-exposure-minus');
+    const exposurePlusBtn = modal.querySelector('#zml-exposure-plus');
+    const blurMinusBtn = modal.querySelector('#zml-blur-minus');
+    const blurPlusBtn = modal.querySelector('#zml-blur-plus');
+    const noiseMinusBtn = modal.querySelector('#zml-noise-minus');
+    const noisePlusBtn = modal.querySelector('#zml-noise-plus');
+    const vignetteMinusBtn = modal.querySelector('#zml-vignette-minus');
+    const vignettePlusBtn = modal.querySelector('#zml-vignette-plus');
+    
+    const resetBtn = modal.querySelector('#zml-reset-color-btn');
+    const confirmBtn = modal.querySelector('#zml-confirm-color-btn');
+    const cancelBtn = modal.querySelector('#zml-cancel-color-btn');
+
+    // 加载图像并设置画布
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.src = imageUrl;
+    
+    let originalImageData = null;
+    let currentImageData = null;
+    
+    image.onload = () => {
+        // 设置画布大小
+        const maxWidth = Math.min(image.width, 800);
+        const maxHeight = Math.min(image.height, 600);
+        const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+        const width = Math.floor(image.width * scale);
+        const height = Math.floor(image.height * scale);
+        
+        originalCanvas.width = width;
+        originalCanvas.height = height;
+        adjustedCanvas.width = width;
+        adjustedCanvas.height = height;
+        
+        // 绘制原图
+        const originalCtx = originalCanvas.getContext('2d');
+        originalCtx.drawImage(image, 0, 0, width, height);
+        
+        // 保存原始图像数据
+        originalImageData = originalCtx.getImageData(0, 0, width, height);
+        
+        // 初始化调整后的图像
+        updateAdjustedImage();
+        
+        // 设置对比按钮功能
+        const compareBtn = modal.querySelector('#zml-compare-btn');
+        compareBtn.addEventListener('mousedown', () => {
+            // 显示原图
+            originalCanvas.style.display = 'block';
+            adjustedCanvas.style.display = 'none';
+        });
+        
+        compareBtn.addEventListener('mouseup', () => {
+            // 显示调整后的图像
+            originalCanvas.style.display = 'none';
+            adjustedCanvas.style.display = 'block';
+        });
+        
+        compareBtn.addEventListener('mouseleave', () => {
+            // 如果鼠标离开按钮时仍按下，也显示调整后的图像
+            originalCanvas.style.display = 'none';
+            adjustedCanvas.style.display = 'block';
+        });
+    };
+    
+    // 实时更新调整后的图像
+    function updateAdjustedImage() {
+        if (!originalImageData) return;
+        
+        const brightness = parseInt(brightnessSlider.value);
+        const contrast = parseInt(contrastSlider.value);
+        const saturation = parseInt(saturationSlider.value);
+        const hue = parseInt(hueSlider.value);
+        const sharpen = parseInt(sharpenSlider.value);
+        const gamma = parseFloat(gammaSlider.value);
+        const exposure = parseInt(exposureSlider.value);
+        const blur = parseInt(blurSlider.value);
+        const noise = parseInt(noiseSlider.value);
+        const vignette = parseInt(vignetteSlider.value);
+        
+        // 更新输入框的值
+        brightnessInput.value = brightness;
+        contrastInput.value = contrast;
+        saturationInput.value = saturation;
+        hueInput.value = hue;
+        sharpenInput.value = sharpen;
+        gammaInput.value = gamma.toFixed(1);
+        exposureInput.value = exposure;
+        blurInput.value = blur;
+        noiseInput.value = noise;
+        vignetteInput.value = vignette;
+        
+        // 创建新的图像数据副本
+        const adjustedCtx = adjustedCanvas.getContext('2d');
+        const adjustedImageData = adjustedCtx.createImageData(originalImageData);
+        const data = adjustedImageData.data;
+        const originalData = originalImageData.data;
+        
+        // 应用颜色调整
+        for (let i = 0; i < originalData.length; i += 4) {
+            let r = originalData[i];
+            let g = originalData[i + 1];
+            let b = originalData[i + 2];
+            
+            // 亮度调整
+            if (brightness !== 0) {
+                r = Math.max(0, Math.min(255, r + brightness));
+                g = Math.max(0, Math.min(255, g + brightness));
+                b = Math.max(0, Math.min(255, b + brightness));
+            }
+            
+            // 对比度调整
+            if (contrast !== 0) {
+                const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+                r = Math.max(0, Math.min(255, factor * (r - 128) + 128));
+                g = Math.max(0, Math.min(255, factor * (g - 128) + 128));
+                b = Math.max(0, Math.min(255, factor * (b - 128) + 128));
+            }
+            
+            // 伽马调整
+            if (gamma !== 1) {
+                r = Math.max(0, Math.min(255, Math.pow(r / 255, 1 / gamma) * 255));
+                g = Math.max(0, Math.min(255, Math.pow(g / 255, 1 / gamma) * 255));
+                b = Math.max(0, Math.min(255, Math.pow(b / 255, 1 / gamma) * 255));
+            }
+            
+            // HSL调整
+            if (saturation !== 0 || hue !== 0) {
+                // RGB转HSL
+                let [h, s, l] = rgbToHsl(r, g, b);
+                
+                // 调整饱和度
+                s = Math.max(0, Math.min(1, s * (1 + saturation / 100)));
+                
+                // 调整色相
+                h = (h + hue) % 360;
+                if (h < 0) h += 360;
+                
+                // HSL转RGB
+                [r, g, b] = hslToRgb(h, s, l);
+            }
+            
+            // 保存调整后的值
+            data[i] = r;
+            data[i + 1] = g;
+            data[i + 2] = b;
+            data[i + 3] = originalData[i + 3]; // 保持alpha不变
+        }
+        
+        // 如果需要锐化，应用锐化滤镜
+        let finalImageData = adjustedImageData;
+        if (sharpen > 0) {
+            finalImageData = applySharpen(finalImageData, sharpen);
+        }
+        
+        // 应用曝光调整
+        if (exposure !== 0) {
+            finalImageData = applyExposure(finalImageData, exposure);
+        }
+        
+        // 应用模糊效果
+        if (blur > 0) {
+            finalImageData = applyBlur(finalImageData, blur);
+        }
+        
+        // 应用噪点效果
+        if (noise > 0) {
+            finalImageData = applyNoise(finalImageData, noise);
+        }
+        
+        // 应用暗角效果
+        if (vignette > 0) {
+            finalImageData = applyVignette(finalImageData, vignette);
+        }
+        
+        // 保存当前调整后的图像数据
+            currentImageData = finalImageData;
+            // 绘制调整后的图像
+            adjustedCtx.putImageData(finalImageData, 0, 0);
+    }
+    
+    // 锐化滤镜函数
+        function applySharpen(imageData, amount) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const result = new ImageData(width, height);
+            const resultData = result.data;
+            
+            // 锐化卷积核
+            const kernel = [
+                0, -1, 0,
+                -1, 5, -1,
+                0, -1, 0
+            ];
+            
+            // 应用卷积
+            const scale = 1;
+            const bias = 0;
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let r = 0, g = 0, b = 0;
+                    
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                            const imgIdx = ((y + ky) * width + (x + kx)) * 4;
+                            const weight = kernel[kernelIdx] * (amount / 100);
+                            
+                            r += data[imgIdx] * weight;
+                            g += data[imgIdx + 1] * weight;
+                            b += data[imgIdx + 2] * weight;
+                        }
+                    }
+                    
+                    const idx = (y * width + x) * 4;
+                    resultData[idx] = Math.max(0, Math.min(255, r / scale + bias));
+                    resultData[idx + 1] = Math.max(0, Math.min(255, g / scale + bias));
+                    resultData[idx + 2] = Math.max(0, Math.min(255, b / scale + bias));
+                    resultData[idx + 3] = data[idx + 3]; // 保持alpha不变
+                }
+            }
+            
+            // 处理边缘像素（简单复制原图）
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+                        const idx = (y * width + x) * 4;
+                        resultData[idx] = data[idx];
+                        resultData[idx + 1] = data[idx + 1];
+                        resultData[idx + 2] = data[idx + 2];
+                        resultData[idx + 3] = data[idx + 3];
+                    }
+                }
+            }
+            
+            return result;
+        }
+        
+        // 曝光调整函数
+        function applyExposure(imageData, amount) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const result = new ImageData(width, height);
+            const resultData = result.data;
+            
+            // 曝光调整系数
+            const exposureFactor = 1 + (amount / 100);
+            
+            for (let i = 0; i < data.length; i += 4) {
+                resultData[i] = Math.max(0, Math.min(255, data[i] * exposureFactor));
+                resultData[i + 1] = Math.max(0, Math.min(255, data[i + 1] * exposureFactor));
+                resultData[i + 2] = Math.max(0, Math.min(255, data[i + 2] * exposureFactor));
+                resultData[i + 3] = data[i + 3]; // 保持alpha不变
+            }
+            
+            return result;
+        }
+        
+        // 模糊效果函数 - 使用高斯模糊的简化版本
+        function applyBlur(imageData, amount) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const result = new ImageData(width, height);
+            const resultData = result.data;
+            
+            // 计算模糊半径
+            const radius = Math.max(1, Math.min(amount, 20));
+            const kernelSize = radius * 2 + 1;
+            
+            // 创建高斯模糊核
+            const kernel = [];
+            let sum = 0;
+            const sigma = radius / 3;
+            
+            for (let i = 0; i < kernelSize; i++) {
+                const x = i - radius;
+                const value = Math.exp(-(x * x) / (2 * sigma * sigma));
+                kernel.push(value);
+                sum += value;
+            }
+            
+            // 归一化核
+            for (let i = 0; i < kernelSize; i++) {
+                kernel[i] /= sum;
+            }
+            
+            // 横向模糊
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    let r = 0, g = 0, b = 0;
+                    
+                    for (let k = -radius; k <= radius; k++) {
+                        const px = Math.max(0, Math.min(width - 1, x + k));
+                        const idx = (y * width + px) * 4;
+                        const weight = kernel[k + radius];
+                        
+                        r += data[idx] * weight;
+                        g += data[idx + 1] * weight;
+                        b += data[idx + 2] * weight;
+                    }
+                    
+                    const idx = (y * width + x) * 4;
+                    resultData[idx] = r;
+                    resultData[idx + 1] = g;
+                    resultData[idx + 2] = b;
+                    resultData[idx + 3] = data[idx + 3]; // 保持alpha不变
+                }
+            }
+            
+            // 纵向模糊
+            const tempData = new Uint8ClampedArray(resultData);
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    let r = 0, g = 0, b = 0;
+                    
+                    for (let k = -radius; k <= radius; k++) {
+                        const py = Math.max(0, Math.min(height - 1, y + k));
+                        const idx = (py * width + x) * 4;
+                        const weight = kernel[k + radius];
+                        
+                        r += tempData[idx] * weight;
+                        g += tempData[idx + 1] * weight;
+                        b += tempData[idx + 2] * weight;
+                    }
+                    
+                    const idx = (y * width + x) * 4;
+                    resultData[idx] = r;
+                    resultData[idx + 1] = g;
+                    resultData[idx + 2] = b;
+                    resultData[idx + 3] = tempData[idx + 3]; // 保持alpha不变
+                }
+            }
+            
+            return result;
+        }
+        
+        // 噪点效果函数
+        function applyNoise(imageData, amount) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const result = new ImageData(width, height);
+            const resultData = result.data;
+            
+            // 使用PIXI.js生成噪点
+            if (typeof PIXI !== 'undefined') {
+                // 为每个像素生成随机噪点
+                for (let i = 0; i < data.length; i += 4) {
+                    // 生成随机值
+                    const noiseValue = (Math.random() - 0.5) * 2 * (amount / 100) * 255;
+                    
+                    resultData[i] = Math.max(0, Math.min(255, data[i] + noiseValue));
+                    resultData[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noiseValue));
+                    resultData[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noiseValue));
+                    resultData[i + 3] = data[i + 3]; // 保持alpha不变
+                }
+            } else {
+                // 如果PIXI.js不可用，使用简单的JS随机数生成器
+                for (let i = 0; i < data.length; i += 4) {
+                    const noiseValue = (Math.random() - 0.5) * 2 * (amount / 100) * 255;
+                    
+                    resultData[i] = Math.max(0, Math.min(255, data[i] + noiseValue));
+                    resultData[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noiseValue));
+                    resultData[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noiseValue));
+                    resultData[i + 3] = data[i + 3]; // 保持alpha不变
+                }
+            }
+            
+            return result;
+        }
+        
+        // 暗角效果函数
+        function applyVignette(imageData, amount) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const result = new ImageData(width, height);
+            const resultData = result.data;
+            
+            // 计算图像中心和最大距离
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
+            
+            // 暗角强度系数
+            const vignetteStrength = amount / 100;
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    // 计算当前像素到中心的距离
+                    const dx = x - centerX;
+                    const dy = y - centerY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // 计算暗角因子 (距离越远，暗角越强)
+                    const vignetteFactor = 1 - (distance / maxDistance) * vignetteStrength;
+                    
+                    const idx = (y * width + x) * 4;
+                    resultData[idx] = Math.max(0, Math.min(255, data[idx] * vignetteFactor));
+                    resultData[idx + 1] = Math.max(0, Math.min(255, data[idx + 1] * vignetteFactor));
+                    resultData[idx + 2] = Math.max(0, Math.min(255, data[idx + 2] * vignetteFactor));
+                    resultData[idx + 3] = data[idx + 3]; // 保持alpha不变
+                }
+            }
+            
+            return result;
+        }
+    
+    // RGB转HSL
+    function rgbToHsl(r, g, b) {
+        r /= 255;
+        g /= 255;
+        b /= 255;
+        
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        
+        if (max === min) {
+            h = s = 0; // 灰度
+        } else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            
+            h /= 6;
+        }
+        
+        return [h * 360, s, l];
+    }
+    
+    // HSL转RGB
+    function hslToRgb(h, s, l) {
+        h /= 360;
+        
+        let r, g, b;
+        
+        if (s === 0) {
+            r = g = b = l; // 灰度
+        } else {
+            const hue2rgb = (p, q, t) => {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1/6) return p + (q - p) * 6 * t;
+                if (t < 1/2) return q;
+                if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                return p;
+            };
+            
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1/3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1/3);
+        }
+        
+        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+    
+    // 绑定滑块事件监听器
+    brightnessSlider.addEventListener('input', updateAdjustedImage);
+    contrastSlider.addEventListener('input', updateAdjustedImage);
+    saturationSlider.addEventListener('input', updateAdjustedImage);
+    hueSlider.addEventListener('input', updateAdjustedImage);
+    sharpenSlider.addEventListener('input', updateAdjustedImage);
+    gammaSlider.addEventListener('input', updateAdjustedImage);
+    exposureSlider.addEventListener('input', updateAdjustedImage);
+    blurSlider.addEventListener('input', updateAdjustedImage);
+    noiseSlider.addEventListener('input', updateAdjustedImage);
+    vignetteSlider.addEventListener('input', updateAdjustedImage);
+    
+    // 绑定输入框事件监听器，实现精准调节
+    brightnessInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(-100, Math.min(100, value));
+        brightnessSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    contrastInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(-100, Math.min(100, value));
+        contrastSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    saturationInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(-100, Math.min(100, value));
+        saturationSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    hueInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(-180, Math.min(180, value));
+        hueSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    sharpenInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(0, Math.min(100, value));
+        sharpenSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    gammaInput.addEventListener('change', function() {
+        let value = parseFloat(this.value);
+        if (isNaN(value)) value = 1;
+        value = Math.max(0.1, Math.min(3, value));
+        gammaSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    exposureInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(-100, Math.min(100, value));
+        exposureSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    blurInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(0, Math.min(20, value));
+        blurSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    noiseInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(0, Math.min(100, value));
+        noiseSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    vignetteInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value)) value = 0;
+        value = Math.max(0, Math.min(100, value));
+        vignetteSlider.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 重置按钮
+    resetBtn.addEventListener('click', () => {
+        brightnessSlider.value = 0;
+        contrastSlider.value = 0;
+        saturationSlider.value = 0;
+        hueSlider.value = 0;
+        sharpenSlider.value = 0;
+        gammaSlider.value = 1;
+        exposureSlider.value = 0;
+        blurSlider.value = 0;
+        noiseSlider.value = 0;
+        vignetteSlider.value = 0;
+        updateAdjustedImage();
+    });
+    
+    // 确认按钮
+    confirmBtn.addEventListener('click', () => {
+        const widget = node.widgets.find(w => w.name === "color_data");
+        if (widget) {
+            const colorAdjustData = {
+                brightness: parseInt(brightnessSlider.value),
+                contrast: parseInt(contrastSlider.value),
+                saturation: parseInt(saturationSlider.value),
+                hue: parseInt(hueSlider.value),
+                sharpen: parseInt(sharpenSlider.value),
+                gamma: parseFloat(gammaSlider.value),
+                exposure: parseInt(exposureSlider.value),
+                blur: parseInt(blurSlider.value),
+                noise: parseInt(noiseSlider.value),
+                vignette: parseInt(vignetteSlider.value)
+            };
+            widget.value = JSON.stringify(colorAdjustData);
+            // 确保数据变更被正确通知
+            if (node.onWidgetValueChanged) {
+                node.onWidgetValueChanged(widget, widget.value);
+            } else if (node.onWidgetChanged) {
+                node.onWidgetChanged(widget, widget.value);
+            }
+            // 显式通知画布更新
+            app.graph.setDirtyCanvas(true, false);
+        }
+        closeModal(modal);
+    });
+    
+    // 取消按钮
+    cancelBtn.addEventListener('click', () => {
+        closeModal(modal);
+    });
+    
+    // 添加按钮点击事件监听器
+    // 亮度加减按钮
+    brightnessMinusBtn.addEventListener('click', () => {
+        let value = parseInt(brightnessSlider.value) - 1;
+        value = Math.max(-100, Math.min(100, value));
+        brightnessSlider.value = value;
+        brightnessInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    brightnessPlusBtn.addEventListener('click', () => {
+        let value = parseInt(brightnessSlider.value) + 1;
+        value = Math.max(-100, Math.min(100, value));
+        brightnessSlider.value = value;
+        brightnessInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 对比度加减按钮
+    contrastMinusBtn.addEventListener('click', () => {
+        let value = parseInt(contrastSlider.value) - 1;
+        value = Math.max(-100, Math.min(100, value));
+        contrastSlider.value = value;
+        contrastInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    contrastPlusBtn.addEventListener('click', () => {
+        let value = parseInt(contrastSlider.value) + 1;
+        value = Math.max(-100, Math.min(100, value));
+        contrastSlider.value = value;
+        contrastInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 饱和度加减按钮
+    saturationMinusBtn.addEventListener('click', () => {
+        let value = parseInt(saturationSlider.value) - 1;
+        value = Math.max(-100, Math.min(100, value));
+        saturationSlider.value = value;
+        saturationInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    saturationPlusBtn.addEventListener('click', () => {
+        let value = parseInt(saturationSlider.value) + 1;
+        value = Math.max(-100, Math.min(100, value));
+        saturationSlider.value = value;
+        saturationInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 色相加减按钮
+    hueMinusBtn.addEventListener('click', () => {
+        let value = parseInt(hueSlider.value) - 1;
+        value = Math.max(-180, Math.min(180, value));
+        hueSlider.value = value;
+        hueInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    huePlusBtn.addEventListener('click', () => {
+        let value = parseInt(hueSlider.value) + 1;
+        value = Math.max(-180, Math.min(180, value));
+        hueSlider.value = value;
+        hueInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 锐化加减按钮
+    sharpenMinusBtn.addEventListener('click', () => {
+        let value = parseInt(sharpenSlider.value) - 1;
+        value = Math.max(0, Math.min(100, value));
+        sharpenSlider.value = value;
+        sharpenInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    sharpenPlusBtn.addEventListener('click', () => {
+        let value = parseInt(sharpenSlider.value) + 1;
+        value = Math.max(0, Math.min(100, value));
+        sharpenSlider.value = value;
+        sharpenInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 伽马加减按钮
+    gammaMinusBtn.addEventListener('click', () => {
+        let value = parseFloat(gammaSlider.value) - 0.1;
+        value = Math.max(0.1, Math.min(3, value));
+        gammaSlider.value = value.toFixed(1);
+        gammaInput.value = value.toFixed(1);
+        updateAdjustedImage();
+    });
+    
+    gammaPlusBtn.addEventListener('click', () => {
+        let value = parseFloat(gammaSlider.value) + 0.1;
+        value = Math.max(0.1, Math.min(3, value));
+        gammaSlider.value = value.toFixed(1);
+        gammaInput.value = value.toFixed(1);
+        updateAdjustedImage();
+    });
+    
+    // 曝光加减按钮
+    exposureMinusBtn.addEventListener('click', () => {
+        let value = parseInt(exposureSlider.value) - 1;
+        value = Math.max(-100, Math.min(100, value));
+        exposureSlider.value = value;
+        exposureInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    exposurePlusBtn.addEventListener('click', () => {
+        let value = parseInt(exposureSlider.value) + 1;
+        value = Math.max(-100, Math.min(100, value));
+        exposureSlider.value = value;
+        exposureInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 模糊加减按钮
+    blurMinusBtn.addEventListener('click', () => {
+        let value = parseInt(blurSlider.value) - 1;
+        value = Math.max(0, Math.min(20, value));
+        blurSlider.value = value;
+        blurInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    blurPlusBtn.addEventListener('click', () => {
+        let value = parseInt(blurSlider.value) + 1;
+        value = Math.max(0, Math.min(20, value));
+        blurSlider.value = value;
+        blurInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 噪点加减按钮
+    noiseMinusBtn.addEventListener('click', () => {
+        let value = parseInt(noiseSlider.value) - 1;
+        value = Math.max(0, Math.min(100, value));
+        noiseSlider.value = value;
+        noiseInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    noisePlusBtn.addEventListener('click', () => {
+        let value = parseInt(noiseSlider.value) + 1;
+        value = Math.max(0, Math.min(100, value));
+        noiseSlider.value = value;
+        noiseInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 暗角加减按钮
+    vignetteMinusBtn.addEventListener('click', () => {
+        let value = parseInt(vignetteSlider.value) - 1;
+        value = Math.max(0, Math.min(100, value));
+        vignetteSlider.value = value;
+        vignetteInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    vignettePlusBtn.addEventListener('click', () => {
+        let value = parseInt(vignetteSlider.value) + 1;
+        value = Math.max(0, Math.min(100, value));
+        vignetteSlider.value = value;
+        vignetteInput.value = value;
+        updateAdjustedImage();
+    });
+    
+    // 确保模态框在图像加载后才显示
+    modal.style.display = 'flex';
+}
+
 // ======================= ZML_PanoViewer 节点前端逻辑=======================
 app.registerExtension({
     name: "ZML.PanoViewer",

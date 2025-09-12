@@ -2893,24 +2893,91 @@ app.registerExtension({
                     });
                     overlay.appendChild(checkmark);
                     
-                    const addIcon = zmlCreateEl("div", { // 使用 zmlCreateEl
-                        className: "zml-batch-lora-add-icon",
-                        textContent: "+",
+                    // 默认显示绿色播放按钮
+                    const playIcon = zmlCreateEl("div", { // 使用 zmlCreateEl
+                        className: "zml-batch-lora-play-icon",
+                        textContent: "▶",
                         style: `
                             position: absolute;
                             top: 5px; right: 5px;
                             width: 24px; height: 24px;
-                            background-color: rgba(0, 128, 0, 0.8);
+                            background-color: rgba(76, 175, 80, 0.8); /* 绿色 */
                             color: white;
                             border-radius: 50%;
                             display: ${isDeleted || isSelected ? 'none' : 'flex'}; /* 已删除或选中时隐藏 */
                             align-items: center;
                             justify-content: center;
-                            font-size: 18px;
+                            font-size: 12px;
                             font-weight: bold;
                             z-index: 10; /*确保在最上层*/
+                            cursor: pointer;
+                            transition: all 0.2s ease;
                         `
                     });
+                    
+                    // 添加点击事件，实现视频预览切换功能
+                    playIcon.onclick = (e) => {
+                        e.stopPropagation(); // 阻止事件冒泡
+                        
+                        // 检查是否有对应的MP4文件
+                        const hasMp4 = globalThis.zmlMp4Previews && globalThis.zmlMp4Previews[loraPath];
+                        
+                        if (hasMp4) {
+                            // 切换MP4预览模式
+                            globalThis.zmlBatchLoraPreviewMp4Mode = !globalThis.zmlBatchLoraPreviewMp4Mode;
+                            
+                            // 更新按钮图标
+                            if (globalThis.zmlBatchLoraPreviewMp4Mode) {
+                                playIcon.textContent = "⏸";
+                                playIcon.style.backgroundColor = "rgba(255, 140, 0, 0.8)"; /* 视频模式时变为橙色 */
+                            } else {
+                                playIcon.textContent = "▶";
+                                playIcon.style.backgroundColor = "rgba(76, 175, 80, 0.8)"; /* 图像模式时恢复绿色 */
+                            }
+                            
+                            // 强制重新渲染LoRA项目以显示视频或图像
+                            renderBatchLoraContent();
+                        } else {
+                            // 没有视频时显示提示消息
+                            // 检查是否存在showNotification函数，如果不存在则创建
+                            if (typeof showNotification === 'function') {
+                                showNotification("当前LoRA没有视频预览", 'info', 2000);
+                            } else {
+                                // 如果没有showNotification函数，则尝试创建一个简单的通知系统
+                                const notification = zmlCreateEl("div", {
+                                    style: `
+                                        position: fixed;
+                                        top: 20px;
+                                        right: 20px;
+                                        background-color: rgba(0, 0, 0, 0.8);
+                                        color: white;
+                                        padding: 12px 20px;
+                                        border-radius: 4px;
+                                        z-index: 10000;
+                                        font-size: 14px;
+                                        opacity: 0;
+                                        transform: translateY(-20px);
+                                        transition: opacity 0.3s, transform 0.3s;
+                                    `,
+                                    textContent: "当前LoRA没有视频预览"
+                                });
+                                document.body.appendChild(notification);
+                                setTimeout(() => {
+                                    notification.style.opacity = "1";
+                                    notification.style.transform = "translateY(0)";
+                                }, 10);
+                                setTimeout(() => {
+                                    notification.style.opacity = "0";
+                                    notification.style.transform = "translateY(-20px)";
+                                    setTimeout(() => {
+                                        if (notification.parentNode) {
+                                            notification.parentNode.removeChild(notification);
+                                        }
+                                    }, 300);
+                                }, 2000);
+                            }
+                        }
+                    };
 
                     // 已删除标记
                     if (isDeleted) {
@@ -2966,26 +3033,26 @@ app.registerExtension({
                     });
 
 
-                    itemEl.append(imageWrapper, overlay, addIcon, nameDisplay);
+                    itemEl.append(imageWrapper, overlay, playIcon, nameDisplay);
 
                     // 已删除的文件不允许选择
                     if (!isDeleted) {
                         itemEl.onclick = (e) => {
-                            // 阻止事件冒泡到父元素，特别是如果 addIcon 也在 itemEl 边界内
+                            // 阻止事件冒泡到父元素，特别是如果 playIcon 也在 itemEl 边界内
                             e.stopPropagation();
 
                             if (zmlBatchLoraSelected.has(loraPath)) {
                                 zmlBatchLoraSelected.delete(loraPath);
                                 itemEl.classList.remove("selected");
                                 overlay.style.display = 'none';
-                                addIcon.style.display = 'flex';
+                                playIcon.style.display = 'flex';
                                 itemEl.style.borderColor = '#555';
                                 // console.log(`Removed ${loraPath} from selection. Total: ${zmlBatchLoraSelected.size}`); // 调试用
                             } else {
                                 zmlBatchLoraSelected.add(loraPath);
                                 itemEl.classList.add("selected");
                                 overlay.style.display = 'flex';
-                                addIcon.style.display = 'none';
+                                playIcon.style.display = 'none';
                                 itemEl.style.borderColor = '#4CAF50';
                                 // console.log(`Added ${loraPath} to selection. Total: ${zmlBatchLoraSelected.size}`); // 调试用
                             }
