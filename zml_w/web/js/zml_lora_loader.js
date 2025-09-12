@@ -3907,9 +3907,11 @@ app.registerExtension({
 
                          header.addEventListener("mousedown", (e) => {
                              e.stopImmediatePropagation(); // 阻止所有其他事件监听器
+                             // 先检查目标元素是否是输入框、删除按钮或拖动句柄
+                             if (e.target === nameInput || e.target === deleteBtn || e.target === dragHandle) {
+                                 return; // 不阻止这些元素的默认行为
+                             }
                              e.preventDefault(); // 阻止默认的 mousedown 行为
-                             // Allow clicking on inputs/buttons inside header without toggling collapse
-                             if (e.target === nameInput || e.target === deleteBtn || e.target === dragHandle) return;
                              // Check if the click happened directly on the header or the toggle button
                              if (e.target === header || e.target === toggle || e.target.parentElement === header) {
                                  entry.is_collapsed = !entry.is_collapsed;
