@@ -669,8 +669,22 @@ class ZML_ImagePainter:
                                 draw_img.ellipse(box, fill=fill_color_rgb)
                                 draw_mask.ellipse(box, fill=255)
                             else: # 多点情况，画线
+                                # 绘制基础线条
                                 draw_img.line(pts_int, fill=fill_color_rgb, width=width, joint='curve')
                                 draw_mask.line(pts_int, fill=255, width=width, joint='curve')
+                                
+                                # 为线条端点添加圆形来模拟圆角效果
+                                if len(pts_int) > 1:
+                                    # 在起点和终点绘制圆形
+                                    r = width / 2
+                                    # 起点
+                                    start_x, start_y = pts_int[0]
+                                    draw_img.ellipse([start_x-r, start_y-r, start_x+r, start_y+r], fill=fill_color_rgb)
+                                    draw_mask.ellipse([start_x-r, start_y-r, start_x+r, start_y+r], fill=255)
+                                    # 终点
+                                    end_x, end_y = pts_int[-1]
+                                    draw_img.ellipse([end_x-r, end_y-r, end_x+r, end_y+r], fill=fill_color_rgb)
+                                    draw_mask.ellipse([end_x-r, end_y-r, end_x+r, end_y+r], fill=255)
                     except Exception as e:
                         print(f"ZML_ImagePainter: 绘制路径时出错: {e}")
 
