@@ -1123,7 +1123,7 @@ function showPainterModal(node, widget) {
                 const pathString = "M " + scaledPathPoints.join(" L ");
                 const fabricPath = new fabric.Path(pathString, { 
                     stroke: pathData.color, 
-                    strokeWidth: pathData.width, 
+                    strokeWidth: pathData.width * initialDisplayScale, 
                     fill: isFill ? pathData.color : null, 
                     selectable: false, evented: false, objectCaching: false, 
                     strokeLineJoin: 'round', strokeLineCap: 'round', isNotBackground: true 
@@ -1136,7 +1136,7 @@ function showPainterModal(node, widget) {
         canvas.isDrawingMode = true;
         canvas.freeDrawingBrush.color = colorPicker.value;
         canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
-        canvas.freeDrawingBrush.decimate = 5;
+        canvas.freeDrawingBrush.decimate = 1;
 
         // --- 更新图像显示区域边框颜色的函数 ---
         function updateDisplayBorderColor(color) {
@@ -1168,7 +1168,7 @@ function showPainterModal(node, widget) {
             canvas.remove(path); // 移除临时 Fabric.js 路径，因为我们要存储原始坐标
             // 将 Fabric.js 路径点从当前画布坐标反向缩放回原始图像坐标
             const scaledPathPoints = path.path.map(p => [((p[1] - path.left) / canvas.getZoom() + path.left) / initialDisplayScale, ((p[2] - path.top) / canvas.getZoom() + path.top) / initialDisplayScale]);
-            const pathData = { points: scaledPathPoints, color: path.stroke, width: path.strokeWidth, isFill: false};
+            const pathData = { points: scaledPathPoints, color: path.stroke, width: path.strokeWidth / initialDisplayScale, isFill: false};
             drawPaths.push(pathData);
             renderAllDrawings(); // 重新渲染所有绘制，包括新路径
         });
