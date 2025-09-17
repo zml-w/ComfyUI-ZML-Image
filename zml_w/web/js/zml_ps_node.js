@@ -418,155 +418,156 @@ async function showColorAdjustModal(node) {
     <div id="zml-color-adjust-modal" class="zml-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1001;">
         <div class="zml-color-adjust-container" style="display: flex; background: #222; border-radius: 8px; overflow: hidden; max-width: 90%; max-height: 90%;">
             <!-- 左侧工具面板 -->
-            <div id="zml-color-toolbar" style="background: #333; padding: 10px; border-right: 1px solid #555; width: 180px; min-width: 180px; display: flex; flex-direction: column; gap: 10px;">
-                <div style="font-weight: bold; text-align: center; margin-bottom: 5px; font-size: 14px;">ZML 可视化调色器</div>
+            <div id="zml-color-toolbar" style="background: #2a2a2a; padding: 15px; border-right: 1px solid #444; width: 220px; min-width: 220px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="font-weight: bold; text-align: center; margin-bottom: 10px; font-size: 16px; color: #4CAF50; padding: 8px; background: rgba(76, 175, 80, 0.1); border-radius: 6px;">ZML 可视化调色器</div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">亮度:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-brightness-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-brightness-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-brightness-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">亮度:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-brightness-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-brightness-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-brightness-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-brightness" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">对比度:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-contrast-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-contrast-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-contrast-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">对比度:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-contrast-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-contrast-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-contrast-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-contrast" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">饱和度:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-saturation-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-saturation-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-saturation-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">饱和度:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-saturation-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-saturation-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-saturation-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-saturation" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">色相:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-hue-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-hue-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-hue-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">色相:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-hue-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-hue-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-hue-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-hue" min="-180" max="180" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">锐化:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-sharpen-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-sharpen-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-sharpen-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">锐化:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-sharpen-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-sharpen-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-sharpen-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-sharpen" min="0" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">伽马:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-gamma-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-gamma-input" value="1.0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-gamma-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">伽马:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-gamma-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-gamma-input" value="1.0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-gamma-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-gamma" min="0.1" max="3" step="0.1" value="1" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">曝光:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-exposure-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-exposure-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-exposure-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">曝光:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-exposure-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-exposure-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-exposure-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-exposure" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">模糊:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-blur-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-blur-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-blur-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">模糊:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-blur-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-blur-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-blur-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-blur" min="0" max="20" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">噪点:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-noise-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-noise-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-noise-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">噪点:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-noise-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-noise-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-noise-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-noise" min="0" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
+                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px;">暗角:</strong>
-                        <div style="display: flex; align-items: center; gap: 2px;">
-                            <button id="zml-vignette-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-vignette-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-vignette-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px; color: #fff;">暗角:</strong>
+                        <div style="display: flex; align-items: center; gap: 3px;">
+                            <button id="zml-vignette-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-vignette-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-vignette-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-vignette" min="0" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div style="margin-top: auto; display: flex; flex-direction: column; gap: 5px;">
-                    <button id="zml-reset-color-btn" style="padding: 6px; background-color: #555; border: 1px solid #777; border-radius: 4px; cursor: pointer; color: white; font-size: 12px;">重置</button>
-                </div>
+                <div style="margin-top: auto;"></div>
             </div>
             
             <!-- 右侧预览区域 -->
-            <div style="display: flex; flex-direction: column; flex: 1;">
-                <div id="zml-color-preview-container" style="background-color: #111; display: flex; align-items: center; justify-content: center; position: relative; flex: 1;">
+            <div style="display: flex; flex-direction: column; flex: 1; background: #2a2a2a; border-radius: 8px;">
+                <div id="zml-color-preview-container" style="background-color: #1a1a1a; border: 2px solid #444; margin: 15px; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; flex: 1; box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);">
                     <div style="text-align: center; color: white; position: relative;">
                         <canvas id="zml-original-preview" style="max-width: 100%; max-height: 100%; display: none;"></canvas>
                         <canvas id="zml-adjusted-preview" style="max-width: 100%; max-height: 100%;"></canvas>
-                        <button id="zml-compare-btn" title="按住显示原图" style="position: absolute; bottom: 10px; left: 10px; background-color: rgba(0,0,0,0.7); color: white; border: 1px solid white; width: 30px; height: 30px; border-radius: 4px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-size: 16px;">⇄</button>
+                        <button id="zml-compare-btn" title="按住显示原图" style="position: absolute; bottom: 15px; left: 15px; background-color: rgba(76, 175, 80, 0.8); color: white; border: 1px solid #66cc66; width: 35px; height: 35px; border-radius: 6px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: all 0.2s ease;">⇄</button>
                     </div>
                 </div>
                 
                 <!-- 底部控制按钮 -->
-                <div class="zml-editor-controls" style="background: #333; padding: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
-                    <button id="zml-confirm-color-btn" style="padding: 8px 16px; color: white; background-color: #4CAF50; border: none; border-radius: 4px; cursor: pointer;">确认</button>
-                    <button id="zml-cancel-color-btn" style="padding: 8px 16px; color: white; background-color: #f44336; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                <div class="zml-editor-controls" style="background: #2a2a2a; padding: 8px 15px; margin-top: -15px; display: flex; justify-content: center; align-items: center; gap: 12px;">
+                    <button id="zml-undo-btn" style="padding: 8px 16px; background-color: #5a5a5a; border: 1px solid #777; border-radius: 4px; cursor: pointer; color: white; font-size: 12px; transition: all 0.2s ease;">撤回</button>
+                    <button id="zml-reset-color-btn" style="padding: 8px 16px; background-color: #5a5a5a; border: 1px solid #777; border-radius: 4px; cursor: pointer; color: white; font-size: 12px; transition: all 0.2s ease;">重置</button>
+                    <div style="width: 20px;"></div>
+                    <button id="zml-confirm-color-btn" style="padding: 8px 16px; color: white; background-color: #4a90e2; border: 1px solid #5ba3f5; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">确认</button>
+                    <button id="zml-cancel-color-btn" style="padding: 8px 16px; color: white; background-color: #6a6a6a; border: 1px solid #888; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">取消</button>
                 </div>
             </div>
         </div>
         
         <style>
             .zml-modal {
-                font-family: Arial, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
                 color: #e0e0e0;
             }
             
@@ -574,6 +575,7 @@ async function showColorAdjustModal(node) {
                 display: flex;
                 max-width: 90vw;
                 max-height: 90vh;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
             }
             
             .zml-modal button:hover {
@@ -581,13 +583,20 @@ async function showColorAdjustModal(node) {
             }
             
             .zml-tool-panel input[type="range"] {
-                width: 50% !important;
-                height: 3px;
+                width: 100% !important;
+                height: 4px;
                 background: #555;
                 outline: none;
                 opacity: 0.7;
-                transition: opacity 0.2s;
+                transition: all 0.3s ease;
                 -webkit-appearance: none;
+                cursor: grab;
+                border-radius: 2px;
+            }
+            
+            .zml-tool-panel input[type="range"]:hover {
+                opacity: 1;
+                cursor: grab;
             }
             
             .zml-tool-panel input[type="range"]:hover {
@@ -597,43 +606,81 @@ async function showColorAdjustModal(node) {
             .zml-tool-panel input[type="range"]::-webkit-slider-thumb {
                 -webkit-appearance: none;
                 appearance: none;
-                width: 8px;
-                height: 8px;
+                width: 12px;
+                height: 12px;
                 background: #4CAF50;
                 cursor: pointer;
                 border-radius: 50%;
+                transition: all 0.2s ease;
+            }
+            
+            .zml-tool-panel input[type="range"]::-webkit-slider-thumb:hover {
+                width: 14px;
+                height: 14px;
+                box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
             }
             
             .zml-tool-panel input[type="range"]::-moz-range-thumb {
-                width: 8px;
-                height: 8px;
+                width: 12px;
+                height: 12px;
                 background: #4CAF50;
                 cursor: pointer;
                 border-radius: 50%;
                 border: none;
+                transition: all 0.2s ease;
+            }
+            
+            .zml-tool-panel input[type="range"]::-moz-range-thumb:hover {
+                width: 14px;
+                height: 14px;
+                box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
+            }
+            
+            /* 平滑过渡动画 */
+            .zml-slider {
+                transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+            }
+            
+            .zml-tool-panel input[type="text"] {
+                transition: all 0.3s ease;
             }
             
             .zml-tool-panel input[type="text"]:focus {
                 outline: none;
                 border-color: #4CAF50;
+                box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
             }
             
             .zml-adjust-btn {
                 transition: all 0.2s ease;
+                transform: scale(1);
             }
             
             .zml-adjust-btn:hover {
                 background-color: #555;
                 border-color: #4CAF50;
+                transform: scale(1.05);
             }
             
             .zml-adjust-btn:active {
                 background-color: #666;
+                transform: scale(0.95);
+            }
+            
+            #zml-compare-btn {
+                transition: all 0.2s ease;
+                transform: scale(1);
+            }
+            
+            #zml-compare-btn:hover {
+                background-color: rgba(255,255,255,0.3);
+                transform: scale(1.05);
             }
             
             #zml-compare-btn:active {
                 background-color: rgba(255,255,255,0.7);
                 color: black;
+                transform: scale(0.95);
             }
             
             /* 工具面板中的输入框样式微调 */
@@ -693,8 +740,13 @@ async function showColorAdjustModal(node) {
     const vignettePlusBtn = modal.querySelector('#zml-vignette-plus');
     
     const resetBtn = modal.querySelector('#zml-reset-color-btn');
+    const undoBtn = modal.querySelector('#zml-undo-btn');
     const confirmBtn = modal.querySelector('#zml-confirm-color-btn');
     const cancelBtn = modal.querySelector('#zml-cancel-color-btn');
+    
+    // 创建历史记录数组，用于撤回功能
+    let historyStack = [];
+    const MAX_HISTORY_SIZE = 50; // 最大历史记录数量
 
     // 加载图像并设置画布
     const image = new Image();
@@ -703,6 +755,66 @@ async function showColorAdjustModal(node) {
     
     let originalImageData = null;
     let currentImageData = null;
+    
+    // 保存当前参数状态到历史记录
+    function saveCurrentState() {
+        const currentState = {
+            brightness: parseInt(brightnessSlider.value),
+            contrast: parseInt(contrastSlider.value),
+            saturation: parseInt(saturationSlider.value),
+            hue: parseInt(hueSlider.value),
+            sharpen: parseInt(sharpenSlider.value),
+            gamma: parseFloat(gammaSlider.value),
+            exposure: parseInt(exposureSlider.value),
+            blur: parseInt(blurSlider.value),
+            noise: parseInt(noiseSlider.value),
+            vignette: parseInt(vignetteSlider.value)
+        };
+        
+        // 限制历史记录大小
+        if (historyStack.length >= MAX_HISTORY_SIZE) {
+            historyStack.shift();
+        }
+        
+        historyStack.push(currentState);
+        
+        // 更新撤回按钮状态
+        undoBtn.disabled = historyStack.length <= 1;
+        if (historyStack.length <= 1) {
+            undoBtn.style.opacity = '0.5';
+        } else {
+            undoBtn.style.opacity = '1';
+        }
+    }
+    
+    // 撤回操作函数
+    function undoLastChange() {
+        if (historyStack.length > 1) {
+            historyStack.pop(); // 移除当前状态
+            const previousState = historyStack[historyStack.length - 1];
+            
+            // 恢复到上一个状态
+            brightnessSlider.value = previousState.brightness;
+            contrastSlider.value = previousState.contrast;
+            saturationSlider.value = previousState.saturation;
+            hueSlider.value = previousState.hue;
+            sharpenSlider.value = previousState.sharpen;
+            gammaSlider.value = previousState.gamma;
+            exposureSlider.value = previousState.exposure;
+            blurSlider.value = previousState.blur;
+            noiseSlider.value = previousState.noise;
+            vignetteSlider.value = previousState.vignette;
+            
+            // 更新UI并重新绘制图像
+            updateAdjustedImage();
+            
+            // 更新撤回按钮状态
+            undoBtn.disabled = historyStack.length <= 1;
+            if (historyStack.length <= 1) {
+                undoBtn.style.opacity = '0.5';
+            }
+        }
+    }
     
     image.onload = () => {
         // 设置画布大小
@@ -723,6 +835,9 @@ async function showColorAdjustModal(node) {
         
         // 保存原始图像数据
         originalImageData = originalCtx.getImageData(0, 0, width, height);
+        
+        // 保存初始状态到历史记录
+        saveCurrentState();
         
         // 初始化调整后的图像
         updateAdjustedImage();
@@ -863,6 +978,22 @@ async function showColorAdjustModal(node) {
             // 绘制调整后的图像
             adjustedCtx.putImageData(finalImageData, 0, 0);
     }
+
+    // 添加防抖功能，优化性能
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // 创建防抖版本的图像更新函数
+    const debouncedUpdateAdjustedImage = debounce(updateAdjustedImage, 50);
     
     // 锐化滤镜函数
         function applySharpen(imageData, amount) {
@@ -1151,17 +1282,100 @@ async function showColorAdjustModal(node) {
         return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
     }
     
-    // 绑定滑块事件监听器
-    brightnessSlider.addEventListener('input', updateAdjustedImage);
-    contrastSlider.addEventListener('input', updateAdjustedImage);
-    saturationSlider.addEventListener('input', updateAdjustedImage);
-    hueSlider.addEventListener('input', updateAdjustedImage);
-    sharpenSlider.addEventListener('input', updateAdjustedImage);
-    gammaSlider.addEventListener('input', updateAdjustedImage);
-    exposureSlider.addEventListener('input', updateAdjustedImage);
-    blurSlider.addEventListener('input', updateAdjustedImage);
-    noiseSlider.addEventListener('input', updateAdjustedImage);
-    vignetteSlider.addEventListener('input', updateAdjustedImage);
+    // 绑定滑块事件监听器 - 使用防抖优化性能
+    brightnessSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    contrastSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    saturationSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    hueSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    sharpenSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    gammaSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    exposureSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    blurSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    noiseSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+    vignetteSlider.addEventListener('input', debouncedUpdateAdjustedImage);
+
+    // 增强滑块交互体验 - 添加滑块拖动时的视觉反馈
+    const allSliders = [brightnessSlider, contrastSlider, saturationSlider, hueSlider, sharpenSlider, gammaSlider, exposureSlider, blurSlider, noiseSlider, vignetteSlider];
+    allSliders.forEach(slider => {
+        // 添加滑块拖动开始事件
+        slider.addEventListener('mousedown', function() {
+            this.style.opacity = '1';
+            this.style.cursor = 'grabbing';
+        });
+        
+        // 添加滑块拖动结束事件
+        slider.addEventListener('mouseup', function() {
+            this.style.cursor = 'grab';
+            // 确保最终状态的图像被正确更新
+            updateAdjustedImage();
+            // 保存状态到历史记录
+            saveCurrentState();
+        });
+        
+        // 添加滑块鼠标离开事件
+        slider.addEventListener('mouseleave', function() {
+            this.style.cursor = 'grab';
+            // 确保最终状态的图像被正确更新
+            updateAdjustedImage();
+        });
+        
+        // 为滑块添加CSS类以支持平滑过渡
+        slider.classList.add('zml-slider');
+    });
+
+    // 增强输入框交互体验
+    const allInputs = [brightnessInput, contrastInput, saturationInput, hueInput, sharpenInput, gammaInput, exposureInput, blurInput, noiseInput, vignetteInput];
+    allInputs.forEach(input => {
+        // 添加输入框聚焦效果
+        input.addEventListener('focus', function() {
+            this.style.borderColor = '#4CAF50';
+            this.style.boxShadow = '0 0 0 2px rgba(76, 175, 80, 0.2)';
+        });
+        
+        // 添加输入框失焦效果
+        input.addEventListener('blur', function() {
+            this.style.borderColor = '#666';
+            this.style.boxShadow = 'none';
+        });
+        
+        // 添加输入框即时验证
+        input.addEventListener('input', function() {
+            // 实时更新滑块值和图像，但使用防抖避免频繁更新
+            debouncedUpdateAdjustedImage();
+        });
+    });
+
+    // 增强按钮交互体验
+    const allButtons = [
+        brightnessMinusBtn, brightnessPlusBtn,
+        contrastMinusBtn, contrastPlusBtn,
+        saturationMinusBtn, saturationPlusBtn,
+        hueMinusBtn, huePlusBtn,
+        sharpenMinusBtn, sharpenPlusBtn,
+        gammaMinusBtn, gammaPlusBtn,
+        exposureMinusBtn, exposurePlusBtn,
+        blurMinusBtn, blurPlusBtn,
+        noiseMinusBtn, noisePlusBtn,
+        vignetteMinusBtn, vignettePlusBtn,
+        resetBtn, confirmBtn, cancelBtn
+    ];
+    allButtons.forEach(button => {
+        // 添加按钮按下效果
+        button.addEventListener('mousedown', function() {
+            this.style.transform = 'scale(0.95)';
+            this.style.transition = 'transform 0.1s ease';
+        });
+        
+        // 添加按钮释放效果
+        button.addEventListener('mouseup', function() {
+            this.style.transform = 'scale(1)';
+        });
+        
+        // 添加按钮鼠标离开效果
+        button.addEventListener('mouseleave', function() {
+            this.style.transform = 'scale(1)';
+        });
+    });
     
     // 绑定输入框事件监听器，实现精准调节
     brightnessInput.addEventListener('change', function() {
@@ -1288,10 +1502,17 @@ async function showColorAdjustModal(node) {
         closeModal(modal);
     });
     
+    // 撤回按钮
+    undoBtn.addEventListener('click', undoLastChange);
+    undoBtn.disabled = true;
+    undoBtn.style.opacity = '0.5';
+    
     // 取消按钮
     cancelBtn.addEventListener('click', () => {
         closeModal(modal);
     });
+    
+
     
     // 添加按钮点击事件监听器
     // 亮度加减按钮
@@ -1309,6 +1530,7 @@ async function showColorAdjustModal(node) {
         brightnessSlider.value = value;
         brightnessInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 对比度加减按钮
@@ -1326,6 +1548,7 @@ async function showColorAdjustModal(node) {
         contrastSlider.value = value;
         contrastInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 饱和度加减按钮
@@ -1343,6 +1566,7 @@ async function showColorAdjustModal(node) {
         saturationSlider.value = value;
         saturationInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 色相加减按钮
@@ -1360,6 +1584,7 @@ async function showColorAdjustModal(node) {
         hueSlider.value = value;
         hueInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 锐化加减按钮
@@ -1377,6 +1602,7 @@ async function showColorAdjustModal(node) {
         sharpenSlider.value = value;
         sharpenInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 伽马加减按钮
@@ -1394,6 +1620,7 @@ async function showColorAdjustModal(node) {
         gammaSlider.value = value.toFixed(1);
         gammaInput.value = value.toFixed(1);
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 曝光加减按钮
@@ -1411,6 +1638,7 @@ async function showColorAdjustModal(node) {
         exposureSlider.value = value;
         exposureInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 模糊加减按钮
@@ -1428,6 +1656,7 @@ async function showColorAdjustModal(node) {
         blurSlider.value = value;
         blurInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 噪点加减按钮
@@ -1445,10 +1674,21 @@ async function showColorAdjustModal(node) {
         noiseSlider.value = value;
         noiseInput.value = value;
         updateAdjustedImage();
+        saveCurrentState();
     });
     
     // 暗角加减按钮
-    vignetteMinusBtn.addEventListener('click', () => {
+    vignettePlusBtn.addEventListener('click', () => {
+        let value = parseInt(vignetteSlider.value) + 1;
+        value = Math.max(0, Math.min(100, value));
+        vignetteSlider.value = value;
+        vignetteInput.value = value;
+        updateAdjustedImage();
+        saveCurrentState();
+    });
+
+        // 暗角减按钮
+        vignetteMinusBtn.addEventListener('click', () => {
         let value = parseInt(vignetteSlider.value) - 1;
         value = Math.max(0, Math.min(100, value));
         vignetteSlider.value = value;

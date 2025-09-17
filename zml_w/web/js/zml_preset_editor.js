@@ -150,6 +150,8 @@ const DIALOG_STYLE_TEXT = `
     #zml-delete-resolution-confirm, 
     #zml-manage-add-button, 
     #zml-manage-delete-button,
+    #zml-manage-edit-button, 
+    #zml-manage-random-button,
     #zml-add-text-category-button, 
     #zml-add-text-preset-button { 
         background-color: #5CB85C; /* 绿色 */
@@ -160,6 +162,8 @@ const DIALOG_STYLE_TEXT = `
     #zml-delete-resolution-confirm:hover, 
     #zml-manage-add-button:hover, 
     #zml-manage-delete-button:hover,
+    #zml-manage-edit-button:hover, 
+    #zml-manage-random-button:hover,
     #zml-add-text-category-button:hover,
     #zml-add-text-preset-button:hover { 
         background: linear-gradient(180deg, #82DB82, #6FC76F); 
@@ -483,6 +487,340 @@ async function createTextDeleteDialog() {
 
 
 /**
+ * 创建并显示一个用于修改分辨率预设的弹窗
+ * 包含修改预设分辨率和名称的框，支持拖动排序，框的右边有删除按钮
+ * @param {Array<string>} resolutionNames - 当前加载的所有分辨率预设的显示名称
+ */
+function createResolutionEditDialog(resolutionNames) {
+    removeExistingDialog();
+
+    const dialogOverlay = document.createElement("div");
+    dialogOverlay.className = "zml-dialog-overlay";
+
+    // 过滤出有效的分辨率预设
+    const validResolutions = resolutionNames.filter(name => 
+        !name.includes("文件为空") && !name.includes("错误：无法加载") && !name.includes("没有预设")
+    );
+
+    // 生成分辨率编辑列表的HTML
+    let resolutionEditListHtml = '';
+    if (validResolutions.length === 0) {
+        resolutionEditListHtml = '<p style="text-align: center; color: #000;">没有可用的分辨率预设，请先添加预设。</p>';
+    } else {
+        resolutionEditListHtml = `
+            <div class="zml-resolution-edit-list">
+                ${validResolutions.map((name, index) => {
+                    // 从显示名称中提取名称、宽度和高度
+                    let presetName = '';
+                    let width = 1024;
+                    let height = 1024;
+                    
+                    // 尝试匹配命名格式：名称_宽x高
+                    const namedMatch = name.match(/^(.+)_(\d+)x(\d+)$/);
+                    if (namedMatch) {
+                        presetName = namedMatch[1];
+                        width = namedMatch[2];
+                        height = namedMatch[3];
+                    } else {
+                        // 尝试匹配直接格式：宽x高
+                        const directMatch = name.match(/^(\d+)x(\d+)$/);
+                        if (directMatch) {
+                            width = directMatch[1];
+                            height = directMatch[2];
+                        }
+                    }
+                    
+                    return `
+                        <div class="zml-resolution-edit-item" data-index="${index}">
+                            <div class="zml-resolution-edit-handle">⋮⋮</div>
+                            <div class="zml-resolution-edit-content">
+                                <input type="text" class="zml-resolution-name-input" value="${presetName}" placeholder="可选名称">
+                                <div class="zml-resolution-size-inputs">
+                                    <input type="number" class="zml-resolution-width-input" value="${width}" min="1">
+                                    <span>×</span>
+                                    <input type="number" class="zml-resolution-height-input" value="${height}" min="1">
+                                </div>
+                            </div>
+                            <button class="zml-resolution-delete-button" data-name="${name}">删除</button>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    dialogOverlay.innerHTML = `
+        <div class="zml-dialog-container" style="width: 650px;">
+            <h2>修改分辨率预设</h2>
+            <hr>
+            <p style="color: #000; margin-bottom: 15px;">
+                点击并拖动左侧的⋮⋮图标可以调整预设的顺序。
+            </p>
+            ${resolutionEditListHtml}
+            <div class="zml-dialog-footer">
+                <div class="zml-dialog-buttons">
+                    <button id="zml-save-resolutions" ${validResolutions.length === 0 ? 'disabled' : ''}>保存所有修改</button>
+                    <button id="zml-close-edit-dialog">关闭</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 添加编辑列表的样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .zml-resolution-edit-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+        .zml-resolution-edit-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            margin-bottom: 8px;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            border: 1px solid #CCEEFF;
+            transition: all 0.2s ease;
+        }
+        .zml-resolution-edit-item:hover {
+            background-color: rgba(204, 238, 255, 0.5);
+            border-color: #99DDEE;
+        }
+        .zml-resolution-edit-handle {
+            cursor: move;
+            width: 20px;
+            text-align: center;
+            color: #000;
+            font-size: 16px;
+            user-select: none;
+        }
+        .zml-resolution-edit-content {
+            flex-grow: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .zml-resolution-name-input {
+            width: 100px;
+            padding: 5px 10px;
+            border: 1px solid #CCEEFF;
+            border-radius: 4px;
+            background-color: white;
+            color: #000;
+        }
+        .zml-resolution-size-inputs {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .zml-resolution-width-input,
+        .zml-resolution-height-input {
+            width: 100px;
+            padding: 5px 10px;
+            border: 1px solid #CCEEFF;
+            border-radius: 4px;
+            background-color: white;
+            color: #000;
+        }
+        .zml-resolution-delete-button {
+            padding: 5px 15px;
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .zml-resolution-delete-button:hover {
+            background-color: #ee5253;
+        }
+        /* 拖动时的样式 */
+        .zml-resolution-edit-item.dragging {
+            opacity: 0.5;
+            background-color: rgba(204, 238, 255, 0.8);
+        }
+        .zml-resolution-edit-item.drag-over {
+            border-top: 2px solid #3498db;
+        }
+    `;
+    dialogOverlay.appendChild(style);
+
+    document.body.appendChild(dialogOverlay);
+
+    // 实现拖动排序功能
+    const list = dialogOverlay.querySelector('.zml-resolution-edit-list');
+    if (list) {
+        let draggedItem = null;
+
+        list.addEventListener('dragstart', (e) => {
+            if (e.target.classList.contains('zml-resolution-edit-item')) {
+                draggedItem = e.target;
+                setTimeout(() => {
+                    draggedItem.classList.add('dragging');
+                }, 0);
+            }
+        });
+
+        list.addEventListener('dragend', (e) => {
+            if (e.target.classList.contains('zml-resolution-edit-item')) {
+                e.target.classList.remove('dragging');
+                draggedItem = null;
+                // 移除所有drag-over类
+                document.querySelectorAll('.zml-resolution-edit-item').forEach(item => {
+                    item.classList.remove('drag-over');
+                });
+            }
+        });
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(list, e.clientY);
+            const currentItem = document.querySelector('.zml-resolution-edit-item.dragging');
+            
+            if (currentItem) {
+                if (afterElement == null) {
+                    list.appendChild(currentItem);
+                } else {
+                    list.insertBefore(currentItem, afterElement);
+                }
+            }
+        });
+
+        list.addEventListener('dragenter', (e) => {
+            if (e.target.classList.contains('zml-resolution-edit-item')) {
+                e.target.classList.add('drag-over');
+            }
+        });
+
+        list.addEventListener('dragleave', (e) => {
+            if (e.target.classList.contains('zml-resolution-edit-item')) {
+                e.target.classList.remove('drag-over');
+            }
+        });
+
+        // 设置所有项目为可拖动
+        document.querySelectorAll('.zml-resolution-edit-item').forEach(item => {
+            item.setAttribute('draggable', 'true');
+        });
+    }
+
+    // 获取拖动后元素的位置
+    function getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.zml-resolution-edit-item:not(.dragging)')];
+
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    // 处理删除按钮点击事件
+    document.querySelectorAll('.zml-resolution-delete-button').forEach(button => {
+        button.onclick = async () => {
+            const displayNameToDelete = button.getAttribute('data-name');
+            
+            if (!confirm(`确定要删除预设 "${displayNameToDelete}" 吗？\n此操作不可逆！`)) {
+                return;
+            }
+
+            try {
+                const response = await api.fetchApi("/zml/delete_resolution_preset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ display_name: displayNameToDelete }),
+                });
+
+                if (response.status === 200) {
+                    alert(`预设 "${displayNameToDelete}" 已成功删除！`);
+                    // 重新加载编辑界面
+                    dialogOverlay.remove();
+                    createResolutionEditDialog(resolutionNames.filter(name => name !== displayNameToDelete));
+                } else {
+                    alert(`删除失败: ${await response.text()}`);
+                }
+            } catch (error) {
+                alert(`发生错误: ${error}`);
+                console.error("ZML Resolution Preset Delete Error:", error);
+            }
+        };
+    });
+
+    const saveButton = dialogOverlay.querySelector("#zml-save-resolutions");
+    const closeButton = dialogOverlay.querySelector("#zml-close-edit-dialog");
+
+    saveButton.onclick = async () => {
+        const editedResolutions = [];
+        const items = dialogOverlay.querySelectorAll('.zml-resolution-edit-item');
+        let isValid = true;
+        
+        items.forEach(item => {
+            const nameInput = item.querySelector('.zml-resolution-name-input');
+            const widthInput = item.querySelector('.zml-resolution-width-input');
+            const heightInput = item.querySelector('.zml-resolution-height-input');
+            
+            const name = nameInput.value.trim();
+            const width = widthInput.value;
+            const height = heightInput.value;
+            
+            // 验证输入
+            if (!width || !height || isNaN(parseInt(width)) || isNaN(parseInt(height))) {
+                alert(`请确保所有分辨率的宽高都是有效的数字！`);
+                isValid = false;
+                return;
+            }
+            
+            // 构建正确的预设数据结构
+            editedResolutions.push({ preset_name: name, width: parseInt(width), height: parseInt(height) });
+        });
+        
+        if (!isValid) {
+            return;
+        }
+        
+        if (editedResolutions.length === 0) {
+            alert("没有可保存的分辨率预设！");
+            return;
+        }
+        
+        try {
+            // 首先获取当前的所有预设并删除它们
+            await api.fetchApi("/zml/clear_resolution_presets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            
+            // 然后按新顺序添加所有编辑后的预设
+            for (const resolution of editedResolutions) {
+                await api.fetchApi("/zml/add_resolution_preset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(resolution),
+                });
+            }
+            
+            alert("所有分辨率预设已成功保存！");
+            dialogOverlay.remove();
+        } catch (error) {
+            alert(`保存失败: ${error}`);
+            console.error("ZML Resolution Preset Save Error:", error);
+        }
+    };
+
+    closeButton.onclick = () => {
+        dialogOverlay.remove();
+    };
+}
+
+
+/**
  * 创建用于管理文本预设的主弹窗（包含添加和删除按钮）
  */
 function createTextManageDialog() {
@@ -758,7 +1096,10 @@ function createResolutionManageDialog(resolutionNames) {
             </p>
             <div class="zml-action-buttons">
                 <button id="zml-manage-add-button">添加分辨率</button>
-                <button id="zml-manage-delete-button">删除分辨率</button>
+                <button id="zml-manage-edit-button">修改分辨率</button>
+            </div>
+            <div class="zml-action-buttons">
+                <button id="zml-manage-random-button">随机规则</button>
             </div>
             <div class="zml-dialog-footer">
                 <div class="zml-dialog-buttons">
@@ -771,7 +1112,8 @@ function createResolutionManageDialog(resolutionNames) {
     document.body.appendChild(dialogOverlay);
 
     const addButton = dialogOverlay.querySelector("#zml-manage-add-button");
-    const deleteButton = dialogOverlay.querySelector("#zml-manage-delete-button");
+    const editButton = dialogOverlay.querySelector("#zml-manage-edit-button");
+    const randomButton = dialogOverlay.querySelector("#zml-manage-random-button");
     const cancelButton = dialogOverlay.querySelector("#zml-manage-cancel-button");
 
     addButton.onclick = () => {
@@ -779,12 +1121,140 @@ function createResolutionManageDialog(resolutionNames) {
         createResolutionAddDialog(); 
     };
 
-    deleteButton.onclick = () => {
+    editButton.onclick = () => {
         dialogOverlay.remove(); 
-        createResolutionDeleteDialog(resolutionNames); 
+        createResolutionEditDialog(resolutionNames); 
+    };
+
+    randomButton.onclick = () => {
+        dialogOverlay.remove();
+        createRandomRulesDialog(resolutionNames);
     };
 
     cancelButton.onclick = () => {
+        dialogOverlay.remove();
+    };
+}
+
+/**
+ * 创建并显示用于设置随机分辨率规则的弹窗
+ * @param {Array<string>} resolutionNames - 当前加载的所有分辨率预设的显示名称
+ */
+function createRandomRulesDialog(resolutionNames) {
+    removeExistingDialog();
+
+    // 从localStorage加载已保存的随机规则设置
+    let randomRules = {};
+    try {
+        const savedRules = localStorage.getItem('zml_random_resolution_rules');
+        if (savedRules) {
+            randomRules = JSON.parse(savedRules);
+        }
+    } catch (error) {
+        console.error("Failed to load random resolution rules:", error);
+    }
+
+    const dialogOverlay = document.createElement("div");
+    dialogOverlay.className = "zml-dialog-overlay";
+
+    // 生成分辨率选项的HTML
+    let resolutionOptionsHtml = '';
+    const validResolutions = resolutionNames.filter(name => 
+        !name.includes("文件为空") && !name.includes("错误：无法加载") && !name.includes("没有预设")
+    );
+
+    if (validResolutions.length === 0) {
+        resolutionOptionsHtml = '<p>没有可用的分辨率预设，请先添加预设。</p>';
+    } else {
+        resolutionOptionsHtml = '<div class="zml-random-rules-list">';
+        validResolutions.forEach(name => {
+            const isSelected = randomRules[name] !== false; // 默认选中所有分辨率
+            resolutionOptionsHtml += `
+                <div class="zml-random-rule-item">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" name="random-resolution" value="${name}" ${isSelected ? 'checked' : ''} style="width: auto;">
+                        <span>${name}</span>
+                    </label>
+                </div>
+            `;
+        });
+        resolutionOptionsHtml += '</div>';
+    }
+
+    dialogOverlay.innerHTML = `
+        <div class="zml-dialog-container">
+            <h2>随机分辨率规则设置</h2>
+            <hr>
+            <p style="color: #3A668E; margin-bottom: 15px;">
+                请选择在随机模式下可以使用的分辨率预设：
+            </p>
+            ${resolutionOptionsHtml}
+            <div class="zml-dialog-footer">
+                <div class="zml-dialog-buttons">
+                    <button id="zml-save-random-rules" ${validResolutions.length === 0 ? 'disabled' : ''}>保存</button>
+                    <button id="zml-close-random-rules">关闭</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // 添加随机规则列表的样式
+    const style = document.createElement('style');
+    style.textContent = `
+        .zml-random-rules-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            border: 1px solid #CCEEFF;
+            margin-bottom: 10px;
+        }
+        .zml-random-rule-item {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-radius: 4px;
+            transition: background-color 0.1s ease;
+        }
+        .zml-random-rule-item:hover {
+            background-color: rgba(204, 238, 255, 0.5);
+        }
+        .zml-random-rule-item label {
+            cursor: pointer;
+            font-weight: normal;
+            color: #333;
+        }
+        .zml-random-rule-item input[type="checkbox"] {
+            cursor: pointer;
+            transform: scale(1.2);
+        }
+    `;
+    dialogOverlay.appendChild(style);
+
+    document.body.appendChild(dialogOverlay);
+
+    const saveButton = dialogOverlay.querySelector("#zml-save-random-rules");
+    const closeButton = dialogOverlay.querySelector("#zml-close-random-rules");
+
+    saveButton.onclick = () => {
+        const selectedResolutions = {};
+        const checkboxes = dialogOverlay.querySelectorAll('input[name="random-resolution"]');
+        
+        checkboxes.forEach(checkbox => {
+            selectedResolutions[checkbox.value] = checkbox.checked;
+        });
+        
+        // 保存到localStorage
+        try {
+            localStorage.setItem('zml_random_resolution_rules', JSON.stringify(selectedResolutions));
+            alert("随机分辨率规则已成功保存！");
+        } catch (error) {
+            alert(`保存失败: ${error}`);
+            console.error("Failed to save random resolution rules:", error);
+        }
+    };
+
+    closeButton.onclick = () => {
         dialogOverlay.remove();
     };
 }

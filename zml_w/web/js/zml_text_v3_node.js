@@ -984,6 +984,11 @@ app.registerExtension({
                                 flex-grow: 1;
                                 padding: 4px;
                                 margin: 0 4px;
+                                max-width: 100%; /* 确保不会超出父容器 */
+                                min-width: 0; /* 允许收缩到很小的宽度 */
+                                overflow: hidden; /* 隐藏超出部分 */
+                                text-overflow: ellipsis; /* 显示省略号 */
+                                white-space: nowrap; /* 防止换行 */
                             }
                             .zml-st3-folder-delete {
                                 background: #444;
@@ -1072,6 +1077,10 @@ app.registerExtension({
                     this.isLocked = this.isLocked ?? false;
                     this.titleWidth = this.titleWidth ?? 80;
                     this.folderColor = this.folderColor ?? "#30353c";
+                    this.textboxColor = this.textboxColor ?? "#3a3a3a"; // 文本框背景颜色
+                    this.textboxDisabledColor = this.textboxDisabledColor ?? "#2a2a2a"; // 禁用的文本框背景颜色
+                    this.textboxBorderColor = this.textboxBorderColor ?? "#555"; // 文本框边框颜色
+                    this.textboxDisabledBorderColor = this.textboxDisabledBorderColor ?? "#444"; // 禁用的文本框边框颜色
 
                     if (!this.selectTextV3_data) {
                         this.selectTextV3_data = {
@@ -1143,8 +1152,14 @@ app.registerExtension({
                     titleWidthInput.title = this.getText("titleWidth");
                     titleWidthInput.style.cssText += `width: 60px; text-align: left; flex-shrink: 0;`;
                     titleWidthInput.oninput = (e) => {
-                        this.titleWidth = parseInt(e.target.value, 10);
-                    };
+                            this.titleWidth = parseInt(e.target.value, 10);
+                            // 实时更新所有标题输入框的宽度
+                            const titleInputs = entriesList.querySelectorAll("input[type='text'][placeholder='" + this.getText("inputName") + "']");
+                            titleInputs.forEach(input => {
+                                input.style.width = this.titleWidth + 'px';
+                            });
+                            app.graph.setDirtyCanvas(true, true);
+                        };
                     titleWidthInput.onblur = (e) => {
                         let val = parseInt(e.target.value, 10);
                         if (isNaN(val)) val = 80;
@@ -1183,26 +1198,156 @@ app.registerExtension({
                     };
                     controlsRow.appendChild(newFolderBtn);
 
+                    // 颜色选择下拉菜单
+                    const colorDropdown = createEl("div", "zml-color-dropdown", {
+                        style: `position: relative; display: inline-block;`
+                    });
+                    
+                    // 下拉按钮 - 恢复图标显示
+                    const colorDropdownBtn = createEl("button", "zml-control-btn", { textContent: "🎨" });
+                    colorDropdownBtn.title = "颜色设置";
+                    colorDropdownBtn.style.cssText += `
+                        transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+                        width: 26px;
+                        height: 26px;
+                        padding: 0;
+                        position: relative;
+                    `;
+                    colorDropdownBtn.onmouseenter = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; e.target.style.transform = 'translateY(-2px) scale(1.02)'; };
+                    colorDropdownBtn.onmouseleave = (e) => { 
+                        // 只有当下拉菜单关闭时才恢复样式
+                        if (!colorDropdownMenu.classList.contains('show')) {
+                            e.target.style.background = '#333';
+                            e.target.style.boxShadow = 'none';
+                            e.target.style.transform = 'translateY(0) scale(1)';
+                        }
+                    };
+                    colorDropdownBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(2px) scale(0.97)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.4)'; };
+                    colorDropdownBtn.onmouseup = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; e.target.style.transform = 'translateY(0) scale(1)'; };
+                    
+                    // 下拉菜单内容 - 改为纵向布局，文件夹颜色显示在第一行，文本框颜色显示在第二行
+                    const colorDropdownMenu = createEl("div", "zml-color-dropdown-content", {
+                        style: `
+                            display: none;
+                            position: absolute;
+                            right: 0;
+                            top: 100%;
+                            margin-top: 5px;
+                            background: #333;
+                            border: 1px solid #555;
+                            border-radius: 4px;
+                            padding: 4px;
+                            z-index: 1000;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                            display: none;
+                            flex-direction: column;
+                            gap: 2px;
+                        `
+                    });
+                    
+                    // 文件夹颜色选项 - 移除图标，纯文字显示
                     const folderColorInput = createEl("input", "", { type: "color", value: this.folderColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" });
                     folderColorInput.onchange = (e) => {
                         this.folderColor = e.target.value;
+                        this.renderSelectTextV3Entries(); // 重新渲染所有条目，包括文件夹
+                        this.triggerSlotChanged(); // 触发数据变化通知
+                        // 关闭下拉菜单
+                        colorDropdownMenu.classList.remove('show');
+                        colorDropdownMenu.style.display = 'none';
+                    };
+                    
+                    const folderColorOption = createEl("div", "zml-dropdown-option", {
+                        style: `
+                            padding: 4px 8px;
+                            cursor: pointer;
+                            white-space: nowrap;
+                            transition: background-color 0.2s ease;
+                            border-radius: 2px;
+                            font-size: 12px;
+                        `
+                    });
+                    folderColorOption.textContent = "文件夹颜色";
+                    folderColorOption.onmouseenter = (e) => { e.target.style.background = '#444'; };
+                    folderColorOption.onmouseleave = (e) => { e.target.style.background = 'transparent'; };
+                    folderColorOption.onclick = function() {
+                        folderColorInput.click();
+                    };
+                    
+                    // 文本框颜色选项 - 移除图标，纯文字显示
+                    const textboxColorInput = createEl("input", "", { type: "color", value: this.textboxColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden;" });
+                    textboxColorInput.onchange = (e) => {
+                        this.textboxColor = e.target.value;
+                        // 更新禁用状态的颜色为稍暗的版本
+                        this.textboxDisabledColor = adjustBrightness(this.textboxColor, -30);
+                        // 更新边框颜色为稍暗的版本
+                        this.textboxBorderColor = adjustBrightness(this.textboxColor, -15);
+                        this.textboxDisabledBorderColor = adjustBrightness(this.textboxColor, -45);
                         this.renderSelectTextV3Entries();
                         this.triggerSlotChanged();
+                        // 关闭下拉菜单
+                        colorDropdownMenu.classList.remove('show');
+                        colorDropdownMenu.style.display = 'none';
                     };
-                    const folderColorBtn = createEl("button", "zml-control-btn", { textContent: "🎨" });
-                    folderColorBtn.title = "自定义文件夹颜色";
-                    folderColorBtn.style.cssText += `
-                        transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
-                        width: 26px; /* 恢复默认宽度 */
-                        height: 26px; /* 恢复默认高度 */
-                        padding: 0;
-                    `;
-                    folderColorBtn.onmouseenter = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; e.target.style.transform = 'translateY(-2px) scale(1.02)'; };
-                    folderColorBtn.onmouseleave = (e) => { e.target.style.background = '#333'; e.target.style.boxShadow = 'none'; e.target.style.transform = 'translateY(0) scale(1)'; };
-                    folderColorBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(2px) scale(0.97)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.4)'; };
-                    folderColorBtn.onmouseup = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; e.target.style.transform = 'translateY(0) scale(1)'; };
-                    folderColorBtn.onclick = () => folderColorInput.click();
-                    controlsRow.append(folderColorInput, folderColorBtn);
+                    
+                    const textboxColorOption = createEl("div", "zml-dropdown-option", {
+                        style: `
+                            padding: 4px 8px;
+                            cursor: pointer;
+                            white-space: nowrap;
+                            transition: background-color 0.2s ease;
+                            border-radius: 2px;
+                            font-size: 12px;
+                        `
+                    });
+                    textboxColorOption.textContent = "文本框颜色";
+                    textboxColorOption.onmouseenter = (e) => { e.target.style.background = '#444'; };
+                    textboxColorOption.onmouseleave = (e) => { e.target.style.background = 'transparent'; };
+                    textboxColorOption.onclick = function() {
+                        textboxColorInput.click();
+                    };
+                    
+                    // 组装下拉菜单
+                    colorDropdownMenu.appendChild(folderColorOption);
+                    colorDropdownMenu.appendChild(textboxColorOption);
+                    
+                    // 添加下拉菜单到按钮容器
+                    colorDropdown.appendChild(colorDropdownBtn);
+                    colorDropdown.appendChild(colorDropdownMenu);
+                    
+                    // 添加隐藏的颜色输入框
+                    colorDropdown.appendChild(folderColorInput);
+                    colorDropdown.appendChild(textboxColorInput);
+                    
+                    // 点击按钮切换下拉菜单显示状态
+                    colorDropdownBtn.onclick = function() {
+                        const isVisible = colorDropdownMenu.classList.contains('show');
+                        if (isVisible) {
+                            colorDropdownMenu.classList.remove('show');
+                            colorDropdownMenu.style.display = 'none';
+                            colorDropdownBtn.style.background = '#333';
+                            colorDropdownBtn.style.boxShadow = 'none';
+                            colorDropdownBtn.style.transform = 'translateY(0) scale(1)';
+                        } else {
+                            colorDropdownMenu.classList.add('show');
+                            colorDropdownMenu.style.display = 'flex';
+                            colorDropdownBtn.style.background = '#555';
+                            colorDropdownBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+                        }
+                    };
+                    
+                    // 点击页面其他地方关闭下拉菜单
+                    document.addEventListener('click', function(event) {
+                        if (!colorDropdown.contains(event.target)) {
+                            colorDropdownMenu.classList.remove('show');
+                            colorDropdownMenu.style.display = 'none';
+                            colorDropdownBtn.style.background = '#333';
+                            colorDropdownBtn.style.boxShadow = 'none';
+                            colorDropdownBtn.style.transform = 'translateY(0) scale(1)';
+                        }
+                    });
+                    
+                    // 添加到控件行
+                    controlsRow.append(colorDropdown);
 
                     const lockToggleButton = createEl("button", "zml-control-btn", { textContent: this.isLocked ? "🔒" : "🔓" });
                     lockToggleButton.title = this.getText("lockDrag");
@@ -1297,7 +1442,7 @@ app.registerExtension({
                     this.createTextEntryDOM = (entry) => {
                         const s = this.compactView ? this.styles.compact : this.styles.normal;
                         const entryCard = createEl("div", "zml-st3-entry-card", {
-                            style: `display: flex; align-items: center; gap: 4px; padding: ${s.cardPadding}; background: ${entry.enabled ? '#3a3a3a' : '#2a2a2a'}; border: 1px solid ${entry.enabled ? '#555' : '#444'}; border-radius: 2px;`
+                            style: `display: flex; align-items: center; gap: 4px; padding: ${s.cardPadding}; background: ${entry.enabled ? this.textboxColor : this.textboxDisabledColor}; border: 1px solid ${entry.enabled ? this.textboxBorderColor : this.textboxDisabledBorderColor}; border-radius: 2px;`
                         });
                         entryCard.dataset.id = entry.id;
                         entryCard.dataset.type = "text";
@@ -1662,9 +1807,13 @@ app.registerExtension({
                 origOnSerialize ? origOnSerialize.apply(this, arguments) : undefined;
                 if (this.selectTextV3_data) obj.selectTextV3_data = this.selectTextV3_data;
                 obj.compactView = this.compactView;
-                obj.isLocked = this.isLocked;
-                obj.titleWidth = this.titleWidth;
-                obj.folderColor = this.folderColor;
+                    obj.isLocked = this.isLocked;
+                    obj.titleWidth = this.titleWidth;
+                    obj.folderColor = this.folderColor;
+                    obj.textboxColor = this.textboxColor;
+                    obj.textboxDisabledColor = this.textboxDisabledColor;
+                    obj.textboxBorderColor = this.textboxBorderColor;
+                    obj.textboxDisabledBorderColor = this.textboxDisabledBorderColor;
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
@@ -1687,6 +1836,10 @@ app.registerExtension({
                     this.titleWidth = obj.titleWidth;
                 }
                 this.folderColor = obj.folderColor ?? "#30353c";
+                    this.textboxColor = obj.textboxColor ?? "#3a3a3a";
+                    this.textboxDisabledColor = obj.textboxDisabledColor ?? "#2a2a2a";
+                    this.textboxBorderColor = obj.textboxBorderColor ?? "#555";
+                    this.textboxDisabledBorderColor = obj.textboxDisabledBorderColor ?? "#444";
 
                 if (this.selectTextV3_initialized) {
                     setTimeout(() => {
@@ -1707,9 +1860,14 @@ app.registerExtension({
                         if (titleWidthInput) {
                             titleWidthInput.value = this.titleWidth;
                         }
-                        const folderColorInput = this.domElement?.querySelector("input[type='color']");
+                        const folderColorInput = this.domElement?.querySelectorAll("input[type='color']")[0];
                         if (folderColorInput) {
                             folderColorInput.value = this.folderColor;
+                        }
+                        
+                        const textboxColorInput = this.domElement?.querySelectorAll("input[type='color']")[1];
+                        if (textboxColorInput) {
+                            textboxColorInput.value = this.textboxColor;
                         }
                         
                         // Update feedback for node control buttons based on current state
