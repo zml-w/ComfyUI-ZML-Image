@@ -2,6 +2,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+const ZML_API_PREFIX = "/zml"; // 定义API前缀
+
 // 定义通用弹窗样式 - 简约浅蓝色风格
 const DIALOG_STYLE_TEXT = `
     .zml-dialog-overlay {
@@ -1236,7 +1238,7 @@ function createRandomRulesDialog(resolutionNames) {
     const saveButton = dialogOverlay.querySelector("#zml-save-random-rules");
     const closeButton = dialogOverlay.querySelector("#zml-close-random-rules");
 
-    saveButton.onclick = () => {
+    saveButton.onclick = async () => {
         const selectedResolutions = {};
         const checkboxes = dialogOverlay.querySelectorAll('input[name="random-resolution"]');
         
@@ -1247,7 +1249,23 @@ function createRandomRulesDialog(resolutionNames) {
         // 保存到localStorage
         try {
             localStorage.setItem('zml_random_resolution_rules', JSON.stringify(selectedResolutions));
-            alert("随机分辨率规则已成功保存！");
+            
+            // 同时将规则发送到后端
+            try {
+                const response = await api.fetchApi(`${ZML_API_PREFIX}/set_random_resolution_rules`, {
+                    method: 'POST',
+                    body: JSON.stringify({ rules: selectedResolutions })
+                });
+                
+                if (response.ok) {
+                    alert("随机分辨率规则已成功保存并同步到后端！");
+                } else {
+                    throw new Error("后端同步失败");
+                }
+            } catch (error) {
+                console.error("Failed to sync random resolution rules to backend:", error);
+                alert("规则已保存到本地，但同步到后端时失败。请刷新页面后重试。");
+            }
         } catch (error) {
             alert(`保存失败: ${error}`);
             console.error("Failed to save random resolution rules:", error);
