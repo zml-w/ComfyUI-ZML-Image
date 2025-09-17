@@ -457,8 +457,7 @@ class ZML_DeleteText:
     
     def delete_text(self, 文本, 删除标签或字符): # Simplified function signature
         """删除文本中的指定标签或子字符串"""
-        # 修改：不再对整个输入文本进行strip()，以保留其内部的换行符
-        # 仅在判断是否为空时使用.strip()
+        # 如果输入文本为空，则返回空字符串
         if not 文本.strip():
             return ("", self.help_text)
         
@@ -467,22 +466,14 @@ class ZML_DeleteText:
         delete_list = [item.strip() for item in 删除标签或字符.split(',') if item.strip()]
         
         for item_to_delete in delete_list:
-            # 使用re.sub替换，可以确保删除的字符串前后有或没有空白符都能正确处理
-            # 并且不会影响其他换行符
-            # 使用 \b 对标签进行单词边界匹配以避免删除部分单词，如果item_to_delete是一个完整的tag
-            # 如果item_to_delete是子字符串，则直接替换
-            if re.match(r'^[\w\s-]+$', item_to_delete): # 简单的判断是否是类似tag的结构
-                 result = re.sub(r'\b' + re.escape(item_to_delete) + r'\b', '', result)
-            else:
-                 result = result.replace(item_to_delete, '')
-            
-        # 修正：清理多余的空白符和逗号，但尽量保留用户输入的换行符
-        result = re.sub(r'(\s*[,，]\s*)+', ',', result) # 将多个逗号或逗号与空白组合替换为单个逗号
-        result = re.sub(r'^,+', '', result) # 移除开头的逗号
-        result = re.sub(r',+$', '', result) # 移除结尾的逗号
-        result = re.sub(r'\s*\n\s*', '\n', result) # 合并连续换行，不去除首尾空白
-        result = result.strip() # 最后去除整个字符串的首尾空白
-
+            result = result.replace(item_to_delete, '')
+        
+        result = re.sub(r',+', ',', result) # Merge multiple commas
+        result = re.sub(r'^,', '', result)  # Remove leading comma
+        result = re.sub(r',$', '', result)  # Remove trailing comma
+        
+        result = result.replace(',,', ',') # This line is redundant if r',+' is used effectively but doesn't hurt.
+        
         return (result, self.help_text)
 
 # ============================== 文本行节点==============================
@@ -1111,6 +1102,163 @@ class ZML_SplitText:
         # 不再进行标点符号格式化，直接返回分割后的文本
         return (before_separator, after_separator,)
 
+# ============================== 追加提示词节点 ==============================
+class ZML_AppendTextByKeyword:
+    """ZML 追加提示词节点"""
+    
+    def __init__(self):
+        self.help_text = "你好~欢迎使用ZML节点~\n此节点可以检测输入文本中的关键词，并根据选择的模式来处理文本。\n- 检测词：用英文逗号分隔多个关键词\n- 只要输入文本中包含任一检测词，就会执行相应操作\n- 追加模式：将预设文本追加到输入文本后\n- 替换标签模式：只替换与关键词相同的标签\n- 完整替换模式：用预设文本完全替换输入文本\n祝你使用愉快！"
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "输入文本": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入要检测的文本"
+                }),
+                "检测词": ("STRING", {
+                    "multiline": False,
+                    "default": "",
+                    "placeholder": "输入要检测的关键词（用英文逗号分隔）"
+                }),
+                "预设文本": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入要追加或替换的预设文本"
+                }),
+                "处理模式": (["追加", "替换标签", "完整替换"], {"default": "追加"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("文本", "Help")
+    FUNCTION = "process_text"
+    
+    def process_text(self, 输入文本, 检测词, 预设文本, 处理模式):
+        """根据关键词检测结果处理文本"""
+        if not 输入文本.strip():
+            return ("", self.help_text)
+        
+        # 分割检测词并去除空白
+        keywords = [kw.strip() for kw in 检测词.split(',') if kw.strip()]
+        
+        # 如果没有检测词，则直接返回输入文本
+        if not keywords:
+            return (输入文本, self.help_text)
+        
+        # 检查输入文本是否包含任一关键词
+        contains_keyword = any(keyword in 输入文本 for keyword in keywords)
+        
+        # 根据处理模式和关键词检测结果处理文本
+        if contains_keyword:
+            if 处理模式 == "替换标签":
+                # 保存原始文本的换行结构
+                lines = 输入文本.splitlines()
+                processed_lines = []
+                
+                for line in lines:
+                    # 分割每行的标签
+                    tags = [tag.strip() for tag in line.split(',') if tag.strip()]
+                    # 替换匹配的关键词标签
+                    processed_tags = [预设文本 if tag in keywords else tag for tag in tags]
+                    # 重新组合该行
+                    processed_line = ', '.join(processed_tags)
+                    processed_lines.append(processed_line)
+                
+                # 重新组合所有行
+                result_text = '\n'.join(processed_lines)
+            elif 处理模式 == "完整替换":
+                result_text = 预设文本
+            else:  # 追加模式
+                # 确保输入文本和预设文本之间有适当的分隔
+                if 输入文本.strip().endswith(','):
+                    separator = ' '
+                else:
+                    separator = ', '
+                
+                result_text = 输入文本 + separator + 预设文本
+        else:
+            result_text = 输入文本
+        
+        # 应用全局标点符号格式化
+        result_text = format_punctuation_global(result_text)
+        
+        return (result_text, self.help_text)
+
+# ============================== 合并相同提示词节点 ==============================
+class ZML_MergeDuplicatePrompts:
+    """ZML 合并相同提示词节点"""
+    
+    def __init__(self):
+        self.help_text = "你好~欢迎使用ZML合并相同提示词节点~\n此节点可以合并输入文本中的重复提示词，默认使用第一个出现的提示词的权重。\n例如：输入\"1girl,solo,nsfw,1girl\"，输出\"1girl,solo,nsfw\"\n支持处理包含权重的提示词，如(1girl:1.2)和1girl会被识别为相同提示词并合并，保留第一个出现的权重。\n祝你使用愉快！"    
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "文本": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入要处理的文本"
+                }),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("文本", "Help")
+    FUNCTION = "merge_duplicate_prompts"
+    
+    def extract_base_tag(self, tag):
+        """提取标签的基础部分，保留权重信息"""
+        # 处理带权重的标签，如(1girl:1.2)
+        weight_match = re.match(r'\(([^:]+):([\d.]+)\)', tag)
+        if weight_match:
+            base_tag = weight_match.group(1).strip()
+            weight = weight_match.group(2)
+            return base_tag, f"({base_tag}:{weight})"
+        return tag.strip(), tag.strip()
+    
+    def merge_duplicate_prompts(self, 文本):
+        """合并文本中的重复提示词，默认使用第一个出现的提示词的权重"""
+        if not 文本.strip():
+            return ("", self.help_text)
+        
+        # 按行处理文本
+        lines = 文本.splitlines()
+        result_lines = []
+        
+        for line in lines:
+            if not line.strip():
+                result_lines.append(line)
+                continue
+            
+            # 分割标签
+            tags = [tag.strip() for tag in line.split(',') if tag.strip()]
+            
+            # 合并重复标签，默认使用第一个出现的提示词的权重
+            seen_tags = {}
+            for tag in tags:
+                base_tag, processed_tag = self.extract_base_tag(tag)
+                # 只有当base_tag不存在于seen_tags中时才添加，这样就保留了第一个出现的权重
+                if base_tag not in seen_tags:
+                    seen_tags[base_tag] = processed_tag
+            
+            # 重新组合该行
+            result_line = ', '.join(seen_tags.values())
+            result_lines.append(result_line)
+        
+        # 重新组合所有行
+        result_text = '\n'.join(result_lines)
+        
+        # 应用全局标点符号格式化
+        result_text = format_punctuation_global(result_text)
+        
+        return (result_text, self.help_text)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
@@ -1125,6 +1273,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SelectTextV2": ZML_SelectTextV2,
     "ZML_SelectTextV3": ZML_SelectTextV3,
     "ZML_SplitText": ZML_SplitText,
+    "ZML_AppendTextByKeyword": ZML_AppendTextByKeyword,
+    "ZML_MergeDuplicatePrompts": ZML_MergeDuplicatePrompts,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1140,4 +1290,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SelectTextV2": "ZML_选择文本V2",
     "ZML_SelectTextV3": "ZML_选择文本V3",
     "ZML_SplitText": "ZML_文本分离",
+    "ZML_AppendTextByKeyword": "ZML_追加提示词",
+    "ZML_MergeDuplicatePrompts": "ZML_合并相同提示词",
 }

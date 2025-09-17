@@ -1008,6 +1008,11 @@ class ZML_PresetResolution:
         return {
             "required": {
                 "预设": (cls._resolution_display_names, {"default": cls._resolution_display_names[0] if cls._resolution_display_names else "没有预设 (请添加)"}),
+            },
+            "optional": {
+                "互换宽高": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
+                "随机模式": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
+                "批次数量": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1}),
             }
         }
 
@@ -1016,10 +1021,48 @@ class ZML_PresetResolution:
     FUNCTION = "get_resolution"
     CATEGORY = "image/ZML_图像/整数"
 
-    def get_resolution(self, 预设):
-        width, height, _ = self._resolutions_map.get(预设, (1024, 1024, "没有预设 (请添加)"))
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # 每次调用都返回不同的值，强制ComfyUI重新计算节点输出
+        # 只有在随机模式开启时才这样做，否则保持正常缓存
+        if kwargs.get("随机模式", False):
+            import time
+            return time.time()
+        return float("nan")  # 默认行为，允许缓存
+
+    def get_resolution(self, 预设, 互换宽高=False, 随机模式=False, 批次数量=1):
+        import random
         
-        latent = torch.zeros([1, 4, height // 8, width // 8], device="cpu") 
+        width, height = 1024, 1024
+        
+        # 如果开启了随机模式
+        if 随机模式:
+            # 获取所有可用的分辨率预设
+            valid_resolutions = []
+            for name, (w, h, _) in self._resolutions_map.items():
+                # 跳过占位符和错误信息
+                if not name.startswith("没有预设") and not name.startswith("错误"):
+                    valid_resolutions.append((w, h))
+            
+            # 如果有可用的分辨率预设，则随机选择一个
+            if valid_resolutions:
+                width, height = random.choice(valid_resolutions)
+                print(f"ZML_PresetResolution: 随机选择了分辨率 {width}x{height}")
+            else:
+                print(f"ZML_PresetResolution: 没有可用的分辨率预设，使用默认值 1024x1024")
+        else:
+            # 使用用户选择的预设
+            width, height, _ = self._resolutions_map.get(预设, (1024, 1024, "没有预设 (请添加)"))
+        
+        # 如果开启了互换宽高，则交换宽度和高度
+        if 互换宽高:
+            width, height = height, width
+        
+        # 确保批次数量至少为1
+        批次数量 = max(1, 批次数量)
+        
+        # 使用批次数量创建latent张量
+        latent = torch.zeros([批次数量, 4, height // 8, width // 8], device="cpu") 
         latent_dict = {"samples": latent}
         
         return (width, height, latent_dict)
@@ -1220,6 +1263,58 @@ async def delete_resolution_preset_route(request):
         return web.Response(status=200, text="分辨率预设已成功删除")
     except Exception as e:
         return web.Response(status=500, text=f"处理删除请求时发生错误: {str(e)}")
+
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/clear_resolution_presets")
+async def clear_resolution_presets_route(request):
+    """处理前端的清除所有分辨率预设请求"""
+    try:
+        # 确保目录存在
+        preset_dir = os.path.dirname(PRESET_RESOLUTION_PATH)
+        os.makedirs(preset_dir, exist_ok=True)
+
+        # 清空文件内容，但保留注释
+        updated_lines = []
+        if os.path.exists(PRESET_RESOLUTION_PATH):
+            with open(PRESET_RESOLUTION_PATH, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                
+            # 只保留注释行
+            for line in lines:
+                stripped_line = line.strip()
+                if not stripped_line or stripped_line.startswith('#'):
+                    updated_lines.append(line)
+        
+        # 如果没有注释行，添加一个默认的注释行
+        if not updated_lines:
+            updated_lines.append("# 这是注释行，将被忽略\n")
+        
+        # 写回文件，保持与delete函数相同的格式化方式
+        if not updated_lines:
+            with open(PRESET_RESOLUTION_PATH, 'w', encoding='utf-8') as f:
+                 f.write("# 这是注释行，将被忽略\n") 
+        else:
+            cleaned_lines = []
+            for i, line in enumerate(updated_lines):
+                if line.strip() or i == 0 or (i > 0 and cleaned_lines and cleaned_lines[-1].strip()):
+                    cleaned_lines.append(line.rstrip('\n'))
+            
+            final_output = []
+            for i, line in enumerate(cleaned_lines):
+                if i < len(cleaned_lines) - 1 and line.strip(): 
+                    final_output.append(line + '\n')
+                else: 
+                    final_output.append(line)
+
+            with open(PRESET_RESOLUTION_PATH, 'w', encoding='utf-8') as f:
+                 f.writelines(final_output)
+        
+        # 重新加载分辨率列表
+        ZML_PresetResolution._load_resolutions()
+        
+        return web.Response(status=200, text="所有分辨率预设已成功清除")
+    except Exception as e:
+        return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
 
 
 # ============================== 节点注册 ==============================

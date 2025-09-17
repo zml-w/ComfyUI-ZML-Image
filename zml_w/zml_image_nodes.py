@@ -362,18 +362,11 @@ class ZML_SaveImage:
                     txt_path = os.path.splitext(final_image_path)[0] + ".txt"
                     unique_txt_path = self.get_unique_filepath(txt_path)
                     
-                    # 创建txt内容
-                    file_name = os.path.basename(final_image_path)
-                    txt_content_to_save = (
-                        f"图片名称: {file_name}\n"
-                        f"图片分辨率: {saved_width}x{saved_height}\n"
-                        f"是否含有元数据: {has_metadata}\n"
-                        f"保存时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                        f"文本块存储: \n{text_content}" # 文本块存储内容放到下一行
-                    )
-                    
-                    with open(unique_txt_path, "w", encoding="utf-8") as f:
-                        f.write(txt_content_to_save)
+                    # 只有当文本块内容不为空时才保存txt文件
+                    if text_content:
+                        # 只保存文本块内容到txt文件
+                        with open(unique_txt_path, "w", encoding="utf-8") as f:
+                            f.write(text_content)
                     
                     saved_txt_files.append({
                         "filename": os.path.basename(unique_txt_path),
@@ -994,29 +987,7 @@ class ZML_LoadImageFromPath:
         # 对于其他模式，只要路径或索引改变，就重新加载
         return (文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块)
 
-# ============================== 文本块加载器 ==============================
-class ZML_TextBlockLoader:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                # 这个输入框是多行的，并且会被JS代码动态填充
-                "text_from_image": ("STRING", {"multiline": True, "default": "点击下方按钮从图片加载..."}),
-            },
-            "hidden": {
-                 # 用一个隐藏值来触发刷新，如果需要的话
-                "trigger": ("INT", {"default": 0}),
-            }
-        }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("文本块",)
-    FUNCTION = "load_text"
-    CATEGORY = "image/ZML_图像/工具"
-
-    def load_text(self, text_from_image, trigger=0):
-        # 功能非常简单，就是把输入框的文本直接 output
-        return (text_from_image,)
 
 # ============================== API 路由设置 ==============================
 
@@ -1273,7 +1244,8 @@ class ZML_TagImageLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "selected_files_json": ("STRING", {"multiline": True, "default": "[]"}),
+                "selected_files_json": ("STRING", {"multiline": False, "default": "[]"}),
+                "text_blocks_input": ("STRING", {"multiline": True, "default": ""}),
             },
             # 移除 '自定义路径' 节点输入口
             "hidden": {
@@ -1295,18 +1267,22 @@ class ZML_TagImageLoader:
         return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
     # --- 🔴 MODIFICATION END ---
 
-    def load_images_by_tags(self, selected_files_json="[]", **kwargs): # 自定义路径不再作为参数
+    def load_images_by_tags(self, selected_files_json="[]", text_blocks_input="", **kwargs): # 自定义路径不再作为参数
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         placeholder_image = self._create_placeholder_image()
 
         if not selected_files_json or selected_files_json == "[]":
-            return ([placeholder_image], "", "未选择任何文件。", "")
+            # 即使没有选择文件，也返回默认的输出目录绝对路径
+            default_base_path = str(get_base_path().resolve()) if get_base_path() else ""
+            return ([placeholder_image], "", "未选择任何文件。", default_base_path)
 
         try:
             data = json.loads(selected_files_json)
         except json.JSONDecodeError:
             print("ZML_TagImageLoader: JSON解析失败。")
-            return ([placeholder_image], "", "JSON解析失败", "")
+            # 即使JSON解析失败，也返回默认的输出目录绝对路径
+            default_base_path = str(get_base_path().resolve()) if get_base_path() else ""
+            return ([placeholder_image], "", "JSON解析失败", default_base_path)
         # --- 🔴 MODIFICATION END ---
 
         file_list = []
@@ -1323,7 +1299,10 @@ class ZML_TagImageLoader:
         
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if not file_list:
-            return ([placeholder_image], "", "选择列表为空或格式不正确。", current_custom_base_path)
+            # 获取并返回绝对路径
+            base_dir = get_base_path(current_custom_base_path)
+            base_path_str = str(base_dir.resolve()) if base_dir else ""
+            return ([placeholder_image], "", "选择列表为空或格式不正确。", base_path_str)
         # --- 🔴 MODIFICATION END ---
 
         image_tensors = []
@@ -1335,7 +1314,9 @@ class ZML_TagImageLoader:
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if base_dir is None or not base_dir.is_dir():
             print(f"ZML_TagImageLoader: 基准目录无效或不存在: {current_custom_base_path or 'output'}")
-            return ([placeholder_image], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}", current_custom_base_path)
+            # 即使基准目录无效，也返回尝试解析的路径
+            attempted_path = str(Path(current_custom_base_path).resolve()) if current_custom_base_path else ""
+            return ([placeholder_image], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}", attempted_path)
         # --- 🔴 MODIFICATION END ---
 
         for item in file_list:
@@ -1390,16 +1371,23 @@ class ZML_TagImageLoader:
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         if not image_tensors:
             final_validation_output = "\n".join(validation_messages)
-            return ([placeholder_image], "", final_validation_output, current_custom_base_path)
+            # 确保返回绝对路径
+            return ([placeholder_image], "", final_validation_output, str(base_dir.resolve()))
         # --- 🔴 MODIFICATION END ---
 
-        text_separator = "\n\n"
-        final_text_output = text_separator.join(text_blocks)
+        # 优先使用输入的文本块，如果存在的话
+        if text_blocks_input.strip():
+            final_text_output = text_blocks_input
+        else:
+            text_separator = "\n\n"
+            final_text_output = text_separator.join(text_blocks)
         
         validation_separator = "\n\n" + ("-"*25) + "\n\n"
         final_validation_output = validation_separator.join(validation_messages)
         
-        return (image_tensors, final_text_output, final_validation_output, current_custom_base_path)
+        # 确保返回绝对路径
+        # 当用户打开了"记住打开位置"选项时，返回用户实际打开的路径
+        return (image_tensors, final_text_output, final_validation_output, str(base_dir.resolve()))
 
     @classmethod
     def IS_CHANGED(cls, selected_files_json, **kwargs):
@@ -1686,7 +1674,6 @@ NODE_CLASS_MAPPINGS = {
     "ZML_LoadImage": ZML_LoadImage,
     "ZML_LoadImageFromPath": ZML_LoadImageFromPath,
     "ZML_LoadVideoFromPath": ZML_LoadVideoFromPath,
-    "ZML_TextBlockLoader": ZML_TextBlockLoader,
     "ZML_TagImageLoader": ZML_TagImageLoader,
     "ZML_ClassifyImage": ZML_ClassifyImage, 
 }
@@ -1697,7 +1684,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LoadImage": "ZML_加载图像",
     "ZML_LoadImageFromPath": "ZML_从路径加载图像",
     "ZML_LoadVideoFromPath": "ZML_从路径加载视频",
-    "ZML_TextBlockLoader": "ZML_文本块加载器", 
-    "ZML_TagImageLoader": "ZML_标签化图片加载器", 
+    "ZML_TagImageLoader": "ZML_标签化图像加载器", 
     "ZML_ClassifyImage": "ZML_分类图像", 
 }

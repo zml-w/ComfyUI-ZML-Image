@@ -423,6 +423,7 @@ class ZML_TextToImage:
                 "图像大小模式": (["根据字体大小决定图像尺寸", "根据图像尺寸决定字体大小", "字体大小和图像尺寸独立计算"], {"default": "根据字体大小决定图像尺寸"}), # 移除了"根据输入图像尺寸决定"选项
                 "图像宽": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
                 "图像高": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
+                "文本图像占比": ("FLOAT", {"default": 0.15, "min": 0.05, "max": 0.5, "step": 0.05}), # 新增文本图像占比选项
             },
             "optional": {
                 "输入图像": ("IMAGE", {"forceInput": True}),
@@ -662,7 +663,7 @@ class ZML_TextToImage:
 
         return best_fit_font_size
 
-    def generate_text_image(self, 文本, 字体, 字体大小, 颜色, 书写方向, 字符间距, 行间距, 描边宽度, 描边颜色, 背景颜色, 图像大小模式, 图像宽, 图像高, 输入图像=None, 图像拼接方向="左", 多图模式图像接缝=10): # 调整参数顺序
+    def generate_text_image(self, 文本, 字体, 字体大小, 颜色, 书写方向, 字符间距, 行间距, 描边宽度, 描边颜色, 背景颜色, 图像大小模式, 图像宽, 图像高, 文本图像占比, 输入图像=None, 图像拼接方向="左", 多图模式图像接缝=10): # 调整参数顺序
         node_execution_count = self.increment_counter()
         help_text = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共添加了{node_execution_count}次文本图像！！\n颜色代码那里输入‘ZML’代表随机颜色哦。\n\n节点默认是生成一张空白的文本图像，不含背景什么的。在接入图像时会自动将文本图像拼接到输入的图像那里。\n\n节点也支持输入多批次图像！会自动排序并给予序号，拼接方向为左右时排序方向为从上到下，拼接方向为上下时则排序方向为从左到右。\n默认序号是从‘1’开始，步长也是‘1’，如果你想自定义起始数和步长，可以用这样的格式‘#x:x#’，x代表数字，第一个x是起始数，第二个是步长，‘#x:x#’格式生效的时候还可以添加前后缀文本！比如输入的为‘ZML_#0:0.5#_哈哈’，那么输出的序号就为‘ZML_0_哈哈哈’、‘ZML_0.5_哈哈哈’……这种，当然！也支持换行文本！\n\n你可以使用‘统一图像分辨率’节点来输入并处理多个图像，再输入给这个‘文本图像’节点！\n祝你天天开心~"
 
@@ -771,12 +772,12 @@ class ZML_TextToImage:
                 if True:  # 总是应用这个逻辑，因为我们已经删除了该选项
                     if 图像拼接方向 in ["左", "右"]:
                         final_img_height_iter = input_height 
-                        final_img_width_iter = max(1, int(input_width * 0.25)) 
+                        final_img_width_iter = max(1, int(input_width * 文本图像占比)) 
                     elif 图像拼接方向 in ["上", "下"]:
                         final_img_width_iter = input_width 
-                        final_img_height_iter = max(1, int(input_height * 0.25)) 
+                        final_img_height_iter = max(1, int(input_height * 文本图像占比)) 
                     else: 
-                        final_img_width_iter = max(1, int(input_width * 0.25))
+                        final_img_width_iter = max(1, int(input_width * 文本图像占比))
                         final_img_height_iter = input_height
 
                     base_drawable_width = max(1, final_img_width_iter - (effective_h_margin * 2))
