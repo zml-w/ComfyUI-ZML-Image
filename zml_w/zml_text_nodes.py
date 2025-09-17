@@ -1039,17 +1039,28 @@ class ZML_PresetResolution:
         if 随机模式:
             # 获取所有可用的分辨率预设
             valid_resolutions = []
+            global ZML_RANDOM_RESOLUTION_RULES
+            
             for name, (w, h, _) in self._resolutions_map.items():
                 # 跳过占位符和错误信息
                 if not name.startswith("没有预设") and not name.startswith("错误"):
-                    valid_resolutions.append((w, h))
+                    # 检查是否有随机规则
+                    if ZML_RANDOM_RESOLUTION_RULES:
+                        # 如果规则中包含该预设且值为False，则跳过
+                        if name in ZML_RANDOM_RESOLUTION_RULES and ZML_RANDOM_RESOLUTION_RULES[name] is False:
+                            continue
+                        # 其他情况（规则中为True或不在规则中）都添加
+                        valid_resolutions.append((w, h))
+                    else:
+                        # 如果没有设置随机规则，则添加所有有效预设
+                        valid_resolutions.append((w, h))
             
             # 如果有可用的分辨率预设，则随机选择一个
             if valid_resolutions:
                 width, height = random.choice(valid_resolutions)
-                print(f"ZML_PresetResolution: 随机选择了分辨率 {width}x{height}")
             else:
-                print(f"ZML_PresetResolution: 没有可用的分辨率预设，使用默认值 1024x1024")
+                # 使用默认值
+                pass
         else:
             # 使用用户选择的预设
             width, height, _ = self._resolutions_map.get(预设, (1024, 1024, "没有预设 (请添加)"))
@@ -1067,7 +1078,24 @@ class ZML_PresetResolution:
         
         return (width, height, latent_dict)
 
+# 随机分辨率规则存储变量
+ZML_RANDOM_RESOLUTION_RULES = {}  # 用于存储前端传来的随机规则
+
 # ============================== API 路由（用于处理前端的添加预设请求）==============================
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/set_random_resolution_rules")
+async def set_random_resolution_rules_route(request):
+    """处理前端的随机分辨率规则设置请求"""
+    try:
+        data = await request.json()
+        rules = data.get("rules", {})
+        global ZML_RANDOM_RESOLUTION_RULES
+        ZML_RANDOM_RESOLUTION_RULES = rules
+        print(f"ZML_RANDOM_RESOLUTION_RULES 已更新: {rules}")
+        return web.Response(status=200, text="随机分辨率规则已成功更新")
+    except Exception as e:
+        print(f"设置随机分辨率规则错误: {e}")
+        return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
 
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/get_fixed_text_categories")
 async def get_fixed_text_categories_route(request):
