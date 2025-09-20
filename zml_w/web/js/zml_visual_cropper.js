@@ -550,9 +550,28 @@ app.registerExtension({
 
 function showPainterModal(node, widget) {
     const upstreamNode = node.getInputNode(0);
-    if (!upstreamNode || !upstreamNode.imgs || upstreamNode.imgs.length === 0) {
-        alert("请先连接一个有预览图的图像节点！");
-        return;
+    let imageUrl = null;
+    
+    // 获取默认宽和默认高参数值
+    let defaultWidth = 1024;
+    let defaultHeight = 1024;
+    const widthWidget = node.widgets.find(w => w.name === '默认宽');
+    const heightWidget = node.widgets.find(w => w.name === '默认高');
+    if (widthWidget) defaultWidth = widthWidget.value || defaultWidth;
+    if (heightWidget) defaultHeight = heightWidget.value || defaultHeight;
+    
+    // 检查是否有上游图像节点连接
+    if (upstreamNode && upstreamNode.imgs && upstreamNode.imgs.length > 0) {
+        imageUrl = upstreamNode.imgs[0].src;
+    } else {
+        // 如果没有上游图像，创建一个用户指定尺寸的黑色图像
+        const canvas = document.createElement('canvas');
+        canvas.width = defaultWidth;
+        canvas.height = defaultHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#000000'; // 黑色
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        imageUrl = canvas.toDataURL('image/png');
     }
 
     // 检查画笔图像输入
@@ -564,8 +583,6 @@ function showPainterModal(node, widget) {
             hasBrushImage = true;
         }
     }
-
-    const imageUrl = upstreamNode.imgs[0].src;
     let initialDisplayScale = 1.0;
 
     const modalHtml = `
@@ -925,6 +942,53 @@ function showPainterModal(node, widget) {
         const fillBtn = modal.querySelector('#zml-fill-tool');
         const toolBtns = [brushBtn, rectBtn, triangleBtn, htriangleBtn, circleBtn, starBtn, heartBtn, mosaicBtn, imageStampBtn, arrowBtn];
 
+        // --- 全局Ctrl键监听 --- 
+        let isCtrlKeyPressed = false;
+        let isHandToolMode = false; // 抓手模式标志
+        
+        function onCtrlKeyChange() {
+            // Ctrl键释放时，无论当前是什么模式，都退出抓手模式
+            if (!isCtrlKeyPressed && !isPanning) {
+                if (drawingMode === 'brush') {
+                    canvas.isDrawingMode = true;
+                    if (!canvas.freeDrawingBrush) {
+                        canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+                    }
+                    canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
+                    canvas.freeDrawingBrush.color = colorPicker.value;
+                    canvas.freeDrawingBrush.strokeLineJoin = 'round';
+                    canvas.freeDrawingBrush.strokeLineCap = 'round';
+                    canvas.defaultCursor = 'crosshair';
+                } else {
+                    // 如果不是画笔模式，恢复相应的光标
+                    canvas.defaultCursor = 'default';
+                }
+                isHandToolMode = false;
+            }
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Control' && !isCtrlKeyPressed) {
+                isCtrlKeyPressed = true;
+                isHandToolMode = true;
+                // 进入抓手模式：更改光标并禁用画笔
+                canvas.defaultCursor = 'grab';
+                if (drawingMode === 'brush') {
+                    canvas.isDrawingMode = false;
+                    if (canvas.freeDrawingBrush) {
+                        canvas.freeDrawingBrush = null;
+                    }
+                }
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Control' && isCtrlKeyPressed) {
+                isCtrlKeyPressed = false;
+                onCtrlKeyChange();
+            }
+        });
+        
         // --- Window Dragging Logic ---
         let isDragging = false;
         let dragStart = { x: 0, y: 0 };
@@ -1116,18 +1180,26 @@ function showPainterModal(node, widget) {
                 canvas.add(placeholder);
              });
              // 渲染路径
-             drawPaths.forEach(pathData => {
+            drawPaths.forEach(pathData => {
                 const isFill = pathData.isFill || false;
-                // 确保路径点的坐标也按当前 initialDisplayScale 缩放
+                
+                // 关键点：不要在渲染时应用视图变换，让Fabric.js自己处理缩放和平移
+                // 我们只需要将原始图像坐标转换为画布初始尺寸的坐标
                 const scaledPathPoints = pathData.points.map(p => `${p[0] * initialDisplayScale},${p[1] * initialDisplayScale}`);
                 const pathString = "M " + scaledPathPoints.join(" L ");
+                
                 const fabricPath = new fabric.Path(pathString, { 
                     stroke: pathData.color, 
                     strokeWidth: pathData.width * initialDisplayScale, 
                     fill: isFill ? pathData.color : null, 
-                    selectable: false, evented: false, objectCaching: false, 
-                    strokeLineJoin: 'round', strokeLineCap: 'round', isNotBackground: true 
+                    selectable: false, 
+                    evented: false, 
+                    objectCaching: false, 
+                    strokeLineJoin: 'round', 
+                    strokeLineCap: 'round', 
+                    isNotBackground: true 
                 });
+                
                 canvas.add(fabricPath);
             });
             canvas.requestRenderAll();
@@ -1165,27 +1237,80 @@ function showPainterModal(node, widget) {
         canvas.on('path:created', (e) => {
             saveStateForUndo();
             const path = e.path;
-            canvas.remove(path); // 移除临时 Fabric.js 路径，因为我们要存储原始坐标
-            // 将 Fabric.js 路径点从当前画布坐标反向缩放回原始图像坐标
-            const scaledPathPoints = path.path.map(p => [((p[1] - path.left) / canvas.getZoom() + path.left) / initialDisplayScale, ((p[2] - path.top) / canvas.getZoom() + path.top) / initialDisplayScale]);
-            const pathData = { points: scaledPathPoints, color: path.stroke, width: path.strokeWidth / initialDisplayScale, isFill: false};
-            drawPaths.push(pathData);
-            renderAllDrawings(); // 重新渲染所有绘制，包括新路径
+            canvas.remove(path); // 移除临时 Fabric.js 路径，因为我们要存储原始图像坐标
+            
+            // 重新思考坐标转换：我们需要确保保存的是相对于原始图像的正确坐标
+            // 关键点：Fabric.js 的 path 对象已经包含了考虑当前视图变换的坐标
+            // 我们不需要再次应用复杂的变换，只需将其转换回原始图像尺寸即可
+            
+            // 这里简化坐标转换逻辑，直接从路径对象获取正确的坐标
+            const scaledPathPoints = path.path.map(p => {
+                // 确保我们只处理有效的路径点
+                if (p.length < 3 || typeof p[1] !== 'number' || typeof p[2] !== 'number') {
+                    return [0, 0]; // 提供默认值以避免错误
+                }
+                
+                // 简单直接的转换：从画布显示坐标转换回原始图像坐标
+                // 这应该已经考虑了视图变换，因为path对象是在当前视图状态下创建的
+                const originalX = p[1] / initialDisplayScale;
+                const originalY = p[2] / initialDisplayScale;
+                
+                // 确保坐标值合理，避免极端情况
+                const clampedX = Math.max(0, Math.min(img.naturalWidth, originalX));
+                const clampedY = Math.max(0, Math.min(img.naturalHeight, originalY));
+                
+                return [clampedX, clampedY];
+            }).filter(p => p[0] !== 0 || p[1] !== 0); // 过滤掉无效点
+            
+            // 确保路径数据完整
+            if (scaledPathPoints.length > 0) {
+                const pathData = { 
+                    points: scaledPathPoints, 
+                    color: path.stroke || '#ff0000', 
+                    width: Math.max(0.1, path.strokeWidth / initialDisplayScale), 
+                    isFill: false
+                };
+                drawPaths.push(pathData);
+                renderAllDrawings(); // 重新渲染所有绘制，包括新路径
+            }
         });
         
         canvas.on('mouse:wheel', function(opt) { 
-            if (opt.e.ctrlKey) { // Ctrl + 滚轮实现缩放
+            if (isHandToolMode) { // 抓手模式下，滚轮可以缩放（无需额外按Ctrl键）
                 const delta = opt.e.deltaY; 
                 let zoom = canvas.getZoom(); 
+                // 保存当前画笔大小和模式
+                const currentBrushWidth = canvas.freeDrawingBrush ? canvas.freeDrawingBrush.width : parseInt(brushSizeSlider.value);
+                const currentBrushColor = canvas.freeDrawingBrush ? canvas.freeDrawingBrush.color : '#ff0000';
+                const wasDrawingMode = canvas.isDrawingMode;
+                
                 zoom *= 0.999 ** delta; 
                 // 限制缩放范围，防止过大或过小
                 if (zoom > 20) zoom = 20; 
                 if (zoom < 0.1) zoom = 0.1; // 允许缩小到更小比例
                 
                 canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom); 
+                
+                // 更彻底地重置画笔状态，确保它适应新的缩放
+                if (canvas.freeDrawingBrush && drawingMode === 'brush') {
+                    // 临时关闭再重新打开画笔模式，强制重新初始化
+                    canvas.isDrawingMode = false;
+                    // 完全重置画笔属性
+                    canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+                    canvas.freeDrawingBrush.width = currentBrushWidth;
+                    canvas.freeDrawingBrush.color = currentBrushColor;
+                    canvas.freeDrawingBrush.strokeLineJoin = 'round';
+                    canvas.freeDrawingBrush.strokeLineCap = 'round';
+                    canvas.isDrawingMode = true;
+                }
+                
                 opt.e.preventDefault(); 
                 opt.e.stopPropagation(); 
-            } else { // 非Ctrl滚轮进行垂直滚动
+            } else { // 不按Ctrl键时滚轮无效果
+                // 不执行任何操作，仅阻止默认行为
+                
+                // 保留原始垂直平移功能的代码注释，如需恢复可以取消注释
+                /*
                 const vpt = this.viewportTransform;
                 let newPositionY = vpt[5] - opt.e.deltaY;
                 // 限制滚动范围，防止滚动出界
@@ -1198,19 +1323,27 @@ function showPainterModal(node, widget) {
                 if (newPositionY > maxPositionY) newPositionY = maxPositionY;
                 if (newPositionY < minPositionY) newPositionY = minPositionY;
 
-
-                 // 可以根据需要调整，让画布内容保持在中心
-                // const bounds = canvas.getCenterPoint();
-                // canvas.viewportTransform[5] = bounds.y - newPositionY / canvas.getZoom(); // Rough vertical pan
                 this.setViewportTransform([vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], newPositionY]);
                 this.requestRenderAll();
+                */
                 opt.e.preventDefault();
                 opt.e.stopPropagation();
             }
         });
 
         canvas.on('mouse:down', function(opt) {
-            if (opt.e.ctrlKey) { isPanning = true; canvas.isDrawingMode = false; lastPanPoint = new fabric.Point(opt.e.clientX, opt.e.clientY); this.defaultCursor = 'grab'; return; }
+            if (isHandToolMode) { // 抓手模式下，按下鼠标左键进行平移
+                isPanning = true; 
+                // 强制禁用画笔模式
+                canvas.isDrawingMode = false;
+                // 确保freeDrawingBrush也被禁用
+                if (canvas.freeDrawingBrush) {
+                    canvas.freeDrawingBrush = null;
+                }
+                lastPanPoint = new fabric.Point(opt.e.clientX, opt.e.clientY); 
+                this.defaultCursor = 'grabbing'; 
+                return; 
+            }
             if (drawingMode === 'imageStamp') {
                 saveStateForUndo();
                 const pointer = canvas.getPointer(opt.e);
@@ -1234,7 +1367,44 @@ function showPainterModal(node, widget) {
             }
         });
         canvas.on('mouse:move', function(opt) {
-            if (isPanning) { this.defaultCursor = 'grabbing'; const currentPoint = new fabric.Point(opt.e.clientX, opt.e.clientY); const delta = currentPoint.subtract(lastPanPoint); this.relativePan(delta); lastPanPoint = currentPoint; return; }
+            // 检查是否在抓手模式下
+            if (isHandToolMode) {
+                // 在抓手模式下，显示合适的光标
+                if (isPanning) {
+                    this.defaultCursor = 'grabbing';
+                } else {
+                    this.defaultCursor = 'grab';
+                }
+            }
+            
+            // 只有在isPanning为true时才进行平移，确保需要按住鼠标左键
+            if (isPanning) { 
+                // 仍然检查Ctrl键状态，确保在平移过程中必须按住Ctrl键
+                if (!opt.e.ctrlKey) {
+                    // 如果在平移过程中释放了Ctrl键，退出平移模式
+                    isPanning = false;
+                    isHandToolMode = false;
+                    // 恢复画笔模式
+                    if (drawingMode === 'brush') {
+                        canvas.isDrawingMode = true;
+                        if (!canvas.freeDrawingBrush) {
+                            canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+                            canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
+                            canvas.freeDrawingBrush.color = colorPicker.value;
+                            canvas.freeDrawingBrush.strokeLineJoin = 'round';
+                            canvas.freeDrawingBrush.strokeLineCap = 'round';
+                        }
+                    }
+                    this.defaultCursor = 'crosshair';
+                    return;
+                }
+                
+                const currentPoint = new fabric.Point(opt.e.clientX, opt.e.clientY); 
+                const delta = currentPoint.subtract(lastPanPoint); 
+                this.relativePan(delta); 
+                lastPanPoint = currentPoint; 
+                return; 
+            }
             if (!isDrawingShape || !currentShape) return;
             const pointer = canvas.getPointer(opt.e);
             switch(drawingMode) {
@@ -1261,7 +1431,26 @@ function showPainterModal(node, widget) {
             canvas.requestRenderAll();
         });
         canvas.on('mouse:up', function() {
-            if (isPanning) { isPanning = false; canvas.isDrawingMode = (drawingMode === 'brush'); this.defaultCursor = 'crosshair'; return; }
+            if (isPanning) { 
+                isPanning = false; 
+                // 完整恢复画笔模式和属性，但仅在Ctrl键未按下时
+                if (drawingMode === 'brush' && !isCtrlKeyPressed) {
+                    canvas.isDrawingMode = true;
+                    // 重新创建画笔对象，确保画笔功能完全恢复
+                    if (!canvas.freeDrawingBrush) {
+                        canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+                        canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
+                        canvas.freeDrawingBrush.color = colorPicker.value;
+                        canvas.freeDrawingBrush.strokeLineJoin = 'round';
+                        canvas.freeDrawingBrush.strokeLineCap = 'round';
+                    }
+                } else {
+                    canvas.isDrawingMode = false;
+                }
+                // 只有在Ctrl键未按下时才恢复为十字光标
+                this.defaultCursor = isCtrlKeyPressed ? 'grab' : 'crosshair'; 
+                return; 
+            }
             if (isDrawingShape && currentShape) {
                 isDrawingShape = false;
                 saveStateForUndo();

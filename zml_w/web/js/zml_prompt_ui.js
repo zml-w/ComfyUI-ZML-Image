@@ -25,7 +25,7 @@ const ZML_PROMPT_UI_STYLES = `
 
 .zml-prompt-ui-backdrop {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background-color: rgba(0, 0, 0, 0.8); z-index: 1000;
+    background-color: rgba(0, 0, 0, 0.8); z-index: 999;
 }
 
 .zml-prompt-ui-modal, .zml-prompt-ui-dialog {

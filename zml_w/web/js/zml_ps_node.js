@@ -418,156 +418,155 @@ async function showColorAdjustModal(node) {
     <div id="zml-color-adjust-modal" class="zml-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1001;">
         <div class="zml-color-adjust-container" style="display: flex; background: #222; border-radius: 8px; overflow: hidden; max-width: 90%; max-height: 90%;">
             <!-- 左侧工具面板 -->
-            <div id="zml-color-toolbar" style="background: #2a2a2a; padding: 15px; border-right: 1px solid #444; width: 220px; min-width: 220px; display: flex; flex-direction: column; gap: 10px;">
-                <div style="font-weight: bold; text-align: center; margin-bottom: 10px; font-size: 16px; color: #4CAF50; padding: 8px; background: rgba(76, 175, 80, 0.1); border-radius: 6px;">ZML 可视化调色器</div>
+            <div id="zml-color-toolbar" style="background: #333; padding: 10px; border-right: 1px solid #555; width: 180px; min-width: 180px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="font-weight: bold; text-align: center; margin-bottom: 5px; font-size: 14px;">ZML 可视化调色器</div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">亮度:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-brightness-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-brightness-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-brightness-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">亮度:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-brightness-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-brightness-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-brightness-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-brightness" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">对比度:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-contrast-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-contrast-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-contrast-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">对比度:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-contrast-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-contrast-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-contrast-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-contrast" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">饱和度:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-saturation-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-saturation-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-saturation-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">饱和度:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-saturation-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-saturation-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-saturation-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-saturation" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">色相:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-hue-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-hue-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-hue-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">色相:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-hue-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-hue-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-hue-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-hue" min="-180" max="180" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">锐化:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-sharpen-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-sharpen-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-sharpen-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">锐化:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-sharpen-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-sharpen-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-sharpen-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-sharpen" min="0" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">伽马:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-gamma-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-gamma-input" value="1.0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-gamma-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">伽马:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-gamma-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-gamma-input" value="1.0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-gamma-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-gamma" min="0.1" max="3" step="0.1" value="1" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">曝光:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-exposure-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-exposure-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-exposure-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">曝光:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-exposure-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-exposure-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-exposure-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-exposure" min="-100" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">模糊:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-blur-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-blur-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-blur-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">模糊:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-blur-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-blur-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-blur-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-blur" min="0" max="20" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">噪点:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-noise-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-noise-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-noise-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">噪点:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-noise-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-noise-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-noise-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-noise" min="0" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div class="zml-tool-panel" style="background: #3a3a3a; border: 1px solid #555; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <div class="zml-tool-panel" style="display: flex; flex-direction: column; gap: 3px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #fff;">暗角:</strong>
-                        <div style="display: flex; align-items: center; gap: 3px;">
-                            <button id="zml-vignette-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
-                            <input type="text" id="zml-vignette-input" value="0" style="width: 40px; text-align: center; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
-                            <button id="zml-vignette-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #4a4a4a; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
+                        <strong style="font-size: 11px;">暗角:</strong>
+                        <div style="display: flex; align-items: center; gap: 2px;">
+                            <button id="zml-vignette-minus" class="zml-adjust-btn minus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">-</button>
+                            <input type="text" id="zml-vignette-input" value="0" style="width: 40px; text-align: center; background: #444; border: 1px solid #666; color: white; border-radius: 3px; padding: 1px 3px; font-size: 10px;">
+                            <button id="zml-vignette-plus" class="zml-adjust-btn plus" style="width: 16px; height: 16px; background: #444; border: 1px solid #666; color: white; border-radius: 3px; cursor: pointer; font-size: 8px; padding: 0; display: flex; align-items: center; justify-content: center;">+</button>
                         </div>
                     </div>
                     <input type="range" id="zml-vignette" min="0" max="100" value="0" style="width: 100%;">
                 </div>
                 
-                <div style="margin-top: auto;"></div>
+                <div style="margin-top: auto; display: flex; flex-direction: column; gap: 5px;">
+                    <button id="zml-reset-color-btn" style="padding: 6px; background-color: #555; border: 1px solid #777; border-radius: 4px; cursor: pointer; color: white; font-size: 12px;">重置</button>
+                </div>
             </div>
             
             <!-- 右侧预览区域 -->
-            <div style="display: flex; flex-direction: column; flex: 1; background: #2a2a2a; border-radius: 8px;">
-                <div id="zml-color-preview-container" style="background-color: #1a1a1a; border: 2px solid #444; margin: 15px; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; flex: 1; box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);">
+            <div style="display: flex; flex-direction: column; flex: 1;">
+                <div id="zml-color-preview-container" style="background-color: #111; display: flex; align-items: center; justify-content: center; position: relative; flex: 1;">
                     <div style="text-align: center; color: white; position: relative;">
                         <canvas id="zml-original-preview" style="max-width: 100%; max-height: 100%; display: none;"></canvas>
                         <canvas id="zml-adjusted-preview" style="max-width: 100%; max-height: 100%;"></canvas>
-                        <button id="zml-compare-btn" title="按住显示原图" style="position: absolute; bottom: 15px; left: 15px; background-color: rgba(76, 175, 80, 0.8); color: white; border: 1px solid #66cc66; width: 35px; height: 35px; border-radius: 6px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: all 0.2s ease;">⇄</button>
+                        <button id="zml-compare-btn" title="按住显示原图" style="position: absolute; bottom: 10px; left: 10px; background-color: rgba(0,0,0,0.7); color: white; border: 1px solid white; width: 30px; height: 30px; border-radius: 4px; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; font-size: 16px;">⇄</button>
                     </div>
                 </div>
                 
                 <!-- 底部控制按钮 -->
-                <div class="zml-editor-controls" style="background: #2a2a2a; padding: 8px 15px; margin-top: -15px; display: flex; justify-content: center; align-items: center; gap: 12px;">
-                    <button id="zml-undo-btn" style="padding: 8px 16px; background-color: #5a5a5a; border: 1px solid #777; border-radius: 4px; cursor: pointer; color: white; font-size: 12px; transition: all 0.2s ease;">撤回</button>
-                    <button id="zml-reset-color-btn" style="padding: 8px 16px; background-color: #5a5a5a; border: 1px solid #777; border-radius: 4px; cursor: pointer; color: white; font-size: 12px; transition: all 0.2s ease;">重置</button>
-                    <div style="width: 20px;"></div>
-                    <button id="zml-confirm-color-btn" style="padding: 8px 16px; color: white; background-color: #4a90e2; border: 1px solid #5ba3f5; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">确认</button>
-                    <button id="zml-cancel-color-btn" style="padding: 8px 16px; color: white; background-color: #6a6a6a; border: 1px solid #888; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s ease;">取消</button>
+                <div class="zml-editor-controls" style="background: #333; padding: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+                    <button id="zml-confirm-color-btn" style="padding: 8px 16px; color: white; background-color: #4CAF50; border: none; border-radius: 4px; cursor: pointer;">确认</button>
+                    <button id="zml-cancel-color-btn" style="padding: 8px 16px; color: white; background-color: #f44336; border: none; border-radius: 4px; cursor: pointer;">取消</button>
                 </div>
             </div>
         </div>
         
         <style>
             .zml-modal {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                font-family: Arial, sans-serif;
                 color: #e0e0e0;
             }
             
@@ -575,7 +574,6 @@ async function showColorAdjustModal(node) {
                 display: flex;
                 max-width: 90vw;
                 max-height: 90vh;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
             }
             
             .zml-modal button:hover {
@@ -583,20 +581,13 @@ async function showColorAdjustModal(node) {
             }
             
             .zml-tool-panel input[type="range"] {
-                width: 100% !important;
-                height: 4px;
+                width: 50% !important;
+                height: 3px;
                 background: #555;
                 outline: none;
                 opacity: 0.7;
-                transition: all 0.3s ease;
+                transition: opacity 0.2s;
                 -webkit-appearance: none;
-                cursor: grab;
-                border-radius: 2px;
-            }
-            
-            .zml-tool-panel input[type="range"]:hover {
-                opacity: 1;
-                cursor: grab;
             }
             
             .zml-tool-panel input[type="range"]:hover {
@@ -606,81 +597,43 @@ async function showColorAdjustModal(node) {
             .zml-tool-panel input[type="range"]::-webkit-slider-thumb {
                 -webkit-appearance: none;
                 appearance: none;
-                width: 12px;
-                height: 12px;
+                width: 8px;
+                height: 8px;
                 background: #4CAF50;
                 cursor: pointer;
                 border-radius: 50%;
-                transition: all 0.2s ease;
-            }
-            
-            .zml-tool-panel input[type="range"]::-webkit-slider-thumb:hover {
-                width: 14px;
-                height: 14px;
-                box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
             }
             
             .zml-tool-panel input[type="range"]::-moz-range-thumb {
-                width: 12px;
-                height: 12px;
+                width: 8px;
+                height: 8px;
                 background: #4CAF50;
                 cursor: pointer;
                 border-radius: 50%;
                 border: none;
-                transition: all 0.2s ease;
-            }
-            
-            .zml-tool-panel input[type="range"]::-moz-range-thumb:hover {
-                width: 14px;
-                height: 14px;
-                box-shadow: 0 0 6px rgba(76, 175, 80, 0.6);
-            }
-            
-            /* 平滑过渡动画 */
-            .zml-slider {
-                transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
-            }
-            
-            .zml-tool-panel input[type="text"] {
-                transition: all 0.3s ease;
             }
             
             .zml-tool-panel input[type="text"]:focus {
                 outline: none;
                 border-color: #4CAF50;
-                box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
             }
             
             .zml-adjust-btn {
                 transition: all 0.2s ease;
-                transform: scale(1);
             }
             
             .zml-adjust-btn:hover {
                 background-color: #555;
                 border-color: #4CAF50;
-                transform: scale(1.05);
             }
             
             .zml-adjust-btn:active {
                 background-color: #666;
-                transform: scale(0.95);
-            }
-            
-            #zml-compare-btn {
-                transition: all 0.2s ease;
-                transform: scale(1);
-            }
-            
-            #zml-compare-btn:hover {
-                background-color: rgba(255,255,255,0.3);
-                transform: scale(1.05);
             }
             
             #zml-compare-btn:active {
                 background-color: rgba(255,255,255,0.7);
                 color: black;
-                transform: scale(0.95);
             }
             
             /* 工具面板中的输入框样式微调 */
@@ -740,13 +693,8 @@ async function showColorAdjustModal(node) {
     const vignettePlusBtn = modal.querySelector('#zml-vignette-plus');
     
     const resetBtn = modal.querySelector('#zml-reset-color-btn');
-    const undoBtn = modal.querySelector('#zml-undo-btn');
     const confirmBtn = modal.querySelector('#zml-confirm-color-btn');
     const cancelBtn = modal.querySelector('#zml-cancel-color-btn');
-    
-    // 创建历史记录数组，用于撤回功能
-    let historyStack = [];
-    const MAX_HISTORY_SIZE = 50; // 最大历史记录数量
 
     // 加载图像并设置画布
     const image = new Image();
@@ -755,66 +703,6 @@ async function showColorAdjustModal(node) {
     
     let originalImageData = null;
     let currentImageData = null;
-    
-    // 保存当前参数状态到历史记录
-    function saveCurrentState() {
-        const currentState = {
-            brightness: parseInt(brightnessSlider.value),
-            contrast: parseInt(contrastSlider.value),
-            saturation: parseInt(saturationSlider.value),
-            hue: parseInt(hueSlider.value),
-            sharpen: parseInt(sharpenSlider.value),
-            gamma: parseFloat(gammaSlider.value),
-            exposure: parseInt(exposureSlider.value),
-            blur: parseInt(blurSlider.value),
-            noise: parseInt(noiseSlider.value),
-            vignette: parseInt(vignetteSlider.value)
-        };
-        
-        // 限制历史记录大小
-        if (historyStack.length >= MAX_HISTORY_SIZE) {
-            historyStack.shift();
-        }
-        
-        historyStack.push(currentState);
-        
-        // 更新撤回按钮状态
-        undoBtn.disabled = historyStack.length <= 1;
-        if (historyStack.length <= 1) {
-            undoBtn.style.opacity = '0.5';
-        } else {
-            undoBtn.style.opacity = '1';
-        }
-    }
-    
-    // 撤回操作函数
-    function undoLastChange() {
-        if (historyStack.length > 1) {
-            historyStack.pop(); // 移除当前状态
-            const previousState = historyStack[historyStack.length - 1];
-            
-            // 恢复到上一个状态
-            brightnessSlider.value = previousState.brightness;
-            contrastSlider.value = previousState.contrast;
-            saturationSlider.value = previousState.saturation;
-            hueSlider.value = previousState.hue;
-            sharpenSlider.value = previousState.sharpen;
-            gammaSlider.value = previousState.gamma;
-            exposureSlider.value = previousState.exposure;
-            blurSlider.value = previousState.blur;
-            noiseSlider.value = previousState.noise;
-            vignetteSlider.value = previousState.vignette;
-            
-            // 更新UI并重新绘制图像
-            updateAdjustedImage();
-            
-            // 更新撤回按钮状态
-            undoBtn.disabled = historyStack.length <= 1;
-            if (historyStack.length <= 1) {
-                undoBtn.style.opacity = '0.5';
-            }
-        }
-    }
     
     image.onload = () => {
         // 设置画布大小
@@ -835,9 +723,6 @@ async function showColorAdjustModal(node) {
         
         // 保存原始图像数据
         originalImageData = originalCtx.getImageData(0, 0, width, height);
-        
-        // 保存初始状态到历史记录
-        saveCurrentState();
         
         // 初始化调整后的图像
         updateAdjustedImage();
@@ -978,22 +863,6 @@ async function showColorAdjustModal(node) {
             // 绘制调整后的图像
             adjustedCtx.putImageData(finalImageData, 0, 0);
     }
-
-    // 添加防抖功能，优化性能
-    function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
-    }
-
-    // 创建防抖版本的图像更新函数
-    const debouncedUpdateAdjustedImage = debounce(updateAdjustedImage, 50);
     
     // 锐化滤镜函数
         function applySharpen(imageData, amount) {
@@ -1282,100 +1151,17 @@ async function showColorAdjustModal(node) {
         return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
     }
     
-    // 绑定滑块事件监听器 - 使用防抖优化性能
-    brightnessSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    contrastSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    saturationSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    hueSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    sharpenSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    gammaSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    exposureSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    blurSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    noiseSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-    vignetteSlider.addEventListener('input', debouncedUpdateAdjustedImage);
-
-    // 增强滑块交互体验 - 添加滑块拖动时的视觉反馈
-    const allSliders = [brightnessSlider, contrastSlider, saturationSlider, hueSlider, sharpenSlider, gammaSlider, exposureSlider, blurSlider, noiseSlider, vignetteSlider];
-    allSliders.forEach(slider => {
-        // 添加滑块拖动开始事件
-        slider.addEventListener('mousedown', function() {
-            this.style.opacity = '1';
-            this.style.cursor = 'grabbing';
-        });
-        
-        // 添加滑块拖动结束事件
-        slider.addEventListener('mouseup', function() {
-            this.style.cursor = 'grab';
-            // 确保最终状态的图像被正确更新
-            updateAdjustedImage();
-            // 保存状态到历史记录
-            saveCurrentState();
-        });
-        
-        // 添加滑块鼠标离开事件
-        slider.addEventListener('mouseleave', function() {
-            this.style.cursor = 'grab';
-            // 确保最终状态的图像被正确更新
-            updateAdjustedImage();
-        });
-        
-        // 为滑块添加CSS类以支持平滑过渡
-        slider.classList.add('zml-slider');
-    });
-
-    // 增强输入框交互体验
-    const allInputs = [brightnessInput, contrastInput, saturationInput, hueInput, sharpenInput, gammaInput, exposureInput, blurInput, noiseInput, vignetteInput];
-    allInputs.forEach(input => {
-        // 添加输入框聚焦效果
-        input.addEventListener('focus', function() {
-            this.style.borderColor = '#4CAF50';
-            this.style.boxShadow = '0 0 0 2px rgba(76, 175, 80, 0.2)';
-        });
-        
-        // 添加输入框失焦效果
-        input.addEventListener('blur', function() {
-            this.style.borderColor = '#666';
-            this.style.boxShadow = 'none';
-        });
-        
-        // 添加输入框即时验证
-        input.addEventListener('input', function() {
-            // 实时更新滑块值和图像，但使用防抖避免频繁更新
-            debouncedUpdateAdjustedImage();
-        });
-    });
-
-    // 增强按钮交互体验
-    const allButtons = [
-        brightnessMinusBtn, brightnessPlusBtn,
-        contrastMinusBtn, contrastPlusBtn,
-        saturationMinusBtn, saturationPlusBtn,
-        hueMinusBtn, huePlusBtn,
-        sharpenMinusBtn, sharpenPlusBtn,
-        gammaMinusBtn, gammaPlusBtn,
-        exposureMinusBtn, exposurePlusBtn,
-        blurMinusBtn, blurPlusBtn,
-        noiseMinusBtn, noisePlusBtn,
-        vignetteMinusBtn, vignettePlusBtn,
-        resetBtn, confirmBtn, cancelBtn
-    ];
-    allButtons.forEach(button => {
-        // 添加按钮按下效果
-        button.addEventListener('mousedown', function() {
-            this.style.transform = 'scale(0.95)';
-            this.style.transition = 'transform 0.1s ease';
-        });
-        
-        // 添加按钮释放效果
-        button.addEventListener('mouseup', function() {
-            this.style.transform = 'scale(1)';
-        });
-        
-        // 添加按钮鼠标离开效果
-        button.addEventListener('mouseleave', function() {
-            this.style.transform = 'scale(1)';
-        });
-    });
+    // 绑定滑块事件监听器
+    brightnessSlider.addEventListener('input', updateAdjustedImage);
+    contrastSlider.addEventListener('input', updateAdjustedImage);
+    saturationSlider.addEventListener('input', updateAdjustedImage);
+    hueSlider.addEventListener('input', updateAdjustedImage);
+    sharpenSlider.addEventListener('input', updateAdjustedImage);
+    gammaSlider.addEventListener('input', updateAdjustedImage);
+    exposureSlider.addEventListener('input', updateAdjustedImage);
+    blurSlider.addEventListener('input', updateAdjustedImage);
+    noiseSlider.addEventListener('input', updateAdjustedImage);
+    vignetteSlider.addEventListener('input', updateAdjustedImage);
     
     // 绑定输入框事件监听器，实现精准调节
     brightnessInput.addEventListener('change', function() {
@@ -1502,17 +1288,10 @@ async function showColorAdjustModal(node) {
         closeModal(modal);
     });
     
-    // 撤回按钮
-    undoBtn.addEventListener('click', undoLastChange);
-    undoBtn.disabled = true;
-    undoBtn.style.opacity = '0.5';
-    
     // 取消按钮
     cancelBtn.addEventListener('click', () => {
         closeModal(modal);
     });
-    
-
     
     // 添加按钮点击事件监听器
     // 亮度加减按钮
@@ -1530,7 +1309,6 @@ async function showColorAdjustModal(node) {
         brightnessSlider.value = value;
         brightnessInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 对比度加减按钮
@@ -1548,7 +1326,6 @@ async function showColorAdjustModal(node) {
         contrastSlider.value = value;
         contrastInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 饱和度加减按钮
@@ -1566,7 +1343,6 @@ async function showColorAdjustModal(node) {
         saturationSlider.value = value;
         saturationInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 色相加减按钮
@@ -1584,7 +1360,6 @@ async function showColorAdjustModal(node) {
         hueSlider.value = value;
         hueInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 锐化加减按钮
@@ -1602,7 +1377,6 @@ async function showColorAdjustModal(node) {
         sharpenSlider.value = value;
         sharpenInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 伽马加减按钮
@@ -1620,7 +1394,6 @@ async function showColorAdjustModal(node) {
         gammaSlider.value = value.toFixed(1);
         gammaInput.value = value.toFixed(1);
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 曝光加减按钮
@@ -1638,7 +1411,6 @@ async function showColorAdjustModal(node) {
         exposureSlider.value = value;
         exposureInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 模糊加减按钮
@@ -1656,7 +1428,6 @@ async function showColorAdjustModal(node) {
         blurSlider.value = value;
         blurInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 噪点加减按钮
@@ -1674,21 +1445,10 @@ async function showColorAdjustModal(node) {
         noiseSlider.value = value;
         noiseInput.value = value;
         updateAdjustedImage();
-        saveCurrentState();
     });
     
     // 暗角加减按钮
-    vignettePlusBtn.addEventListener('click', () => {
-        let value = parseInt(vignetteSlider.value) + 1;
-        value = Math.max(0, Math.min(100, value));
-        vignetteSlider.value = value;
-        vignetteInput.value = value;
-        updateAdjustedImage();
-        saveCurrentState();
-    });
-
-        // 暗角减按钮
-        vignetteMinusBtn.addEventListener('click', () => {
+    vignetteMinusBtn.addEventListener('click', () => {
         let value = parseInt(vignetteSlider.value) - 1;
         value = Math.max(0, Math.min(100, value));
         vignetteSlider.value = value;
@@ -1708,19 +1468,26 @@ async function showColorAdjustModal(node) {
     modal.style.display = 'flex';
 }
 
-// ======================= ZML_PanoViewer 节点前端逻辑=======================
-app.registerExtension({
-    name: "ZML.PanoViewer",
-    async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name === "ZML_PanoViewer") {
-            const onNodeCreated = nodeType.prototype.onNodeCreated;
-            nodeType.prototype.onNodeCreated = function () {
-                onNodeCreated?.apply(this, arguments);
-                // 添加一个按钮来触发预览模态框
-                this.addWidget("button", "预览全景图", null, () => showPanoViewerModal(this));
-            };
-        }
-    },
+// ======================= ZML_PanoViewer 节点前端逻辑=======================  
+app.registerExtension({  
+    name: "ZML.PanoViewer",  
+    async beforeRegisterNodeDef(nodeType, nodeData, app) {  
+        if (nodeData.name === "ZML_PanoViewer") {  
+            const onNodeCreated = nodeType.prototype.onNodeCreated;  
+            nodeType.prototype.onNodeCreated = function () {  
+                onNodeCreated?.apply(this, arguments);  
+                
+                // 添加预览方式选择框  
+                this.addWidget("combo", "预览方式", "360全景", (v) => {  
+                    // 当预览方式改变时，可以在这里添加任何必要的处理  
+                    app.graph.setDirtyCanvas(true, true);  
+                }, { values: ["360全景", "动图平面预览"] });  
+                
+                // 添加一个按钮来触发预览模态框  
+                this.addWidget("button", "预览全景图", null, () => showPanoViewerModal(this));  
+            };  
+        }  
+    },  
 });
 
 async function showPanoViewerModal(node) {
@@ -1732,21 +1499,37 @@ async function showPanoViewerModal(node) {
     }
     const imageUrl = imageNode.imgs[0].src;
 
+    // 获取遮罩图像（如果有连接）
+    let maskUrl = null;
+    const maskNode = node.getInputNode(1);
+    if (maskNode && maskNode.imgs && maskNode.imgs.length > 0 && maskNode.imgs[0].src) {
+        maskUrl = maskNode.imgs[0].src;
+    }
+    
     // 2. 加载 Three.js 库 (只加载一次)
     if (typeof THREE === 'undefined') {
         const threeJsPath = new URL('../lib/three.min.js', import.meta.url).href;
         await loadScript(threeJsPath);
     }
 
-    // 3. 构建模态框 HTML (包含一个用于Three.js渲染的canvas)
+    // 3. 获取用户选择的预览方式
+    const previewModeWidget = node.widgets.find(w => w.name === "预览方式");
+    const previewMode = previewModeWidget ? previewModeWidget.value : "360全景";
+
+    // 4. 构建模态框 HTML (包含一个用于Three.js渲染的canvas)
     const modalHtml = `
-        <div id="zml-pano-viewer-modal" class="zml-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1002; flex-direction: column;">
-            <p style="color: white; margin-bottom: 10px;">拖动鼠标左右旋转，滚轮缩放，按ESC关闭</p>
-            <div id="zml-pano-viewer-container" style="width: 80vw; height: 80vh; max-width: 1200px; max-height: 800px; background-color: #000; overflow: hidden; position: relative;">
-                <canvas id="zml-pano-canvas" style="display: block;"></canvas>
+        <div id="zml-pano-viewer-modal" class="zml-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1002; flex-direction: column;">
+            <p style="color: white; margin-bottom: 10px;">${previewMode === "360全景" ? '拖动鼠标左右旋转，滚轮缩放，按ESC关闭' : '拖动鼠标轻微移动视角，滚轮缩放，360°旋转，按ESC关闭'}</p>
+            <div id="zml-pano-viewer-container" style="width: 80vw; height: 70vh; max-width: 1200px; max-height: 700px; background-color: #000; overflow: hidden; position: relative;
+                /* 简约好看的边框样式 */
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);">
+                <canvas id="zml-pano-canvas" style="display: block; width: 100%; height: 100%;"></canvas>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button id="zml-view-toggle-btn" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">切换为外部视角</button>
+                ${previewMode === "360全景" ? '<button id="zml-view-toggle-btn" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">切换为外部视角</button>' : ''}
+                ${previewMode === "动图平面预览" ? '<button id="zml-rotate-360-btn" style="padding: 10px 20px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer;">360°旋转</button>' : ''}
                 <button id="zml-close-pano-viewer-btn" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer;">关闭预览</button>
             </div>
             <style>
@@ -1778,10 +1561,16 @@ async function showPanoViewerModal(node) {
     let isDragging = false;
     let startX = 0, startY = 0;
     let phi = Math.PI / 2, theta = 0; // 初始视角：phi为PI/2 (水平方向), theta为0 (正前方)
-    let fov = 75; // 初始视场角 (Field of View)
+    let fov = 60; // 降低初始视场角，减弱透视效果
     let isInsideView = true; // 初始为内部视角
     let cameraDistance = 1000; // 外部视角时的相机距离
     let currentCameraPosition = new THREE.Vector3(0, 0, 0); // 当前相机位置
+    let resizeObserver;
+    // 不再需要旋转控制变量，已默认完全不限制旋转
+    // 平移控制变量
+    let isPanning = false;
+    let planePositionX = 0, planePositionY = 0; // 平面图像的平移位置
+    let startPanX = 0, startPanY = 0; // 平移起始位置
 
     // 销毁 Three.js 实例的函数
     function disposeThreeJs() {
@@ -1798,6 +1587,7 @@ async function showPanoViewerModal(node) {
         }
         if (scene) scene = null;
         if (camera) camera = null;
+        // 旋转相关的清理已移除，因为现在使用手动旋转模式
         // 移除所有事件监听器
         container.removeEventListener('mousedown', onMouseDown);
         container.removeEventListener('mousemove', onMouseMove);
@@ -1809,45 +1599,56 @@ async function showPanoViewerModal(node) {
         if (resizeObserver) resizeObserver.disconnect();
     }
     
-    // 视角切换按钮事件处理
-    const viewToggleBtn = modal.querySelector('#zml-view-toggle-btn');
-    viewToggleBtn.onclick = () => {
-        if (!camera || !mesh) return;
-        
-        // 切换视角模式
-        isInsideView = !isInsideView;
-        
-        // 更新按钮文本
-        viewToggleBtn.textContent = isInsideView ? '切换为外部视角' : '切换为内部视角';
-        
-        // 重新创建几何体并设置正确的面朝向
-        const texture = mesh.material.map;
-        const newGeometry = new THREE.SphereGeometry(500, 60, 40);
-        
-        if (isInsideView) {
-            newGeometry.scale(-1, 1, 1); // 内部视角需要反转面朝向
-            camera.position.set(0, 0, 0); // 移回中心
-            currentCameraPosition.set(0, 0, 0);
-        } else {
-            // 外部视角不需要反转，且相机移到球体外部
-            const x = cameraDistance * Math.sin(phi) * Math.sin(theta);
-            const y = cameraDistance * Math.cos(phi);
-            const z = cameraDistance * Math.sin(phi) * Math.cos(theta);
-            camera.position.set(-x, -y, -z); // 移动到球体外部，与视角方向相反
-            currentCameraPosition.set(-x, -y, -z);
+    // 视角切换按钮事件处理（仅360全景模式）
+    if (previewMode === "360全景") {
+        const viewToggleBtn = modal.querySelector('#zml-view-toggle-btn');
+        viewToggleBtn.onclick = () => {
+            if (!camera || !mesh) return;
+            
+            // 切换视角模式
+            isInsideView = !isInsideView;
+            
+            // 更新按钮文本
+            viewToggleBtn.textContent = isInsideView ? '切换为外部视角' : '切换为内部视角';
+            
+            // 重新创建几何体并设置正确的面朝向
+            const texture = mesh.material.map;
+            const newGeometry = new THREE.SphereGeometry(500, 60, 40);
+            
+            if (isInsideView) {
+                newGeometry.scale(-1, 1, 1); // 内部视角需要反转面朝向
+                camera.position.set(0, 0, 0); // 移回中心
+                currentCameraPosition.set(0, 0, 0);
+            } else {
+                // 外部视角不需要反转，且相机移到球体外部
+                const x = cameraDistance * Math.sin(phi) * Math.sin(theta);
+                const y = cameraDistance * Math.cos(phi);
+                const z = cameraDistance * Math.sin(phi) * Math.cos(theta);
+                camera.position.set(-x, -y, -z); // 移动到球体外部，与视角方向相反
+                currentCameraPosition.set(-x, -y, -z);
+            }
+            
+            // 移除旧网格并添加新网格
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            
+            const newMesh = new THREE.Mesh(newGeometry, mesh.material.clone());
+            mesh = newMesh;
+            scene.add(mesh);
+            
+            // 更新相机位置
+            updateCameraPosition();
+        };
+    } else if (previewMode === "动图平面预览") {
+        // 不再需要360度旋转按钮，已默认完全不限制旋转
+        // 移除相关按钮或隐藏它
+        const rotateBtn = modal.querySelector('#zml-rotate-360-btn');
+        if (rotateBtn) {
+            rotateBtn.style.display = 'none'; // 隐藏旋转控制按钮
         }
-        
-        // 移除旧网格并添加新网格
-        scene.remove(mesh);
-        mesh.geometry.dispose();
-        
-        const newMesh = new THREE.Mesh(newGeometry, mesh.material.clone());
-        mesh = newMesh;
-        scene.add(mesh);
-        
-        // 更新相机位置
-        updateCameraPostion();
-    };
+    }
+    
+    // 移除自动旋转相关函数，改为支持用户手动360度旋转
     
     // 关闭模态框并清理
     modal.querySelector('#zml-close-pano-viewer-btn').onclick = () => {
@@ -1866,37 +1667,130 @@ async function showPanoViewerModal(node) {
 
     // 加载图像并初始化 Three.js 场景
     const loader = new THREE.TextureLoader();
-    loader.load(imageUrl, texture => {
+    // 设置纹理参数以解决图像发白问题
+    loader.load(imageUrl, async (texture) => {
+        // 关键参数：设置纹理的encoding和其他属性
+        texture.encoding = THREE.sRGBEncoding;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
         // 创建 Three.js 场景
         scene = new THREE.Scene();
         
         // 创建相机
         camera = new THREE.PerspectiveCamera(fov, container.clientWidth / container.clientHeight, 0.1, 2000);
-        camera.position.set(0, 0, 0); // 相机在球体中心
 
         // 创建渲染器
-        renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+        renderer = new THREE.WebGLRenderer({ 
+            canvas: canvas, 
+            antialias: true, 
+            alpha: true, 
+            premultipliedAlpha: true // 重要：设置渲染器的预乘Alpha
+        });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
+        // 设置渲染器色彩空间，确保正确的颜色显示
+        renderer.outputEncoding = THREE.sRGBEncoding;
 
-        // 创建球体几何体
-        // THREE.SphereGeometry(radius, widthSegments, heightSegments)
-        const geometry = new THREE.SphereGeometry(500, 60, 40);
-        
-        // 内部视角需要反转面朝向
-        if (isInsideView) {
-            geometry.scale(-1, 1, 1);
+        if (previewMode === "360全景") {
+            // 创建球体几何体（360全景模式）
+            const geometry = new THREE.SphereGeometry(500, 60, 40);
+            
+            // 内部视角需要反转面朝向
+            if (isInsideView) {
+                geometry.scale(-1, 1, 1);
+            }
+
+            // 创建材质
+            const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+            
+            // 创建网格 (Mesh) 并添加到场景
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            // 初始化相机位置
+            camera.position.set(0, 0, 0); // 相机在球体中心
+        } else {
+            // 动图平面预览模式 - 完整优化显示和交互体验
+            // 计算图像宽高比
+            const img = new Image();
+            await new Promise((resolve) => {
+                img.onload = resolve;
+                img.src = imageUrl;
+            });
+            const aspectRatio = img.width / img.height;
+            
+            // 创建平面几何体
+            const planeSize = 1000; // 使用足够大的尺寸，但保持清晰度
+            const planeWidth = planeSize;
+            const planeHeight = planeSize / aspectRatio;
+            const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, 1);
+            
+            // 根据图像比例调整相机的FOV，确保图像完全填充视口
+            const containerAspect = container.clientWidth / container.clientHeight;
+            let adjustedFov = fov;
+            
+            if (aspectRatio > containerAspect) {
+                // 图像更宽，需要调整垂直视场角
+                adjustedFov = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * (containerAspect / aspectRatio)) * 180 / Math.PI;
+            } else {
+                // 图像更高，使用原始视场角
+                adjustedFov = fov;
+            }
+            camera.fov = adjustedFov;
+            
+            // 创建材质 - 优化参数组合防止图像发白
+            let material = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+                transparent: true,
+                premultiplyAlpha: true,
+                toneMapped: false // 禁用色调映射，保持原始颜色
+            });
+            
+            // 如果有遮罩图像，创建带遮罩的纹理
+            if (maskUrl) {
+                try {
+                    const maskedTexture = await createMaskedTexture(imageUrl, maskUrl);
+                    // 为遮罩材质也应用相同的优化参数
+                    material = new THREE.MeshBasicMaterial({
+                        map: maskedTexture,
+                        side: THREE.DoubleSide,
+                        transparent: true,
+                        premultiplyAlpha: true,
+                        toneMapped: false
+                    });
+                } catch (error) {
+                    console.error("应用遮罩失败:", error);
+                }
+            }
+            
+            // 计算合适的Z轴位置，确保图像在视口中正确显示
+            // 使用视场角计算所需距离
+            const zDistance = - (planeWidth / 2) / Math.tan((camera.fov * Math.PI / 180) / 2);
+            
+            // 图像缩放系数（用于实现缩放功能）
+            let zoomFactor = 1.0;
+            
+            // 创建网格并添加到场景
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.position.z = zDistance;
+            scene.add(mesh);
+
+            // 初始化相机位置
+            camera.position.set(0, 0, 0);
+            camera.lookAt(0, 0, zDistance);
+            
+            // 保存平面和缩放信息，供后续交互使用
+            window.zmlPlaneMesh = mesh;
+            window.zmlPlaneZoomFactor = zoomFactor;
+            window.zmlPlaneOriginalZ = zDistance;
+            window.zmlPlaneWidth = planeWidth;
+            window.zmlPlaneHeight = planeHeight;
         }
 
-        // 创建材质
-        const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }); // 使用DoubleSide确保内外都能看到纹理
-        
-        // 创建网格 (Mesh) 并添加到场景
-        mesh = new THREE.Mesh(geometry, material);
-        scene.add(mesh);
-
         // 初始化相机视角
-        updateCameraPostion();
+        updateCameraPosition();
 
         // 渲染循环
         const animate = () => {
@@ -1916,29 +1810,47 @@ async function showPanoViewerModal(node) {
 
     // --- 交互逻辑 ---
     
-    function updateCameraPostion() {
+    function updateCameraPosition() {
+        if (!camera || !mesh) return;
+        
         // 将球坐标 (phi, theta) 转换为笛卡尔坐标，设置相机 Y 轴为向上
-        // phi: 垂直角度 (0到PI，0是正上方，PI是正下方，PI/2是水平)
-        // theta: 水平角度 (0到2*PI，决定了水平方向)
         const directionX = Math.sin(phi) * Math.sin(theta);
         const directionY = Math.cos(phi);
         const directionZ = Math.sin(phi) * Math.cos(theta);
         
-        // 对于外部视角，更新相机位置
-        if (!isInsideView) {
-            const x = cameraDistance * directionX;
-            const y = cameraDistance * directionY;
-            const z = cameraDistance * directionZ;
-            camera.position.set(-x, -y, -z); // 移动到球体外部，与视角方向相反
-            currentCameraPosition.set(-x, -y, -z);
+        if (previewMode === "360全景") {
+            // 对于360全景模式
+            if (!isInsideView) {
+                // 外部视角，更新相机位置
+                const x = cameraDistance * directionX;
+                const y = cameraDistance * directionY;
+                const z = cameraDistance * directionZ;
+                camera.position.set(-x, -y, -z); // 移动到球体外部，与视角方向相反
+                currentCameraPosition.set(-x, -y, -z);
+            }
+            
+            // 相机看向的方向
+            const lookAtX = isInsideView ? directionX : 0;
+            const lookAtY = isInsideView ? directionY : 0;
+            const lookAtZ = isInsideView ? directionZ : 0;
+            
+            camera.lookAt(lookAtX, lookAtY, lookAtZ);
+        } else {
+            // 对于动图平面预览模式：完全不限制旋转
+            // 移除所有旋转限制，允许360度自由旋转
+            
+            // 旋转网格而不是相机，以创建旋转效果
+            mesh.rotation.y = theta;
+            mesh.rotation.x = phi - Math.PI/2;
+            
+            // 应用平移
+            mesh.position.x = planePositionX;
+            mesh.position.y = planePositionY;
+            
+            // 相机始终看向平面中心
+            camera.lookAt(mesh.position);
         }
         
-        // 相机看向的方向
-        const lookAtX = isInsideView ? directionX : 0;
-        const lookAtY = isInsideView ? directionY : 0;
-        const lookAtZ = isInsideView ? directionZ : 0;
-        
-        camera.lookAt(lookAtX, lookAtY, lookAtZ);
         camera.updateProjectionMatrix(); // 更新投影矩阵以应用 FOV
     }
 
@@ -1946,7 +1858,17 @@ async function showPanoViewerModal(node) {
         isDragging = true;
         startX = event.clientX;
         startY = event.clientY;
-        container.style.cursor = 'grabbing';
+        
+        // 如果按下了Ctrl键并且是鼠标左键，进入平移模式
+        if (event.ctrlKey && event.button === 0) {
+            isPanning = true;
+            startPanX = planePositionX;
+            startPanY = planePositionY;
+            container.style.cursor = 'move';
+        } else {
+            isPanning = false;
+            container.style.cursor = 'grabbing';
+        }
     }
 
     function onMouseMove(event) {
@@ -1955,42 +1877,73 @@ async function showPanoViewerModal(node) {
         const dx = event.clientX - startX;
         const dy = event.clientY - startY;
 
-        // 调整方向，使拖动方向与视角移动方向一致
-        theta -= dx * 0.005; // 水平拖动 (左/右) => 视角跟随移动 (左/右)
-        phi += dy * 0.005;   // 垂直拖动 (上/下) => 视角跟随移动 (上/下)
+        if (isPanning && previewMode !== "360全景") {
+            // 平移模式
+            const panSpeed = 5.0 / (window.zmlPlaneZoomFactor || 1); // 根据缩放调整平移速度
+            planePositionX = startPanX + dx * panSpeed;
+            planePositionY = startPanY - dy * panSpeed; // 注意这里是减去，因为Y轴在Three.js中是向上的
+        } else {
+            // 旋转模式
+            if (previewMode === "360全景") {
+                // 360全景模式：提高旋转灵敏度并修复方向问题
+                theta -= dx * 0.004; // 提高灵敏度
+                phi += dy * 0.004; // 提高灵敏度，phi使用相反符号，修复左下、右下方向问题
+            } else {
+                // 动图平面预览模式：降低旋转敏感度
+                theta += dx * 0.002; // 调整水平旋转速度
+                phi += dy * 0.002; // 调整垂直旋转速度
+            }
 
-        // 限制 phi (上下视角) 在合理范围，防止翻转
-        // phi 从 0 (正上方) 到 PI (正下方)
-        // 限制在 0.1 到 PI - 0.1 之间，避免极点问题
-        phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi)); 
+            // 完全不限制旋转范围，允许360度自由旋转
+        }
 
         startX = event.clientX;
         startY = event.clientY;
         
-        updateCameraPostion();
+        updateCameraPosition();
     }
 
     function onMouseUp() {
         isDragging = false;
+        isPanning = false;
         container.style.cursor = 'grab';
     }
 
     function onMouseWheel(event) {
         event.preventDefault(); // 阻止页面滚动
         
-        if (isInsideView) {
-            // 内部视角：调整 FOV 进行缩放
-            fov += event.deltaY * 0.05;
-            fov = Math.max(10, Math.min(100, fov)); // 限制 FOV 范围 (10度到100度)
-            camera.fov = fov;
+        if (previewMode === "360全景") {
+            if (isInsideView) {
+                // 内部视角：调整 FOV 进行缩放
+                fov += event.deltaY * 0.05;
+                fov = Math.max(40, Math.min(90, fov)); // 调整 FOV 范围，减弱透视效果
+                camera.fov = fov;
+            } else {
+                // 外部视角：调整相机距离进行缩放
+                cameraDistance += event.deltaY * 0.5;
+                cameraDistance = Math.max(500, Math.min(4000, cameraDistance)); // 进一步扩大距离范围，允许更远的视角
+            }
         } else {
-            // 外部视角：调整相机距离进行缩放
-            cameraDistance += event.deltaY * 0.5;
-            cameraDistance = Math.max(600, Math.min(1500, cameraDistance)); // 限制距离范围
+            // 动图平面预览模式：实现缩放功能
+            if (!window.zmlPlaneMesh) return;
+            
+            // 调整缩放系数
+            let zoomSpeed = 0.1;
+            if (event.deltaY > 0) {
+                // 缩小
+                window.zmlPlaneZoomFactor = Math.max(0.1, window.zmlPlaneZoomFactor - zoomSpeed);
+            } else {
+                // 放大
+                window.zmlPlaneZoomFactor = Math.min(5, window.zmlPlaneZoomFactor + zoomSpeed);
+            }
+            
+            // 应用缩放
+            const scale = window.zmlPlaneZoomFactor;
+            window.zmlPlaneMesh.scale.set(scale, scale, scale);
         }
         
         camera.updateProjectionMatrix();
-        updateCameraPostion();
+        updateCameraPosition();
     }
 
     // 绑定事件监听器
@@ -2016,10 +1969,49 @@ async function showPanoViewerModal(node) {
     };
 
     // 监听容器大小变化
-    const resizeObserver = new ResizeObserver(onWindowResize);
+    resizeObserver = new ResizeObserver(onWindowResize);
     resizeObserver.observe(container);
 
     // 首次调用调整大小函数
     onWindowResize();
+
+    // 创建带遮罩的纹理
+    async function createMaskedTexture(imageUrl, maskUrl) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 加载原图和遮罩图
+        const [originalImg, maskImg] = await Promise.all([
+            loadImage(imageUrl),
+            loadImage(maskUrl)
+        ]);
+        
+        // 设置canvas大小
+        canvas.width = originalImg.width;
+        canvas.height = originalImg.height;
+        
+        // 绘制原图
+        ctx.drawImage(originalImg, 0, 0);
+        
+        // 创建遮罩效果（使用黑色区域作为透明区域）
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
+        
+        // 转换为Three.js纹理
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        
+        return texture;
+    }
+
+    // 辅助函数：加载图像
+    function loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error(`无法加载图像: ${src}`));
+            img.src = src;
+        });
+    }
 }
 

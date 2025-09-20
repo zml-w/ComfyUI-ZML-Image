@@ -363,16 +363,17 @@ async function sendPresetRequest(action, payload) {
             showNotification(`操作失败: ${data.message}`, 'error');
         } else {
             let msg = '';
-            if (action === 'add') msg = `预设 '${payload.name}' 已添加.`;
-            else if (action === 'update') msg = `预设 '${payload.new_name}' 已更新.`;
-            else if (action === 'delete') msg = `预设 '${payload.name}' 已删除.`;
+            if (action === 'add') msg = `${payload.type === 'folder' ? '文件夹' : '预设'} '${payload.name}' 已添加.`;
+            else if (action === 'update') msg = `${payload.type === 'folder' ? '文件夹' : '预设'} '${payload.new_name || payload.name}' 已更新.`;
+            else if (action === 'delete') msg = `${payload.type === 'folder' ? '文件夹' : '预设'} 已删除.`;
+            else if (action === 'reorder') msg = `预设顺序已更新.`;
             if (msg) showNotification(msg, 'success');
         }
-        return data.success;
+        return data; // Return full data to get new ID for 'add'
     } catch (error) {
         console.error(`Error during preset operation '${action}':`, error);
         showNotification(`请求出错: ${error.message}`, 'error');
-        return false;
+        return { success: false, message: error.message };
     }
 }
 
@@ -424,7 +425,7 @@ function createPresetModal() {
             text-align: center;
             font-weight: 700;
         `,
-        textContent: "💖 预设文本管理器 💖"
+        textContent: "预设文本管理器"
     });
 
     const sectionTitleStyle = `
@@ -448,7 +449,7 @@ function createPresetModal() {
             gap: 5px; 
         `
     });
-    addEditSection.innerHTML = `<h4 style="${sectionTitleStyle}">✨ 添加/编辑预设</h4>`;
+    addEditSection.innerHTML = `<h4 style="${sectionTitleStyle}">添加/编辑预设</h4>`;
 
     const nameGroup = createEl("div", "", {style: "display: flex; align-items: center; gap: 3px;"}); 
     nameGroup.append(
@@ -501,10 +502,10 @@ function createPresetModal() {
 
     // 这是预设弹窗中的大按钮样式
     const buttonBasePresetStyle = `
-        padding: 24px 24px; 
+        padding: 10px 20px; /* 调整为更合理的大小 */
         border-radius: 8px; 
         cursor: pointer;
-        font-size: 16px; 
+        font-size: 14px; /* 调整字体大小 */
         font-weight: 600;
         transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
         border: none;
@@ -515,7 +516,7 @@ function createPresetModal() {
         justify-content: center;
     `;
 
-    const presetSaveBtn = createEl("button", "zml-control-btn", { textContent: "💾 保存/新增预设" });
+    const presetSaveBtn = createEl("button", "zml-control-btn", { textContent: "保存/新增预设" });
     Object.assign(presetSaveBtn.style, {
         cssText: buttonBasePresetStyle,
         backgroundColor: ZML_PRESET_DARK_ACCENT, // 深绿色
@@ -543,36 +544,40 @@ function createPresetModal() {
         e.target.style.transform = 'translateY(-3px) scale(1.02)'; 
     };
 
-    // 添加缺失的点击事件处理程序
     presetSaveBtn.onclick = async () => {
         const name = zmlPresetModalNameInput.value.trim();
         const content = zmlPresetModalContentTextarea.value;
-        
+        const parent_id = zmlCurrentEditingPreset ? zmlCurrentEditingPreset.parent_id : null; // Assume top-level if not editing
+
         if (!name) {
             showNotification("请输入预设名称！", 'error');
             return;
         }
         
-        if (zmlCurrentEditingPreset) {
-            // 更新现有预设
-            const success = await sendPresetRequest("update", {
-                old_name: zmlCurrentEditingPreset.name,
+        if (zmlCurrentEditingPreset && zmlCurrentEditingPreset.type === 'text') {
+            // 更新现有文本预设
+            const result = await sendPresetRequest("update", {
+                id: zmlCurrentEditingPreset.id,
+                type: 'text',
                 new_name: name,
-                new_content: content
+                new_content: content,
+                parent_id: parent_id
             });
-            if (success) {
+            if (result.success) {
                 zmlPresetModalNameInput.value = "";
                 zmlPresetModalContentTextarea.value = "";
                 zmlCurrentEditingPreset = null;
                 renderPresetsList();
             }
         } else {
-            // 添加新预设
-            const success = await sendPresetRequest("add", {
+            // 添加新文本预设
+            const result = await sendPresetRequest("add", {
+                type: 'text',
                 name: name,
-                content: content
+                content: content,
+                parent_id: parent_id // New text presets are added to the current folder context
             });
-            if (success) {
+            if (result.success) {
                 zmlPresetModalNameInput.value = "";
                 zmlPresetModalContentTextarea.value = "";
                 renderPresetsList();
@@ -580,7 +585,49 @@ function createPresetModal() {
         }
     };
 
-    const presetCancelEditBtn = createEl("button", "zml-control-btn", { textContent: "❌ 取消" });
+    const presetNewFolderBtn = createEl("button", "zml-control-btn", { textContent: "新建文件夹" });
+    Object.assign(presetNewFolderBtn.style, {
+        cssText: buttonBasePresetStyle,
+        backgroundColor: '#607D8B', // 蓝色灰色
+        color: 'white',
+    });
+    presetNewFolderBtn.onmouseenter = (e) => { 
+        e.target.style.backgroundColor = adjustBrightness('#607D8B', -10); 
+        e.target.style.boxShadow = '0 8px 20px rgba(0, 0, 0, 0.4)'; 
+        e.target.style.transform = 'translateY(-3px) scale(1.02)'; 
+    }; 
+    presetNewFolderBtn.onmouseleave = (e) => { 
+        e.target.style.backgroundColor = '#607D8B'; 
+        e.target.style.boxShadow = '0 4px 10px rgba(0,0,0,0.2)'; 
+        e.target.style.transform = 'translateY(0) scale(1)'; 
+    };
+    presetNewFolderBtn.onmousedown = (e) => { 
+        e.target.style.transform = 'translateY(3px) scale(0.96)'; 
+        e.target.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)'; 
+        e.target.style.backgroundColor = adjustBrightness('#607D8B', -20); 
+    }; 
+    presetNewFolderBtn.onmouseup = (e) => { 
+        e.target.style.backgroundColor = adjustBrightness('#607D8B', -10); 
+        e.target.style.boxShadow = '0 8px 20px rgba(0, 0, 0, 0.4)'; 
+        e.target.style.transform = 'translateY(-3px) scale(1.02)'; 
+    };
+    presetNewFolderBtn.onclick = async () => {
+        const folderName = prompt("请输入新文件夹的名称:", "新建文件夹");
+        if (folderName && folderName.trim()) {
+            const result = await sendPresetRequest("add", {
+                type: 'folder',
+                name: folderName.trim(),
+                parent_id: null // New folders are always top-level initially
+            });
+            if (result.success) {
+                renderPresetsList();
+            }
+        } else if (folderName !== null) { // If user clicked cancel, folderName is null
+            showNotification("文件夹名称不能为空。", 'error');
+        }
+    };
+
+    const presetCancelEditBtn = createEl("button", "zml-control-btn", { textContent: "取消" });
     Object.assign(presetCancelEditBtn.style, {
         cssText: buttonBasePresetStyle,
         backgroundColor: '#999', // 保持灰色调
@@ -615,7 +662,7 @@ function createPresetModal() {
         showNotification("已取消预设编辑.", 'info');
     };
 
-    actionButtons.append(presetCancelEditBtn, presetSaveBtn);
+    actionButtons.append(presetCancelEditBtn, presetNewFolderBtn, presetSaveBtn); // Add new folder button
     addEditSection.append(nameGroup, contentGroup, actionButtons);
 
 
@@ -633,7 +680,7 @@ function createPresetModal() {
             margin-top: 8px; 
         `
     });
-    listSection.innerHTML = `<h4 style="${sectionTitleStyle}">📋 现有预设</h4>`;
+    listSection.innerHTML = `<h4 style="${sectionTitleStyle}">现有预设</h4>`;
     
     zmlPresetModalContentContainer = createEl("div", "zml-preset-items-container", {
         style: `
@@ -694,210 +741,483 @@ function createPresetModal() {
     };
 }
 
+let zmlPresetDraggingItem = null; // Track the item being dragged
+let zmlPresetDragOverTarget = null; // Track the element being dragged over
+let zmlPresetDragOverPosition = null; // "before", "after", "into"
+
+// Helper function to build a tree structure from a flat list of presets
+function buildPresetTree(flatPresets) {
+    const tree = [];
+    const itemsById = {};
+    
+    // First, create a map of all items by their ID
+    flatPresets.forEach(item => {
+        itemsById[item.id] = {...item, children: []}; // Clone and initialize children array
+    });
+    
+    // Then build the tree structure
+    flatPresets.forEach(item => {
+        const currentItem = itemsById[item.id];
+        
+        if (item.parent_id === null) {
+            // Top-level item
+            tree.push(currentItem);
+        } else if (itemsById[item.parent_id]) {
+            // Add to parent's children array, preserving the order from flatPresets
+            itemsById[item.parent_id].children.push(currentItem);
+        }
+    });
+    
+    return tree;
+}
+
+// Helper function to flatten the tree back to a list, maintaining order
+function flattenPresetTree(tree) {
+    const flatList = [];
+    function recurse(items) {
+        items.forEach(item => {
+            flatList.push(item);
+            if (item.children && item.children.length > 0) {
+                recurse(item.children);
+            }
+        });
+    }
+    recurse(tree);
+    return flatList;
+}
+
+// Drag & Drop Handlers for Preset Modal
+function addPresetDragDropHandlers(element, item) {
+    element.draggable = true;
+    element.dataset.id = item.id;
+    element.dataset.type = item.type;
+
+    element.ondragstart = (e) => {
+        e.stopPropagation();
+        zmlPresetDraggingItem = item;
+        e.dataTransfer.setData("text/plain", item.id);
+        e.dataTransfer.effectAllowed = "move";
+        setTimeout(() => element.classList.add("zml-preset-dragging"), 0);
+    };
+
+    element.ondragover = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!zmlPresetDraggingItem || zmlPresetDraggingItem.id === item.id) return;
+
+        // Clear previous highlights
+        document.querySelectorAll(".zml-preset-drag-over-line, .zml-preset-drag-over-folder").forEach(el => {
+            el.classList.remove("zml-preset-drag-over-line", "zml-preset-drag-over-folder");
+        });
+
+        const rect = element.getBoundingClientRect();
+        const mouseY = e.clientY;
+
+        if (item.type === 'folder' && zmlPresetDraggingItem.type === 'text') {
+            // Allow dropping text into a folder
+            element.classList.add("zml-preset-drag-over-folder");
+            zmlPresetDragOverPosition = "into";
+        } else if (zmlPresetDraggingItem.type === 'folder' && item.type === 'text') {
+            // Cannot drop folder into text
+            return;
+        } else {
+            // For same-level reordering or moving folder/text to top-level
+            if (mouseY < rect.top + rect.height / 2) {
+                element.classList.add("zml-preset-drag-over-line");
+                zmlPresetDragOverPosition = "before";
+            } else {
+                element.classList.add("zml-preset-drag-over-line");
+                zmlPresetDragOverPosition = "after";
+            }
+        }
+        zmlPresetDragOverTarget = element;
+    };
+
+    element.ondragleave = (e) => {
+        e.stopPropagation();
+        element.classList.remove("zml-preset-drag-over-line", "zml-preset-drag-over-folder");
+        if (zmlPresetDragOverTarget === element) {
+            zmlPresetDragOverTarget = null;
+            zmlPresetDragOverPosition = null;
+        }
+    };
+
+    element.ondrop = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        document.querySelectorAll(".zml-preset-drag-over-line, .zml-preset-drag-over-folder").forEach(el => {
+            el.classList.remove("zml-preset-drag-over-line", "zml-preset-drag-over-folder");
+        });
+
+        if (!zmlPresetDraggingItem || zmlPresetDraggingItem.id === item.id) return;
+
+        // Fetch the latest presets to ensure we're working with the most current state
+        const allPresets = await fetchPresets();
+        let currentFlatPresets = [...allPresets];
+
+        const fromIndex = zmlPresetDraggingItem ? currentFlatPresets.findIndex(p => p.id === zmlPresetDraggingItem.id) : -1;
+        if (fromIndex === -1) return; // Item being dragged not found
+
+        const [movedItem] = currentFlatPresets.splice(fromIndex, 1); // Remove the item from its original position
+
+        // Determine the new parent_id and insertion point
+        if (zmlPresetDragOverPosition === "into" && item.type === 'folder' && movedItem.type === 'text') {
+            // Move text into folder - 直接在原对象上修改parent_id，避免深拷贝导致的问题
+            movedItem.parent_id = item.id;
+            
+            // 将修改后的项添加回列表，保持ID不变
+            currentFlatPresets.push(movedItem);
+        } else {
+            // Reorder at the same level or move to top level
+            movedItem.parent_id = item.parent_id; // Keep same parent or move to target's parent
+            
+            const targetIndex = currentFlatPresets.findIndex(p => p.id === item.id);
+            if (targetIndex !== -1) {
+                if (zmlPresetDragOverPosition === "before") {
+                    currentFlatPresets.splice(targetIndex, 0, movedItem);
+                } else {
+                    currentFlatPresets.splice(targetIndex + 1, 0, movedItem);
+                }
+            } else {
+                currentFlatPresets.push(movedItem);
+            }
+        }
+        
+        // 直接发送更新后的预设列表，不需要构建树和扁平化
+        const result = await sendPresetRequest("reorder", { presets: currentFlatPresets });
+        if (result.success) {
+            // 强制重新获取所有预设并渲染，确保UI显示正确的结构
+            renderPresetsList();
+        } else {
+            showNotification("无法保存拖拽更改，请重试。", 'error');
+        }
+        zmlPresetDraggingItem = null;
+        zmlPresetDragOverTarget = null;
+        zmlPresetDragOverPosition = null;
+    };
+
+    element.ondragend = (e) => {
+        element.classList.remove("zml-preset-dragging");
+        document.querySelectorAll(".zml-preset-drag-over-line, .zml-preset-drag-over-folder").forEach(el => {
+            el.classList.remove("zml-preset-drag-over-line", "zml-preset-drag-over-folder");
+        });
+        zmlPresetDraggingItem = null;
+        zmlPresetDragOverTarget = null;
+        zmlPresetDragOverPosition = null;
+    };
+}
+
+// This is the base style for small buttons within preset items/folders
+const buttonBaseItemStyle = `
+    padding: 8px 12px; 
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px; 
+    font-weight: 500;
+    transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+    border: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+`;
+
+// Function to create a text preset item DOM
+function createPresetTextItemDOM(preset) {
+    const itemCard = createEl("div", "zml-preset-item-card", {
+        style: `
+            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 90)}; 
+            border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 60)};
+            border-radius: 6px;
+            padding: 7px; 
+            display: flex;
+            flex-direction: column;
+            gap: 4px; 
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); 
+            transition: background-color 0.2s ease, box-shadow 0.2s ease; 
+            margin-left: 20px; /* Indent for text items within folders */
+        `
+    });
+    itemCard.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 80); e.target.style.boxShadow = '0 3px 8px rgba(0,0,0,0.15)'; };
+    itemCard.onmouseleave = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 90); e.target.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)'; };
+
+    const nameDisplay = createEl("div", "zml-preset-name-display", {
+        textContent: `名称: ${preset.name}`,
+        title: preset.name,
+        style: `
+            font-weight: 600;
+            color: ${ZML_PRESET_TEXT_COLOR}; 
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 1.05em;
+        `
+    });
+
+    const contentPreview = createEl("div", "zml-preset-content-preview", {
+        textContent: `内容: ${preset.content.substring(0, 120)}${preset.content.length > 120 ? '...' : ''}`,
+        title: preset.content,
+        style: `
+            font-size: 13px;
+            color: ${adjustBrightness(ZML_PRESET_TEXT_COLOR, 40)}; 
+            max-height: 44px; 
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        `
+    });
+
+    const buttonGroup = createEl("div", "", {
+        style: `
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px; 
+            margin-top: 5px; 
+        `
+    });
+
+    const editBtn = createEl("button", "zml-control-btn", { textContent: "编辑" });
+    Object.assign(editBtn.style, {
+        cssText: buttonBaseItemStyle,
+        backgroundColor: '#FFEB3B', // 柔和的黄色
+        color: '#333',
+    });
+    editBtn.onmouseenter = (e) => { e.target.style.backgroundColor = '#FBC02D'; e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    editBtn.onmouseleave = (e) => { e.target.style.backgroundColor = '#FFEB3B'; e.target.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)'; e.target.style.transform = 'translateY(0) scale(1)'; };
+    editBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(1.5px) scale(0.97)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; };
+    editBtn.onmouseup = (e) => { e.target.style.backgroundColor = '#FBC02D'; e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    editBtn.onclick = () => {
+        zmlPresetModalNameInput.value = preset.name;
+        zmlPresetModalContentTextarea.value = preset.content;
+        zmlCurrentEditingPreset = preset; 
+        showNotification(`正在编辑预设: '${preset.name}'`, 'info', 2000);
+    };
+
+    const deleteBtn = createEl("button", "zml-control-btn", { textContent: "删除" });
+    Object.assign(deleteBtn.style, {
+        cssText: buttonBaseItemStyle,
+        backgroundColor: '#E57373', // 柔和的红色
+        color: 'white',
+    });
+    deleteBtn.onmouseenter = (e) => { e.target.style.backgroundColor = '#D36060'; e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    deleteBtn.onmouseleave = (e) => { e.target.style.backgroundColor = '#E57373'; e.target.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)'; e.target.style.transform = 'translateY(0) scale(1)'; };
+    deleteBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(1.5px) scale(0.97)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; };
+    deleteBtn.onmouseup = (e) => { e.target.style.backgroundColor = '#D36060'; e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    deleteBtn.onclick = async () => {
+        if (confirm(`确定要删除预设 "${preset.name}" 吗?`)) {
+            if (zmlCurrentEditingPreset && zmlCurrentEditingPreset.id === preset.id) {
+                zmlPresetModalNameInput.value = "";
+                zmlPresetModalContentTextarea.value = "";
+                zmlCurrentEditingPreset = null; 
+            }
+            const result = await sendPresetRequest("delete", { id: preset.id, type: preset.type });
+            if (result.success) renderPresetsList();
+        }
+    };
+
+    const addToOneClickBtn = createEl("button", "zml-control-btn", { textContent: "一键添加至节点" });
+    Object.assign(addToOneClickBtn.style, {
+        cssText: buttonBaseItemStyle,
+        backgroundColor: ZML_PRESET_DARK_ACCENT, // 深绿色
+        color: 'white',
+    });
+    addToOneClickBtn.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_DARK_ACCENT, -10); e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    addToOneClickBtn.onmouseleave = (e) => { e.target.style.backgroundColor = ZML_PRESET_DARK_ACCENT; e.target.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)'; e.target.style.transform = 'translateY(0) scale(1)'; };
+    addToOneClickBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(1.5px) scale(0.97)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; };
+    addToOneClickBtn.onmouseup = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_DARK_ACCENT, -10); e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    addToOneClickBtn.onclick = () => {
+        if (zmlTextV3CurrentNodeInstance) {
+            const newId = "text" + Date.now() + Math.random().toString(36).substring(2, 8); 
+            zmlTextV3CurrentNodeInstance.selectTextV3_data.entries.push({
+                id: newId,
+                item_type: "text",
+                title: preset.name,
+                content: preset.content,
+                enabled: true,
+                parent_id: null // This will be handled by the node's own drag/drop if needed
+            });
+            zmlTextV3CurrentNodeInstance.triggerSlotChanged();
+            showNotification(`预设 '${preset.name}' 已添加至节点.`, 'success'); 
+        } else {
+            showNotification("当前没有活动的SelectTextV3节点实例。", 'error');
+        }
+    };
+
+    // 添加移动到文件夹按钮
+    const moveToFolderBtn = createEl("button", "zml-control-btn", { textContent: "移动到文件夹" });
+    Object.assign(moveToFolderBtn.style, {
+        cssText: buttonBaseItemStyle,
+        backgroundColor: '#64B5F6', // 蓝色
+        color: 'white',
+    });
+    moveToFolderBtn.onmouseenter = (e) => { e.target.style.backgroundColor = '#42A5F5'; e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    moveToFolderBtn.onmouseleave = (e) => { e.target.style.backgroundColor = '#64B5F6'; e.target.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)'; e.target.style.transform = 'translateY(0) scale(1)'; };
+    moveToFolderBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(1.5px) scale(0.97)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; };
+    moveToFolderBtn.onmouseup = (e) => { e.target.style.backgroundColor = '#42A5F5'; e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; };
+    moveToFolderBtn.onclick = () => showFolderSelectionDialog(preset);
+
+    buttonGroup.append(editBtn, deleteBtn, moveToFolderBtn, addToOneClickBtn);
+    itemCard.append(nameDisplay, contentPreview, buttonGroup);
+    addPresetDragDropHandlers(itemCard, preset);
+    return itemCard;
+}
+
+// Function to create a folder item DOM
+function createPresetFolderItemDOM(folder) {
+    const folderCard = createEl("div", "zml-preset-folder-card", {
+        style: `
+            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 70)}; 
+            border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
+            border-radius: 8px;
+            padding: 5px; 
+            margin-bottom: 5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+        `
+    });
+    folderCard.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 60); e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)'; };
+    folderCard.onmouseleave = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 70); e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)'; };
+
+    const header = createEl("div", "zml-preset-folder-header", {
+        style: `
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 5px;
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
+            color: ${ZML_PRESET_TEXT_COLOR};
+        `
+    });
+    const toggle = createEl("span", "zml-preset-folder-toggle", { textContent: folder.is_collapsed ? "+" : "-" });
+    const nameInput = createEl("input", "zml-preset-folder-name-input", {
+        type: "text",
+        value: folder.name,
+        style: `
+            flex-grow: 1;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            color: ${ZML_PRESET_TEXT_COLOR};
+            padding: 2px 5px;
+            font-size: 1em;
+            font-weight: 600;
+            outline: none;
+            transition: border-color 0.2s ease;
+        `
+    });
+    nameInput.onfocus = (e) => { e.target.style.borderColor = ZML_PRESET_DARK_ACCENT; };
+    nameInput.onblur = async (e) => {
+        e.target.style.borderColor = 'transparent';
+        const newName = e.target.value.trim();
+        if (newName && newName !== folder.name) {
+            const result = await sendPresetRequest("update", {
+                id: folder.id,
+                type: 'folder',
+                new_name: newName
+            });
+            if (result.success) {
+                folder.name = newName;
+                renderPresetsList();
+            } else {
+                e.target.value = folder.name; // Revert on failure
+            }
+        } else if (!newName && newName !== null) {
+            showNotification("文件夹名称不能为空。", 'error');
+            e.target.value = folder.name; // Revert
+        }
+    };
+
+    const deleteBtn = createEl("button", "zml-control-btn", { textContent: "删除" });
+    Object.assign(deleteBtn.style, {
+        cssText: buttonBaseItemStyle,
+        backgroundColor: '#E57373', // 柔和的红色
+        color: 'white',
+        padding: '4px 8px',
+        fontSize: '12px',
+    });
+    deleteBtn.onmouseenter = (e) => { e.target.style.backgroundColor = '#D36060'; };
+    deleteBtn.onmouseleave = (e) => { e.target.style.backgroundColor = '#E57373'; };
+    deleteBtn.onclick = async (e) => {
+        e.stopPropagation(); // Prevent folder toggle
+        const children = (await fetchPresets()).filter(p => p.parent_id === folder.id);
+        if (children.length > 0) {
+            showNotification("无法删除文件夹：它包含项目。", 'error');
+            return;
+        }
+        if (confirm(`确定要删除文件夹 "${folder.name}" 吗?`)) {
+            const result = await sendPresetRequest("delete", { id: folder.id, type: folder.type });
+            if (result.success) renderPresetsList();
+        }
+    };
+
+    header.append(toggle, nameInput, deleteBtn);
+    folderCard.append(header);
+
+    const contentContainer = createEl("div", "zml-preset-folder-content", {
+        style: `
+            padding-top: 5px;
+            padding-left: 10px;
+            border-top: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 30)};
+            margin-top: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            ${folder.is_collapsed ? 'display: none;' : ''}
+        `
+    });
+    folderCard.append(contentContainer);
+
+    header.onclick = (e) => {
+        if (e.target === nameInput || e.target === deleteBtn) return;
+        folder.is_collapsed = !folder.is_collapsed;
+        toggle.textContent = folder.is_collapsed ? "▶" : "▼";
+        contentContainer.style.display = folder.is_collapsed ? 'none' : 'flex';
+        // No need to send to backend for collapse state, it's UI only
+    };
+
+    addPresetDragDropHandlers(folderCard, folder);
+    return folderCard;
+}
+
+
 async function renderPresetsList() {
     if (!zmlPresetModalContentContainer) return;
 
-    const presets = await fetchPresets();
+    const flatPresets = await fetchPresets();
     zmlPresetModalContentContainer.innerHTML = ""; 
 
-    if (presets.length === 0) {
+    if (flatPresets.length === 0) {
         zmlPresetModalContentContainer.innerHTML = `<p style="text-align: center; color: ${ZML_PRESET_TEXT_COLOR}; margin-top: 20px; font-size: 1.1em;">🎨 暂无预设文本，赶快添加一个吧！</p>`;
         return;
     }
 
-    presets.forEach(preset => {
-        const itemCard = createEl("div", "zml-preset-item-card", {
-            style: `
-                background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 90)}; 
-                border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 60)};
-                border-radius: 6px;
-                padding: 7px; 
-                display: flex;
-                flex-direction: column;
-                gap: 4px; 
-                box-shadow: 0 1px 4px rgba(0,0,0,0.08); 
-                transition: background-color 0.2s ease, box-shadow 0.2s ease; 
-            `
-        });
-        itemCard.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 80); e.target.style.boxShadow = '0 3px 8px rgba(0,0,0,0.15)'; };
-        itemCard.onmouseleave = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 90); e.target.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)'; };
+    const presetTree = buildPresetTree(flatPresets);
 
-
-        const nameDisplay = createEl("div", "zml-preset-name-display", {
-            textContent: `名称: ${preset.name}`,
-            title: preset.name,
-            style: `
-                font-weight: 600;
-                color: ${ZML_PRESET_TEXT_COLOR}; 
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                font-size: 1.05em;
-            `
-        });
-
-        const contentPreview = createEl("div", "zml-preset-content-preview", {
-            textContent: `内容: ${preset.content.substring(0, 120)}${preset.content.length > 120 ? '...' : ''}`,
-            title: preset.content,
-            style: `
-                font-size: 13px;
-                color: ${adjustBrightness(ZML_PRESET_TEXT_COLOR, 40)}; 
-                max-height: 44px; 
-                overflow: hidden;
-                text-overflow: ellipsis;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-            `
-        });
-
-        const buttonGroup = createEl("div", "", {
-            style: `
-                display: flex;
-                justify-content: flex-end;
-                gap: 8px; 
-                margin-top: 5px; 
-            `
-        });
-
-        // 这是预设列表中的小按钮样式
-        const buttonBaseItemStyle = `
-            padding: 8px 12px; 
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px; 
-            font-weight: 500;
-            transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
-            border: none;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-            
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        `;
-
-        const editBtn = createEl("button", "zml-control-btn", { textContent: "✏️ 编辑" });
-        Object.assign(editBtn.style, {
-            cssText: buttonBaseItemStyle,
-            backgroundColor: '#FFEB3B', // 柔和的黄色
-            color: '#333',
-        });
-        // 显眼的视觉反馈
-        editBtn.onmouseenter = (e) => { 
-            e.target.style.backgroundColor = '#FBC02D'; 
-            e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; 
-            e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; 
-        };
-        editBtn.onmouseleave = (e) => { 
-            e.target.style.backgroundColor = '#FFEB3B'; 
-            e.target.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)'; 
-            e.target.style.transform = 'translateY(0) scale(1)'; 
-        };
-        editBtn.onmousedown = (e) => { 
-            e.target.style.transform = 'translateY(1.5px) scale(0.97)'; 
-            e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; 
-            e.target.style.backgroundColor = '#D39E00'; 
-        };
-        editBtn.onmouseup = (e) => { 
-            e.target.style.backgroundColor = '#FBC02D'; 
-            e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; 
-            e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; 
-        };
-        editBtn.onclick = () => {
-            zmlPresetModalNameInput.value = preset.name;
-            zmlPresetModalContentTextarea.value = preset.content;
-            zmlCurrentEditingPreset = preset; 
-            showNotification(`正在编辑预设: '${preset.name}'`, 'info', 2000);
-        };
-
-        const deleteBtn = createEl("button", "zml-control-btn", { textContent: "🗑️ 删除" });
-        Object.assign(deleteBtn.style, {
-            cssText: buttonBaseItemStyle,
-            backgroundColor: '#E57373', // 柔和的红色
-            color: 'white',
-        });
-        // 显眼的视觉反馈
-        deleteBtn.onmouseenter = (e) => { 
-            e.target.style.backgroundColor = '#D36060'; 
-            e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; 
-            e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; 
-        };
-        deleteBtn.onmouseleave = (e) => { 
-            e.target.style.backgroundColor = '#E57373'; 
-            e.target.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)'; 
-            e.target.style.transform = 'translateY(0) scale(1)'; 
-        };
-        deleteBtn.onmousedown = (e) => { 
-            e.target.style.transform = 'translateY(1.5px) scale(0.97)'; 
-            e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; 
-            e.target.style.backgroundColor = '#B74C4C'; 
-        };
-        deleteBtn.onmouseup = (e) => { 
-            e.target.style.backgroundColor = '#D36060'; 
-            e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; 
-            e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; 
-        };
-        deleteBtn.onclick = async () => {
-            if (confirm(`确定要删除预设 "${preset.name}" 吗?`)) {
-                if (zmlCurrentEditingPreset && zmlCurrentEditingPreset.name === preset.name) {
-                    zmlPresetModalNameInput.value = "";
-                    zmlPresetModalContentTextarea.value = "";
-                    zmlCurrentEditingPreset = null; 
+    function renderTree(items, parentContainer) {
+        items.forEach(item => {
+            let itemDOM;
+            if (item.type === 'folder') {
+                itemDOM = createPresetFolderItemDOM(item);
+                parentContainer.appendChild(itemDOM);
+                // Recursively render children into the folder's content area
+                const folderContentArea = itemDOM.querySelector('.zml-preset-folder-content');
+                if (folderContentArea && item.children.length > 0) {
+                    renderTree(item.children, folderContentArea);
                 }
-                const success = await sendPresetRequest("delete", { name: preset.name });
-                if (success) renderPresetsList();
+            } else { // item.type === 'text'
+                itemDOM = createPresetTextItemDOM(item);
+                parentContainer.appendChild(itemDOM);
             }
-        };
-
-        const addToOneClickBtn = createEl("button", "zml-control-btn", { textContent: "➕ 一键添加至节点" });
-        Object.assign(addToOneClickBtn.style, {
-            cssText: buttonBaseItemStyle,
-            backgroundColor: ZML_PRESET_DARK_ACCENT, // 深绿色
-            color: 'white',
         });
-        // 显眼的视觉反馈
-        addToOneClickBtn.onmouseenter = (e) => { 
-            e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_DARK_ACCENT, -10); 
-            e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; 
-            e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; 
-        };
-        addToOneClickBtn.onmouseleave = (e) => { 
-            e.target.style.backgroundColor = ZML_PRESET_DARK_ACCENT; 
-            e.target.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)'; 
-            e.target.style.transform = 'translateY(0) scale(1)'; 
-        };
-        addToOneClickBtn.onmousedown = (e) => { 
-            e.target.style.transform = 'translateY(1.5px) scale(0.97)'; 
-            e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; 
-            e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_DARK_ACCENT, -20); 
-        };
-        addToOneClickBtn.onmouseup = (e) => { 
-            e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_DARK_ACCENT, -10); 
-            e.target.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.25)'; 
-            e.target.style.transform = 'translateY(-1.5px) scale(1.02)'; 
-        };
-        addToOneClickBtn.onclick = () => {
-            if (zmlTextV3CurrentNodeInstance) {
-                const newId = "text" + Date.now() + Math.random().toString(36).substring(2, 8); 
-                zmlTextV3CurrentNodeInstance.selectTextV3_data.entries.push({
-                    id: newId,
-                    item_type: "text",
-                    title: preset.name,
-                    content: preset.content,
-                    enabled: true,
-                    parent_id: null
-                });
-                zmlTextV3CurrentNodeInstance.triggerSlotChanged();
-                showNotification(`预设 '${preset.name}' 已添加至节点.`, 'success'); 
-            } else {
-                showNotification("当前没有活动的SelectTextV3节点实例。", 'error');
-            }
-        };
+    }
 
-        buttonGroup.append(editBtn, deleteBtn, addToOneClickBtn);
-        itemCard.append(nameDisplay, contentPreview, buttonGroup);
-        zmlPresetModalContentContainer.appendChild(itemCard);
-    });
+    renderTree(presetTree, zmlPresetModalContentContainer);
 }
 
 function showPresetModal(nodeInstance) {
@@ -914,6 +1234,193 @@ function showPresetModal(nodeInstance) {
 }
 
 // --- 节点扩展注册 ---
+// 显示文件夹选择对话框
+async function showFolderSelectionDialog(textPreset) {
+    // 创建对话框覆盖层
+    const overlay = createEl("div", "zml-folder-dialog-overlay", {
+        style: `
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10002;
+            backdrop-filter: blur(2px);
+        `
+    });
+
+    // 创建对话框容器
+    const dialog = createEl("div", "zml-folder-dialog", {
+        style: `
+            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 60)};
+            border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 20)};
+            border-radius: 12px;
+            padding: 15px;
+            min-width: 350px;
+            max-width: 90vw;
+            max-height: 70vh;
+            overflow-y: auto;
+            color: ${ZML_PRESET_TEXT_COLOR};
+            font-family: 'Segoe UI', Arial, sans-serif;
+        `
+    });
+
+    // 对话框标题
+    const title = createEl("h3", "zml-folder-dialog-title", {
+        style: `
+            color: ${ZML_PRESET_TEXT_COLOR};
+            margin: 0 0 15px 0;
+            font-size: 1.4em;
+            text-align: center;
+        `,
+        textContent: `选择文件夹 - 移动预设: ${textPreset.name}`
+    });
+
+    // 文件夹列表容器
+    const folderList = createEl("div", "zml-folder-list", {
+        style: `
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        `
+    });
+
+    // 获取所有文件夹
+    const allPresets = await fetchPresets();
+    const folders = allPresets.filter(item => item.type === 'folder');
+    
+    // 初始化选中的文件夹ID
+    let selectedFolderId = textPreset.parent_id || null;
+
+    // 添加所有文件夹选项
+    if (folders.length === 0) {
+        const emptyMessage = createEl("p", "zml-folder-empty-message", {
+            style: `
+                text-align: center;
+                color: ${adjustBrightness(ZML_PRESET_TEXT_COLOR, 40)};
+                font-style: italic;
+            `,
+            textContent: "暂无文件夹，请先创建文件夹"
+        });
+        folderList.appendChild(emptyMessage);
+    } else {
+        folders.forEach(folder => {
+            const folderOption = createEl("div", "zml-folder-option", {
+                style: `
+                    padding: 10px;
+                    border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
+                    border-radius: 6px;
+                    cursor: pointer;
+                    background-color: ${textPreset.parent_id === folder.id ? ZML_PRESET_DARK_ACCENT : adjustBrightness(ZML_PRESET_BASE_COLOR, 90)};
+                    color: ${textPreset.parent_id === folder.id ? 'white' : ZML_PRESET_TEXT_COLOR};
+                    transition: all 0.2s ease;
+                `,
+                textContent: `${folder.name}`
+            });
+            
+            folderOption.onclick = () => {
+                folderList.querySelectorAll(".zml-folder-option").forEach(el => {
+                    el.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 90);
+                    el.style.color = ZML_PRESET_TEXT_COLOR;
+                });
+                folderOption.style.backgroundColor = ZML_PRESET_DARK_ACCENT;
+                folderOption.style.color = 'white';
+                selectedFolderId = folder.id;
+            };
+            
+            folderList.appendChild(folderOption);
+        });
+    }
+
+    // 按钮容器
+    const buttonContainer = createEl("div", "zml-dialog-buttons", {
+        style: `
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 15px;
+        `
+    });
+
+    // 取消按钮
+    const cancelBtn = createEl("button", "zml-dialog-btn", {
+        style: `
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
+            color: ${ZML_PRESET_TEXT_COLOR};
+            border: none;
+            transition: all 0.2s ease;
+        `,
+        textContent: "取消"
+    });
+    cancelBtn.onclick = () => document.body.removeChild(overlay);
+    cancelBtn.onmouseenter = (e) => {
+        e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 30);
+    };
+    cancelBtn.onmouseleave = (e) => {
+        e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 40);
+    };
+
+    // 确认按钮
+    const confirmBtn = createEl("button", "zml-dialog-btn", {
+        style: `
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            background-color: ZML_PRESET_DARK_ACCENT;
+            color: white;
+            border: none;
+            transition: all 0.2s ease;
+        `,
+        textContent: "确认移动"
+    });
+    confirmBtn.onclick = async () => {
+        // 执行移动操作
+        // 确保空字符串、undefined和null都被视为相同的值进行比较
+        const currentParent = textPreset.parent_id === null || textPreset.parent_id === undefined || textPreset.parent_id === '' ? null : textPreset.parent_id;
+        if (selectedFolderId !== currentParent) {
+            const result = await sendPresetRequest("update", {
+                id: textPreset.id,
+                type: 'text',
+                new_name: textPreset.name,
+                new_content: textPreset.content,
+                new_parent_id: selectedFolderId
+            });
+            
+            if (result.success) {
+                // 更新本地对象，确保UI显示正确
+                textPreset.parent_id = selectedFolderId;
+                showNotification(`预设 '${textPreset.name}' 已成功移动到目标位置。`, 'success');
+                renderPresetsList();
+            } else {
+                showNotification(`移动预设失败: ${result.message}`, 'error');
+            }
+        }
+        document.body.removeChild(overlay);
+    };
+    confirmBtn.onmouseenter = (e) => {
+        e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_DARK_ACCENT, -10);
+    };
+    confirmBtn.onmouseleave = (e) => {
+        e.target.style.backgroundColor = ZML_PRESET_DARK_ACCENT;
+    };
+
+    buttonContainer.append(cancelBtn, confirmBtn);
+    dialog.append(title, folderList, buttonContainer);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+}
+
 app.registerExtension({
     name: "ZML.SelectTextV3.Extension",
 
@@ -937,16 +1444,19 @@ app.registerExtension({
                         style.id = "zml-select-text-v3-styles";
                         style.innerHTML = `
                             .zml-st3-entry-card.zml-st3-dragging,
-                            .zml-st3-folder-card.zml-st3-dragging {
+                            .zml-st3-folder-card.zml-st3-dragging,
+                            .zml-preset-dragging { /* Added for preset modal dragging */
                                 opacity: 0.5;
                                 background: #555;
                             }
                             /* Dragging insertion line */
-                            .zml-st3-drag-over-line {
+                            .zml-st3-drag-over-line,
+                            .zml-preset-drag-over-line { /* Added for preset modal dragging */
                                 border-top: 2px solid #5d99f2 !important;
                             }
                             /* Dragging into folder highlight */
-                            .zml-st3-drag-over-folder {
+                            .zml-st3-drag-over-folder,
+                            .zml-preset-drag-over-folder { /* Added for preset modal dragging */
                                 background-color: rgba(93, 153, 242, 0.3) !important;
                             }
 
@@ -1872,11 +2382,13 @@ app.registerExtension({
                         
                         // Update feedback for node control buttons based on current state
                         const controlButtons = this.domElement?.querySelectorAll('.zml-control-btn');
-                        controlButtons.forEach(btn => {
-                            if (btn.title === "锁定/解锁文本框排序") {
-                                btn.style.background = this.isLocked ? '#644' : '#333';
-                            }
-                        });
+                        if (controlButtons) {
+                            controlButtons.forEach(btn => {
+                                if (btn.title === "锁定/解锁文本框排序") {
+                                    btn.style.background = this.isLocked ? '#644' : '#333';
+                                }
+                            });
+                        }
 
 
                         this.applySizeMode();
