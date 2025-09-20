@@ -536,10 +536,12 @@ class ZML_ImagePainter:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "图像": ("IMAGE",),
+                "默认宽": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
+                "默认高": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
                 "paint_data": ("STRING", {"multiline": True, "default": "{}", "widget": "hidden"}),
             },
             "optional": { 
+                "图像": ("IMAGE",),
                 "画笔图像": ("IMAGE",),
             }
         }
@@ -565,7 +567,7 @@ class ZML_ImagePainter:
         else: # Fallback for other modes
             return torch.from_numpy(np.array(pil_image.convert("RGBA")).astype(np.float32) / 255.0).unsqueeze(0)
 
-    def paint_image(self, 图像, 画笔图像=None, paint_data="{}"):
+    def paint_image(self, 默认宽, 默认高, paint_data="{}", 图像=None, 画笔图像=None):
         try:
             data = json.loads(paint_data)
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
@@ -575,6 +577,12 @@ class ZML_ImagePainter:
         draw_paths = data.get('draw_paths', [])
         image_stamps = data.get('image_stamps', [])
         mosaic_rects = data.get('mosaic_rects', [])
+        
+        # 如果没有图像输入，创建默认的黑色空画布
+        if 图像 is None:
+            h, w = 默认高, 默认宽
+            # 创建一个黑色张量，维度为 [1, h, w, 3]，因为图像通常是 RGB 格式
+            图像 = torch.zeros((1, h, w, 3), dtype=torch.float32)
         
         is_empty_paint = not draw_paths and not image_stamps and not mosaic_rects
         if is_empty_paint:
@@ -715,6 +723,80 @@ class ZML_ColorPicker:
         return (颜色代码,)
 
 
+# ============================== 颜色到遮罩节点 ==============================
+class ZML_ColorToMask:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE",),
+                "颜色代码1": ("STRING", {"default": "#FF0000", "label": "颜色代码一(红)", "placeholder": "如 #FF0000"}),
+                "颜色代码2": ("STRING", {"default": "#00FF00", "label": "颜色代码二(绿)", "placeholder": "如 #00FF00"}),
+                "颜色代码3": ("STRING", {"default": "#0000FF", "label": "颜色代码三(蓝)", "placeholder": "如 #0000FF"}),
+                "容差": ("INT", {"default": 10, "min": 0, "max": 255, "step": 1, "label": "颜色容差"}),
+            },
+            "hidden": {
+                "color_picker_data": ("STRING", {"default": "{}", "widget": "hidden"}),
+            }
+        }
+
+    RETURN_TYPES = ("MASK", "MASK", "MASK")
+    RETURN_NAMES = ("遮罩1", "遮罩2", "遮罩3")
+    FUNCTION = "color_to_mask"
+    CATEGORY = "image/ZML_图像/遮罩"
+
+    def tensor_to_pil(self, tensor):
+        img_np = np.clip(255. * tensor.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
+        return Image.fromarray(img_np, 'RGBA' if img_np.shape[-1] == 4 else 'RGB')
+
+    def pil_to_tensor(self, pil_image):
+        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def hex_to_rgb(self, hex_color):
+        try:
+            hex_color = hex_color.lstrip('#')
+            r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            return np.array([r, g, b], dtype=np.float32)
+        except:
+            return np.array([0, 0, 0], dtype=np.float32)  # 默认黑色
+
+    def color_to_mask(self, 图像, 颜色代码1, 颜色代码2, 颜色代码3, 容差, color_picker_data="{}"):
+        color1_rgb = self.hex_to_rgb(颜色代码1)
+        color2_rgb = self.hex_to_rgb(颜色代码2)
+        color3_rgb = self.hex_to_rgb(颜色代码3)
+
+        mask1_list = []
+        mask2_list = []
+        mask3_list = []
+
+        for img_tensor in 图像:
+            pil_image = self.tensor_to_pil(img_tensor).convert("RGB")
+            np_image = np.array(pil_image).astype(np.float32)
+
+            # 计算与目标颜色的欧氏距离
+            dist1 = np.sqrt(np.sum((np_image - color1_rgb) ** 2, axis=-1))
+            dist2 = np.sqrt(np.sum((np_image - color2_rgb) ** 2, axis=-1))
+            dist3 = np.sqrt(np.sum((np_image - color3_rgb) ** 2, axis=-1))
+
+            # 根据容差生成遮罩
+            mask1 = (dist1 <= 容差).astype(np.float32)
+            mask2 = (dist2 <= 容差).astype(np.float32)
+            mask3 = (dist3 <= 容差).astype(np.float32)
+
+            mask1_tensor = torch.from_numpy(mask1)
+            mask2_tensor = torch.from_numpy(mask2)
+            mask3_tensor = torch.from_numpy(mask3)
+
+            mask1_list.append(mask1_tensor)
+            mask2_list.append(mask2_tensor)
+            mask3_list.append(mask3_tensor)
+
+        if not mask1_list or not mask2_list or not mask3_list:
+            h, w = 图像.shape[1:3]
+            return (torch.zeros((图像.shape[0], h, w)), torch.zeros((图像.shape[0], h, w)), torch.zeros((图像.shape[0], h, w)))
+
+        return (torch.stack(mask1_list, dim=0), torch.stack(mask2_list, dim=0), torch.stack(mask3_list, dim=0))
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_LimitResolution": ZML_LimitResolution,
@@ -724,6 +806,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MergeImages": ZML_MergeImages,
     "ZML_ImagePainter": ZML_ImagePainter,
     "ZML_ColorPicker": ZML_ColorPicker,
+    "ZML_ColorToMask": ZML_ColorToMask,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LimitResolution": "ZML_限制分辨率格式",
@@ -733,4 +816,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MergeImages": "ZML_合并图像",
     "ZML_ImagePainter": "ZML_画画",
     "ZML_ColorPicker": "ZML_取色器",
+    "ZML_ColorToMask": "ZML_颜色到遮罩",
 }

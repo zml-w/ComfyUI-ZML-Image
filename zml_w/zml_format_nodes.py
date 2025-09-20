@@ -14,41 +14,29 @@ from aiohttp import web
 NODE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 定义预设文本的目录和文件
 PRESET_TEXT_DIR = os.path.join(NODE_DIR, "txt", "Preset text")
-PRESET_TEXT_FILE = os.path.join(PRESET_TEXT_DIR, "text_v3.txt")
+PRESET_TEXT_FILE = os.path.join(PRESET_TEXT_DIR, "text_v3.json")
 
 # 确保预设文本目录存在
 os.makedirs(PRESET_TEXT_DIR, exist_ok=True)
 
 # Helper function to read preset text file
 def _read_presets():
-    presets = []
     if os.path.exists(PRESET_TEXT_FILE):
-        with open(PRESET_TEXT_FILE, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f):
-                # 保持原始行内容，仅移除最右侧的换行符
-                line_content = line.rstrip('\n') 
-                if not line_content.strip(): # 用strip()判断是否为空行，但行内容依然保留
-                    continue
-                parts = line_content.split('#-#', 1) # 只按第一个#-#分割
-                if len(parts) == 2:
-                    # 读取时，content也不要做strip()，保留原始用户输入
-                    presets.append({"name": parts[0].strip(), "content": parts[1]}) # content now includes original newlines
-                else:
-                    base_name = f"未命名预设_{line_num+1}"
-                    current_name = base_name
-                    suffix = 0
-                    while any(p['name'] == current_name for p in presets):
-                        suffix += 1
-                        current_name = f"{base_name}_{suffix}"
-                    presets.append({"name": current_name, "content": line_content})
-    return presets
+        try:
+            with open(PRESET_TEXT_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get("presets", [])
+        except (json.JSONDecodeError, FileNotFoundError):
+            # If file is empty or corrupted, return empty list
+            return []
+    return []
 
 # Helper function to write preset text file
 def _write_presets(presets):
+    # Ensure the directory exists before writing
+    os.makedirs(PRESET_TEXT_DIR, exist_ok=True)
     with open(PRESET_TEXT_FILE, 'w', encoding='utf-8') as f:
-        for preset in presets:
-            # 写入时，content保留原始换行符
-            f.write(f"{preset['name']}#-#{preset['content']}\n")
+        json.dump({"presets": presets}, f, indent=4, ensure_ascii=False)
 
 @server.PromptServer.instance.routes.post("/zml_select_text_v3/presets")
 async def zml_select_text_v3_presets(request):
@@ -58,65 +46,105 @@ async def zml_select_text_v3_presets(request):
     
     response_data = {"success": False, "message": "Unknown action"}
 
+    presets = _read_presets()
+
     if action == "get_all":
-        presets = _read_presets()
         response_data = {"success": True, "presets": presets}
     elif action == "add":
-        new_name = input_data.get("name")
-        new_content = input_data.get("content")
-        if new_name is not None and new_content is not None:
-            presets = _read_presets()
-            
-            # Check for duplicate name (case-insensitive for better UX)
-            if any(p['name'].lower() == new_name.lower() for p in presets):
-                response_data = {"success": False, "message": f"Preset with name '{new_name}' already exists. Please choose a different name."}
-            else:
-                # 添加时，content不进行strip()，保留原始用户输入
-                presets.append({"name": str(new_name).strip(), "content": str(new_content)})
-                _write_presets(presets)
-                response_data = {"success": True, "message": "Preset added successfully."}
+        item_type = input_data.get("type") # 'text' or 'folder'
+        name = input_data.get("name")
+        parent_id = input_data.get("parent_id")
+        
+        if not name or not item_type:
+            response_data = {"success": False, "message": "Missing name or type for add operation."}
         else:
-            response_data = {"success": False, "message": "Missing name or content for add operation."}
+            # Generate a unique ID
+            new_id = f"{item_type}_{int(time.time())}_{random.randint(0, 9999)}"
+            
+            # Check for duplicate name within the same parent_id (case-insensitive)
+            if any(p['name'].lower() == name.lower() and p.get('parent_id') == parent_id for p in presets):
+                response_data = {"success": False, "message": f"A {item_type} with name '{name}' already exists in this location."}
+            else:
+                new_item = {
+                    "id": new_id,
+                    "type": item_type,
+                    "name": name,
+                    "parent_id": parent_id
+                }
+                if item_type == "text":
+                    new_item["content"] = input_data.get("content", "")
+                elif item_type == "folder":
+                    new_item["is_collapsed"] = False # Default for new folders
+                
+                presets.append(new_item)
+                _write_presets(presets)
+                response_data = {"success": True, "message": f"{item_type.capitalize()} added successfully.", "id": new_id}
     elif action == "update":
-        old_name = input_data.get("old_name")
+        item_id = input_data.get("id")
         new_name = input_data.get("new_name")
         new_content = input_data.get("new_content")
+        new_parent_id = input_data.get("new_parent_id") # For moving items
         
-        if old_name is not None and new_name is not None and new_content is not None:
-            presets = _read_presets()
-            found_index = -1
-            for i, p in enumerate(presets):
-                if p["name"] == old_name: # Use exact old_name to find
-                    found_index = i
-                    break
+        found_item = None
+        for p in presets:
+            if p["id"] == item_id:
+                found_item = p
+                break
+        
+        if found_item:
+            # Check for duplicate name if name is changed and new name already exists (case-insensitive)
+            if new_name and new_name.lower() != found_item['name'].lower():
+                if any(p['name'].lower() == new_name.lower() and p['id'] != item_id and p.get('parent_id') == found_item.get('parent_id') for p in presets):
+                    response_data = {"success": False, "message": f"A {found_item['type']} with new name '{new_name}' already exists in this location."}
+                    return web.json_response(response_data)
             
-            if found_index != -1:
-                # Check for duplicate name if name is changed and new name already exists (case-insensitive)
-                if new_name.lower() != old_name.lower() and any(p['name'].lower() == new_name.lower() for i_dup, p in enumerate(presets) if i_dup != found_index):
-                    response_data = {"success": False, "message": f"Preset with new name '{new_name}' already exists. Please choose a different name."}
-                else:
-                    # 更新时，content不进行strip()，保留原始用户输入
-                    presets[found_index]["name"] = str(new_name).strip()
-                    presets[found_index]["content"] = str(new_content)
-                    _write_presets(presets)
-                    response_data = {"success": True, "message": "Preset updated successfully."}
-            else:
-                response_data = {"success": False, "message": f"Preset '{old_name}' not found."}
+            if new_name is not None:
+                found_item["name"] = new_name
+            if found_item["type"] == "text" and new_content is not None:
+                found_item["content"] = new_content
+            # Always update parent_id regardless of its value (including None for root directory)
+            found_item["parent_id"] = new_parent_id
+            
+            _write_presets(presets)
+            response_data = {"success": True, "message": f"{found_item['type'].capitalize()} updated successfully."}
         else:
-            response_data = {"success": False, "message": "Missing old_name, new_name or new_content for update operation."}
+            response_data = {"success": False, "message": f"Item with ID '{item_id}' not found."}
     elif action == "delete":
-        preset_name_to_delete = input_data.get("name")
-        if preset_name_to_delete is not None:
-            presets = _read_presets()
-            initial_len = len(presets)
-            presets = [p for p in presets if p["name"] != preset_name_to_delete] # Use exact name to delete
-            if len(presets) < initial_len:
+        item_id_to_delete = input_data.get("id")
+        
+        if item_id_to_delete:
+            item_to_delete = next((p for p in presets if p["id"] == item_id_to_delete), None)
+            
+            if item_to_delete:
+                # If it's a folder, check for children
+                if item_to_delete["type"] == "folder":
+                    if any(p.get("parent_id") == item_id_to_delete for p in presets):
+                        response_data = {"success": False, "message": "Cannot delete folder: it contains items."}
+                        return web.json_response(response_data)
+                
+                presets = [p for p in presets if p["id"] != item_id_to_delete]
                 _write_presets(presets)
-                response_data = {"success": True, "message": "Preset deleted successfully."}
+                response_data = {"success": True, "message": f"{item_to_delete['type'].capitalize()} deleted successfully."}
             else:
-                response_data = {"success": False, "message": f"Preset '{preset_name_to_delete}' not found."}
+                response_data = {"success": False, "message": f"Item with ID '{item_id_to_delete}' not found."}
         else:
-            response_data = {"success": False, "message": "Missing name for delete operation."}
+            response_data = {"success": False, "message": "Missing ID for delete operation."}
+    elif action == "reorder":
+        # This action is for reordering items within the same parent or at the top level
+        # The frontend will send the full, reordered list of presets
+        updated_presets_list = input_data.get("presets")
+        if updated_presets_list is not None and isinstance(updated_presets_list, list):
+            # Basic validation: ensure all original IDs are present
+            original_ids = {p['id'] for p in presets}
+            updated_ids = {p['id'] for p in updated_presets_list}
+            
+            if original_ids == updated_ids:
+                _write_presets(updated_presets_list)
+                response_data = {"success": True, "message": "Presets reordered successfully."}
+            else:
+                response_data = {"success": False, "message": "Reorder failed: Mismatch in preset IDs."}
+        else:
+            response_data = {"success": False, "message": "Missing or invalid 'presets' list for reorder operation."}
     
     return web.json_response(response_data)
 
@@ -186,7 +214,7 @@ class ZML_TextFormatter:
                     "placeholder": "输入要转换的文本"
                 }),
                 "权重转换": (["禁用", "NAI转SD（精确）", "NAI转SD（一位小数）", "清空权重"], {"default": "NAI转SD（精确）"}),
-                "文本格式化": (["禁用", "下划线转空格", "空格转下划线", "空格隔离标签"], {"default": "下划线转空格"}),
+                "文本格式化": (["禁用", "下划线转空格", "空格转下划线", "空格隔离标签", "逗号追加换行"], {"default": "下划线转空格"}),
                 "格式化标点符号": ([True, False], {"default": True}),
             }
         }
@@ -343,6 +371,9 @@ class ZML_TextFormatter:
             # 替换逗号和其后的任意空白（包括换行）为 ", "
             # 注意：此操作会删除逗号后的换行符，这是此模式的预期行为
             文本 = re.sub(r',\s*', ', ', 文本).strip()
+        elif 文本格式化 == "逗号追加换行":
+            # 在每个逗号后面添加换行符
+            文本 = re.sub(r',\s*', ',\n', 文本).strip()
         # 如果为 "禁用", 则不执行任何操作
 
         # 3. 处理标点符号格式化
