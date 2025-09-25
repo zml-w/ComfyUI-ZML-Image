@@ -54,12 +54,14 @@ let zmlTextV3ModalTitle = null;
 let zmlTextV3CurrentEditingEntry = null;
 let zmlTextV3CurrentNodeInstance = null; // Stored here for all modals
 
-// --- 预设文本弹窗元素和变量 ---
+// --- 预设文本弹窗元素和变量 --- 
 let zmlPresetModalOverlay = null; // 预设文本管理器模态框
 let zmlPresetModalContentContainer = null; // 预设列表的父容器
 let zmlPresetModalNameInput = null; // 预设名称输入框
 let zmlPresetModalContentTextarea = null; // 预设内容文本区域
 let zmlCurrentEditingPreset = null; // 用于编辑模式下的当前预设对象
+let zmlSelectedPresets = []; // 存储批量操作中选中的预设
+let zmlBatchManagementMode = false; // 跟踪是否处于批量管理模式
 
 // --- 统一颜色主题为舒适的浅绿色调 ---
 const ZML_PRESET_BASE_COLOR = "#C8E6C9"; // 柔和的浅绿色，作为主要背景色
@@ -286,12 +288,8 @@ function createEditContentModal() {
         hideEditContentModal();
     };
     
-    // 点击背景关闭
-    zmlTextV3ModalOverlay.onclick = (e) => {
-        if (e.target === zmlTextV3ModalOverlay) {
-            hideEditContentModal();
-        }
-    };
+    // 移除点击背景关闭逻辑 - 必须通过取消或保存按钮关闭
+    // 用户请求必须点击按钮才能关闭UI
 }
 
 function showEditContentModal(entry, nodeInstance) {
@@ -401,7 +399,7 @@ function createPresetModal() {
             border-radius: 12px; 
             padding: 12px; 
             min-width: 780px; 
-            width: 800px; /* 固定宽度，更可控 */
+            /* 移除固定宽度，让模态框自适应屏幕大小 */
             max-width: 90vw;
             max-height: 90vh; /* 确保高度限制 */
             display: flex;
@@ -502,7 +500,7 @@ function createPresetModal() {
 
     // 这是预设弹窗中的大按钮样式
     const buttonBasePresetStyle = `
-        padding: 10px 20px; /* 调整为更合理的大小 */
+        padding: 20px 20px; /* 增加按钮高度 */
         border-radius: 8px; 
         cursor: pointer;
         font-size: 14px; /* 调整字体大小 */
@@ -514,6 +512,7 @@ function createPresetModal() {
         display: flex;
         align-items: center;
         justify-content: center;
+        height: 40px; /* 设置固定高度以确保一致 */
     `;
 
     const presetSaveBtn = createEl("button", "zml-control-btn", { textContent: "保存/新增预设" });
@@ -662,7 +661,50 @@ function createPresetModal() {
         showNotification("已取消预设编辑.", 'info');
     };
 
-    actionButtons.append(presetCancelEditBtn, presetNewFolderBtn, presetSaveBtn); // Add new folder button
+    // 批量管理按钮
+    const presetBatchManageBtn = createEl("button", "zml-control-btn", { textContent: "批量管理" });
+    Object.assign(presetBatchManageBtn.style, {
+        cssText: buttonBasePresetStyle,
+        backgroundColor: '#FF9800', // 橙色
+        color: 'white',
+    });
+    presetBatchManageBtn.onmouseenter = (e) => { 
+        e.target.style.backgroundColor = adjustBrightness('#FF9800', -10); 
+        e.target.style.boxShadow = '0 8px 20px rgba(0, 0, 0, 0.4)'; 
+        e.target.style.transform = 'translateY(-3px) scale(1.02)'; 
+    }; 
+    presetBatchManageBtn.onmouseleave = (e) => { 
+        e.target.style.backgroundColor = '#FF9800'; 
+        e.target.style.boxShadow = '0 4px 10px rgba(0,0,0,0.2)'; 
+        e.target.style.transform = 'translateY(0) scale(1)'; 
+    };
+    presetBatchManageBtn.onmousedown = (e) => { 
+        e.target.style.transform = 'translateY(3px) scale(0.96)'; 
+        e.target.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)'; 
+        e.target.style.backgroundColor = adjustBrightness('#FF9800', -20); 
+    }; 
+    presetBatchManageBtn.onmouseup = (e) => { 
+        e.target.style.backgroundColor = adjustBrightness('#FF9800', -10); 
+        e.target.style.boxShadow = '0 8px 20px rgba(0, 0, 0, 0.4)'; 
+        e.target.style.transform = 'translateY(-3px) scale(1.02)'; 
+    };
+    presetBatchManageBtn.onclick = () => {
+        zmlBatchManagementMode = !zmlBatchManagementMode;
+        if (zmlBatchManagementMode) {
+            presetBatchManageBtn.textContent = "退出批量管理";
+            presetBatchManageBtn.style.backgroundColor = '#F44336'; // 红色表示退出
+            showNotification("已进入批量管理模式，点击预设项进行选择.", 'info');
+            zmlSelectedPresets = [];
+        } else {
+            presetBatchManageBtn.textContent = "批量管理";
+            presetBatchManageBtn.style.backgroundColor = '#FF9800'; // 橙色表示进入
+            showNotification("已退出批量管理模式.", 'info');
+            zmlSelectedPresets = [];
+        }
+        renderPresetsList();
+    };
+
+    actionButtons.append(presetBatchManageBtn, presetCancelEditBtn, presetNewFolderBtn, presetSaveBtn); // Add new folder button
     addEditSection.append(nameGroup, contentGroup, actionButtons);
 
 
@@ -733,12 +775,9 @@ function createPresetModal() {
     zmlPresetModalOverlay.appendChild(modalContainer);
     document.body.appendChild(zmlPresetModalOverlay);
 
-    // 点击背景关闭
-    zmlPresetModalOverlay.onclick = (e) => {
-        if (e.target === zmlPresetModalOverlay) {
-            zmlPresetModalOverlay.style.display = 'none';
-        }
-    };
+    // 移除点击背景自动关闭的功能，用户必须点击关闭按钮才能退出
+    // 这样可以防止用户意外点击背景导致退出，提高操作便利性
+
 }
 
 let zmlPresetDraggingItem = null; // Track the item being dragged
@@ -752,7 +791,13 @@ function buildPresetTree(flatPresets) {
     
     // First, create a map of all items by their ID
     flatPresets.forEach(item => {
-        itemsById[item.id] = {...item, children: []}; // Clone and initialize children array
+        // 确保文件夹默认保持折叠状态
+        if (item.type === 'folder') {
+            // 始终设置为折叠状态，无论服务器返回什么值
+            itemsById[item.id] = {...item, children: [], is_collapsed: true}; // 克隆并设置默认折叠状态
+        } else {
+            itemsById[item.id] = {...item, children: []}; // 克隆并初始化children数组
+        }
     });
     
     // Then build the tree structure
@@ -926,10 +971,11 @@ const buttonBaseItemStyle = `
 
 // Function to create a text preset item DOM
 function createPresetTextItemDOM(preset) {
+    const isSelected = zmlBatchManagementMode && zmlSelectedPresets.some(item => item.id === preset.id);
     const itemCard = createEl("div", "zml-preset-item-card", {
         style: `
-            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 90)}; 
-            border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 60)};
+            background-color: ${isSelected ? adjustBrightness(ZML_PRESET_DARK_ACCENT, 70) : adjustBrightness(ZML_PRESET_BASE_COLOR, 90)}; 
+            border: 1px solid ${isSelected ? ZML_PRESET_DARK_ACCENT : adjustBrightness(ZML_PRESET_BASE_COLOR, 60)};
             border-radius: 6px;
             padding: 7px; 
             display: flex;
@@ -940,8 +986,39 @@ function createPresetTextItemDOM(preset) {
             margin-left: 20px; /* Indent for text items within folders */
         `
     });
-    itemCard.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 80); e.target.style.boxShadow = '0 3px 8px rgba(0,0,0,0.15)'; };
-    itemCard.onmouseleave = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 90); e.target.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)'; };
+    itemCard.onmouseenter = (e) => { 
+        if (!isSelected) {
+            e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 80); 
+        }
+        e.target.style.boxShadow = '0 3px 8px rgba(0,0,0,0.15)'; 
+    };
+    itemCard.onmouseleave = (e) => { 
+        if (!isSelected) {
+            e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 90); 
+        }
+        e.target.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)'; 
+    };
+    
+    // 在批量管理模式下，添加点击选择功能
+    if (zmlBatchManagementMode) {
+        itemCard.onclick = (e) => {
+            // 如果点击的是按钮，不触发选择
+            if (e.target.closest('button')) return;
+            
+            const index = zmlSelectedPresets.findIndex(item => item.id === preset.id);
+            if (index > -1) {
+                zmlSelectedPresets.splice(index, 1);
+            } else {
+                zmlSelectedPresets.push(preset);
+            }
+            renderPresetsList();
+            
+            // 更新批量操作按钮状态
+            updateBatchActionButtons();
+        };
+    } else {
+        itemCard.onclick = null;
+    }
 
     const nameDisplay = createEl("div", "zml-preset-name-display", {
         textContent: `名称: ${preset.name}`,
@@ -1070,8 +1147,8 @@ function createPresetTextItemDOM(preset) {
 function createPresetFolderItemDOM(folder) {
     const folderCard = createEl("div", "zml-preset-folder-card", {
         style: `
-            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 70)}; 
-            border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
+            background-color: #FFF3CD; // 黄色背景色
+            border: 1px solid #FFEAA7;
             border-radius: 8px;
             padding: 5px; 
             margin-bottom: 5px;
@@ -1079,8 +1156,8 @@ function createPresetFolderItemDOM(folder) {
             transition: background-color 0.2s ease, box-shadow 0.2s ease;
         `
     });
-    folderCard.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 60); e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)'; };
-    folderCard.onmouseleave = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 70); e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)'; };
+    folderCard.onmouseenter = (e) => { e.target.style.backgroundColor = '#FFEAA7'; e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)'; };
+    folderCard.onmouseleave = (e) => { e.target.style.backgroundColor = '#FFF3CD'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)'; };
 
     const header = createEl("div", "zml-preset-folder-header", {
         style: `
@@ -1094,6 +1171,8 @@ function createPresetFolderItemDOM(folder) {
             color: ${ZML_PRESET_TEXT_COLOR};
         `
     });
+    // 始终将文件夹设置为折叠状态，无论传入的状态是什么
+    folder.is_collapsed = true;
     const toggle = createEl("span", "zml-preset-folder-toggle", { textContent: folder.is_collapsed ? "+" : "-" });
     const nameInput = createEl("input", "zml-preset-folder-name-input", {
         type: "text",
@@ -1156,7 +1235,76 @@ function createPresetFolderItemDOM(folder) {
         }
     };
 
-    header.append(toggle, nameInput, deleteBtn);
+    // 添加文件夹一键发送到节点按钮
+    const addFolderToNodeBtn = createEl("button", "zml-control-btn", { textContent: "一键发送到节点" });
+    Object.assign(addFolderToNodeBtn.style, {
+        cssText: buttonBaseItemStyle,
+        backgroundColor: ZML_PRESET_DARK_ACCENT, // 深绿色
+        color: 'white',
+        padding: '4px 8px',
+        fontSize: '12px',
+    });
+    addFolderToNodeBtn.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_DARK_ACCENT, -10); };
+    addFolderToNodeBtn.onmouseleave = (e) => { e.target.style.backgroundColor = ZML_PRESET_DARK_ACCENT; };
+    addFolderToNodeBtn.onclick = async (e) => {
+        e.stopPropagation(); // Prevent folder toggle
+        if (zmlTextV3CurrentNodeInstance) {
+            // 获取最新的文件夹名称 - 添加安全检查，确保总是有有效的名称
+            let currentFolderName = "未命名文件夹";
+            
+            // 尝试从UI输入框获取名称，如果失败则回退到使用原始folder对象的名称
+            if (nameInput && nameInput.value) {
+                currentFolderName = nameInput.value.trim();
+            } else if (folder && folder.name) {
+                currentFolderName = folder.name;
+            }
+            
+            // 确保名称不为空
+            if (!currentFolderName) {
+                currentFolderName = "未命名文件夹";
+            }
+            
+            const children = (await fetchPresets()).filter(p => p.parent_id === folder.id && p.type === 'text');
+            if (children.length === 0) {
+                showNotification(`文件夹 "${currentFolderName}" 中没有可添加的预设文本。`, 'info');
+                return;
+            }
+            
+            // 创建文件夹并保持结构添加到节点
+            const folderId = "folder" + Date.now() + Math.random().toString(36).substring(2, 8);
+            
+            // 首先添加文件夹 - 同时设置name和title属性，确保节点能正确显示文件夹名称
+            zmlTextV3CurrentNodeInstance.selectTextV3_data.entries.push({
+                id: folderId,
+                item_type: "folder",
+                title: currentFolderName,
+                name: currentFolderName, // 添加name属性，节点内部使用name属性显示文件夹名称
+                content: "",
+                enabled: true,
+                parent_id: null
+            });
+            
+            // 然后添加文件夹中的所有预设文本，并设置它们的父文件夹ID
+            children.forEach(preset => {
+                const newId = "text" + Date.now() + Math.random().toString(36).substring(2, 8); 
+                zmlTextV3CurrentNodeInstance.selectTextV3_data.entries.push({
+                    id: newId,
+                    item_type: "text",
+                    title: preset.name || "未命名预设",
+                    content: preset.content || "",
+                    enabled: true,
+                    parent_id: folderId // 设置父文件夹ID，保持文件夹结构
+                });
+            });
+            
+            zmlTextV3CurrentNodeInstance.triggerSlotChanged();
+            showNotification(`已成功添加文件夹 "${currentFolderName}" 及其 ${children.length} 个预设文本到节点（保持文件夹结构）。`, 'success');
+        } else {
+            showNotification("当前没有活动的SelectTextV3节点实例。", 'error');
+        }
+    };
+
+    header.append(toggle, nameInput, deleteBtn, addFolderToNodeBtn);
     folderCard.append(header);
 
     const contentContainer = createEl("div", "zml-preset-folder-content", {
@@ -1189,6 +1337,8 @@ function createPresetFolderItemDOM(folder) {
 async function renderPresetsList() {
     if (!zmlPresetModalContentContainer) return;
 
+
+    
     const flatPresets = await fetchPresets();
     zmlPresetModalContentContainer.innerHTML = ""; 
 
@@ -1218,6 +1368,9 @@ async function renderPresetsList() {
     }
 
     renderTree(presetTree, zmlPresetModalContentContainer);
+    
+    // 在渲染完列表后，更新批量操作按钮
+    updateBatchActionButtons();
 }
 
 function showPresetModal(nodeInstance) {
@@ -1231,6 +1384,305 @@ function showPresetModal(nodeInstance) {
     zmlPresetModalNameInput.value = "";
     zmlPresetModalContentTextarea.value = "";
     zmlCurrentEditingPreset = null;
+}
+
+// 更新批量操作按钮状态
+function updateBatchActionButtons() {
+    if (!zmlPresetModalContentContainer) return;
+    
+    // 检查是否已存在批量操作容器
+    let batchActionContainer = zmlPresetModalContentContainer.querySelector('.zml-batch-action-container');
+    
+    if (zmlBatchManagementMode) {
+        // 创建或更新批量操作容器
+        if (!batchActionContainer) {
+            batchActionContainer = createEl("div", "zml-batch-action-container", {
+                style: `
+                    background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 70)}; 
+                    border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
+                    border-radius: 8px;
+                    padding: 10px;
+                    margin-bottom: 10px;
+                    display: flex;
+                    gap: 10px;
+                    align-items: center;
+                    justify-content: center;
+                `
+            });
+            
+            // 批量移动到文件夹按钮
+            const batchMoveBtn = createEl("button", "zml-control-btn", { textContent: "批量移动到文件夹" });
+            Object.assign(batchMoveBtn.style, {
+                cssText: buttonBaseItemStyle,
+                backgroundColor: '#64B5F6', // 蓝色
+                color: 'white',
+            });
+            batchMoveBtn.onclick = () => {
+                if (zmlSelectedPresets.length > 0) {
+                    showBatchFolderSelectionDialog();
+                }
+            };
+            
+            // 批量删除按钮
+            const batchDeleteBtn = createEl("button", "zml-control-btn", { textContent: "批量删除" });
+            Object.assign(batchDeleteBtn.style, {
+                cssText: buttonBaseItemStyle,
+                backgroundColor: '#E57373', // 红色
+                color: 'white',
+            });
+            batchDeleteBtn.onclick = async () => {
+                if (zmlSelectedPresets.length > 0) {
+                    if (confirm(`确定要删除选中的 ${zmlSelectedPresets.length} 个预设吗?`)) {
+                        // 批量删除操作
+                        const deletePromises = zmlSelectedPresets.map(preset => 
+                            sendPresetRequest("delete", { id: preset.id, type: preset.type })
+                        );
+                        
+                        try {
+                            const results = await Promise.all(deletePromises);
+                            const allSuccess = results.every(result => result.success);
+                            
+                            if (allSuccess) {
+                                const deletedCount = zmlSelectedPresets.length;
+                                zmlSelectedPresets = [];
+                                renderPresetsList();
+                                showNotification(`已成功删除 ${deletedCount} 个预设。`, 'success');
+                            } else {
+                                showNotification("部分预设删除失败，请重试。", 'error');
+                            }
+                        } catch (error) {
+                            showNotification("批量删除过程中发生错误。", 'error');
+                        }
+                    }
+                }
+            };
+            
+            // 选中数量显示
+            const selectionCount = createEl("div", "zml-selection-count", {
+                style: `
+                    color: ${ZML_PRESET_TEXT_COLOR};
+                    font-weight: 600;
+                    font-size: 14px;
+                `,
+                textContent: `已选择: ${zmlSelectedPresets.length} 个预设`
+            });
+            
+            batchActionContainer.append(selectionCount, batchMoveBtn, batchDeleteBtn);
+            
+            // 将批量操作容器添加到列表顶部
+            if (zmlPresetModalContentContainer.firstChild) {
+                zmlPresetModalContentContainer.insertBefore(batchActionContainer, zmlPresetModalContentContainer.firstChild);
+            } else {
+                zmlPresetModalContentContainer.appendChild(batchActionContainer);
+            }
+        } else {
+            // 更新选中数量
+            const selectionCount = batchActionContainer.querySelector('.zml-selection-count');
+            if (selectionCount) {
+                selectionCount.textContent = `已选择: ${zmlSelectedPresets.length} 个预设`;
+            }
+        }
+    } else {
+        // 非批量管理模式，移除批量操作容器
+        if (batchActionContainer) {
+            batchActionContainer.remove();
+        }
+    }
+}
+
+// 批量移动文件夹选择对话框
+async function showBatchFolderSelectionDialog() {
+    // 创建对话框覆盖层
+    const overlay = createEl("div", "zml-folder-dialog-overlay", {
+        style: `
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10002;
+            backdrop-filter: blur(2px);
+        `
+    });
+
+    // 创建对话框容器
+    const dialog = createEl("div", "zml-folder-dialog", {
+        style: `
+            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 60)};
+            border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 20)};
+            border-radius: 12px;
+            padding: 15px;
+            min-width: 350px;
+            max-width: 90vw;
+            max-height: 70vh;
+            overflow-y: auto;
+            color: ${ZML_PRESET_TEXT_COLOR};
+            font-family: 'Segoe UI', Arial, sans-serif;
+        `
+    });
+
+    // 对话框标题
+    const title = createEl("h3", "zml-folder-dialog-title", {
+        style: `
+            color: ${ZML_PRESET_TEXT_COLOR};
+            margin: 0 0 15px 0;
+            font-size: 1.4em;
+            text-align: center;
+        `,
+        textContent: `选择文件夹 - 移动 ${zmlSelectedPresets.length} 个预设`
+    });
+
+    // 文件夹列表容器
+    const folderList = createEl("div", "zml-folder-list", {
+        style: `
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        `
+    });
+
+    // 获取所有文件夹
+    const allPresets = await fetchPresets();
+    const folders = allPresets.filter(item => item.type === 'folder');
+    
+    // 初始化选中的文件夹ID
+    let selectedFolderId = null;
+
+    // 添加所有文件夹选项
+    if (folders.length === 0) {
+        const emptyMessage = createEl("p", "zml-folder-empty-message", {
+            style: `
+                text-align: center;
+                color: ${adjustBrightness(ZML_PRESET_TEXT_COLOR, 40)};
+                font-style: italic;
+            `,
+            textContent: "暂无文件夹，请先创建文件夹"
+        });
+        folderList.appendChild(emptyMessage);
+    } else {
+        folders.forEach(folder => {
+            const folderOption = createEl("div", "zml-folder-option", {
+                style: `
+                    padding: 10px;
+                    border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
+                    border-radius: 6px;
+                    cursor: pointer;
+                    background-color: adjustBrightness(ZML_PRESET_BASE_COLOR, 90);
+                    color: ${ZML_PRESET_TEXT_COLOR};
+                    transition: all 0.2s ease;
+                `,
+                textContent: `${folder.name}`
+            });
+            
+            folderOption.onclick = () => {
+                folderList.querySelectorAll(".zml-folder-option").forEach(el => {
+                    el.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 90);
+                    el.style.color = ZML_PRESET_TEXT_COLOR;
+                });
+                folderOption.style.backgroundColor = ZML_PRESET_DARK_ACCENT;
+                folderOption.style.color = 'white';
+                selectedFolderId = folder.id;
+            };
+            
+            folderList.appendChild(folderOption);
+        });
+    }
+
+    // 按钮容器
+    const buttonContainer = createEl("div", "zml-dialog-buttons", {
+        style: `
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 15px;
+        `
+    });
+
+    // 取消按钮
+    const cancelBtn = createEl("button", "zml-dialog-btn", {
+        style: `
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            background-color: ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
+            color: ${ZML_PRESET_TEXT_COLOR};
+            border: none;
+            transition: all 0.2s ease;
+        `,
+        textContent: "取消"
+    });
+    cancelBtn.onclick = () => document.body.removeChild(overlay);
+    cancelBtn.onmouseenter = (e) => {
+        e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 30);
+    };
+    cancelBtn.onmouseleave = (e) => {
+        e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 40);
+    };
+
+    // 确认按钮
+    const confirmBtn = createEl("button", "zml-dialog-btn", {
+        style: `
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            background-color: ZML_PRESET_DARK_ACCENT;
+            color: white;
+            border: none;
+            transition: all 0.2s ease;
+        `,
+        textContent: "确认移动"
+    });
+    confirmBtn.onclick = async () => {
+        if (!selectedFolderId) {
+            showNotification("请选择一个目标文件夹。", 'error');
+            return;
+        }
+        
+        // 执行批量移动操作
+        const movePromises = zmlSelectedPresets.map(preset => 
+            sendPresetRequest("update", {
+                id: preset.id,
+                type: 'text',
+                new_name: preset.name,
+                new_content: preset.content,
+                new_parent_id: selectedFolderId
+            })
+        );
+        
+        try {
+            const results = await Promise.all(movePromises);
+            const allSuccess = results.every(result => result.success);
+            
+            if (allSuccess) {
+                // 更新本地对象，确保UI显示正确
+                const movedCount = zmlSelectedPresets.length;
+                zmlSelectedPresets.forEach(preset => {
+                    preset.parent_id = selectedFolderId;
+                });
+                zmlSelectedPresets = [];
+                showNotification(`${movedCount} 个预设已成功移动到目标文件夹。`, 'success');
+                document.body.removeChild(overlay);
+                renderPresetsList();
+            } else {
+                showNotification("部分预设移动失败，请重试。", 'error');
+            }
+        } catch (error) {
+            showNotification("批量移动过程中发生错误。", 'error');
+        }
+    };
+
+    dialog.append(title, folderList, buttonContainer);
+    buttonContainer.append(cancelBtn, confirmBtn);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
 }
 
 // --- 节点扩展注册 ---
@@ -1586,7 +2038,7 @@ app.registerExtension({
                     this.compactView = this.compactView ?? false;
                     this.isLocked = this.isLocked ?? false;
                     this.titleWidth = this.titleWidth ?? 80;
-                    this.folderColor = this.folderColor ?? "#30353c";
+                    this.folderColor = this.folderColor ?? "#FFF3CD"; // 默认黄色文件夹背景
                     this.textboxColor = this.textboxColor ?? "#3a3a3a"; // 文本框背景颜色
                     this.textboxDisabledColor = this.textboxDisabledColor ?? "#2a2a2a"; // 禁用的文本框背景颜色
                     this.textboxBorderColor = this.textboxBorderColor ?? "#555"; // 文本框边框颜色
@@ -1700,7 +2152,7 @@ app.registerExtension({
                             id: "folder" + Date.now(),
                             item_type: "folder",
                             name: "新建文件夹",
-                            is_collapsed: false,
+                            is_collapsed: true,  // 默认折叠状态
                             parent_id: null,
                         });
                         this.renderSelectTextV3Entries();
@@ -1900,7 +2352,8 @@ app.registerExtension({
                     controlsRow.appendChild(sizeToggleButton);
 
                     const entriesList = createEl("div");
-                    entriesList.style.cssText = `margin-bottom: 6px; flex: 1; min-height: 50px; overflow-y: auto; border: 1px solid #444; border-radius: 2px; padding: 4px; background: #333;`;
+                    entriesList.style.cssText = `margin-bottom: 6px; flex: 1; min-height: 50px; overflow-y: auto; border: 1px solid #444; border-radius: 2px; padding: 4px; background: #333; scrollbar-width: none; -ms-overflow-style: none;`;
+                    entriesList.style["-webkit-scrollbar"] = "none";
 
                     const presetTextButton = createEl("button", "", { textContent: this.getText("presetText") });
                     presetTextButton.style.cssText = `
@@ -2181,6 +2634,13 @@ app.registerExtension({
                             this.selectTextV3_data = { entries: [] };
                         }
 
+                        // 确保所有文件夹条目都有is_collapsed属性
+                        this.selectTextV3_data.entries.forEach(e => {
+                            if (e.item_type === 'folder' && e.is_collapsed === undefined) {
+                                e.is_collapsed = true; // 默认折叠状态
+                            }
+                        });
+
                         const itemMap = new Map(this.selectTextV3_data.entries.map(e => [e.id, { entry: e, dom: null }]));
 
                         for (const [id, item] of itemMap) {
@@ -2283,7 +2743,7 @@ app.registerExtension({
                         // 确保计算高度时考虑所有元素实际高度
                         let actualControlsRowHeight = controlsRow.offsetHeight;
                         let actualBottomButtonGroupHeight = bottomButtonGroup.offsetHeight;
-                        let actualEntriesListHeight = entriesList.scrollHeight > entriesList.clientHeight ? entriesList.scrollHeight : entriesList.clientHeight; // 取实际内容高度与视口高度最大值
+                        let actualEntriesListHeight = entriesList.clientHeight; // 只使用当前可视高度，避免强制展开所有内容
 
                         let currentContentHeight = actualControlsRowHeight + actualEntriesListHeight + actualBottomButtonGroupHeight + 12; // 加上一些额外的间距
 
@@ -2330,11 +2790,13 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function(obj) {
                 origOnConfigure ? origOnConfigure.apply(this, arguments) : undefined;
                 if (obj.selectTextV3_data) {
-                    this.selectTextV3_data = obj.selectTextV3_data;
+                    // 深拷贝数据以确保不影响原始对象
+                    this.selectTextV3_data = JSON.parse(JSON.stringify(obj.selectTextV3_data));
                     this.selectTextV3_data.entries.forEach(e => {
                         if (!e.item_type) e.item_type = 'text';
                         if (e.parent_id === undefined) e.parent_id = null;
-                        if (e.item_type === 'folder' && e.is_collapsed === undefined) e.is_collapsed = false;
+                        // 严格保留原有折叠状态，只在未定义时设置默认值
+                        if (e.item_type === 'folder' && e.is_collapsed === undefined) e.is_collapsed = true;  // 默认折叠状态
                         if (e.item_type === 'folder' && e.name === undefined) e.name = "新建文件夹";
                     });
                 } else {
@@ -2345,7 +2807,7 @@ app.registerExtension({
                 if (obj.titleWidth !== undefined) {
                     this.titleWidth = obj.titleWidth;
                 }
-                this.folderColor = obj.folderColor ?? "#30353c";
+                this.folderColor = obj.folderColor ?? "#FFF3CD"; // 默认黄色文件夹背景
                     this.textboxColor = obj.textboxColor ?? "#3a3a3a";
                     this.textboxDisabledColor = obj.textboxDisabledColor ?? "#2a2a2a";
                     this.textboxBorderColor = obj.textboxBorderColor ?? "#555";
