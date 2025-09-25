@@ -1245,6 +1245,7 @@ class ZML_TagImageLoader:
         return {
             "required": {
                 "selected_files_json": ("STRING", {"multiline": False, "default": "[]"}),
+                "文本块输出": ("BOOLEAN", {"default": True, "label_on": "启用", "label_off": "禁用"}),
                 "text_blocks_input": ("STRING", {"multiline": True, "default": ""}),
             },
             # 移除 '自定义路径' 节点输入口
@@ -1267,14 +1268,22 @@ class ZML_TagImageLoader:
         return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
     # --- 🔴 MODIFICATION END ---
 
-    def load_images_by_tags(self, selected_files_json="[]", text_blocks_input="", **kwargs): # 自定义路径不再作为参数
+    def load_images_by_tags(self, selected_files_json="[]", text_blocks_input="", 文本块输出=True, **kwargs): # 自定义路径不再作为参数
         # --- 🔴 MODIFICATION START: 在所有失败路径上返回占位符 ---
         placeholder_image = self._create_placeholder_image()
+
+        # 根据文本块输出开关决定是否输出文本框内容
+        if 文本块输出:
+            # 只输出文本框里的内容，忽略从图像中提取的文本块
+            final_text_output = text_blocks_input
+        else:
+            # 开关关闭时，不输出任何内容
+            final_text_output = ""
 
         if not selected_files_json or selected_files_json == "[]":
             # 即使没有选择文件，也返回默认的输出目录绝对路径
             default_base_path = str(get_base_path().resolve()) if get_base_path() else ""
-            return ([placeholder_image], "", "未选择任何文件。", default_base_path)
+            return ([placeholder_image], final_text_output, "未选择任何文件。", default_base_path)
 
         try:
             data = json.loads(selected_files_json)
@@ -1282,7 +1291,7 @@ class ZML_TagImageLoader:
             print("ZML_TagImageLoader: JSON解析失败。")
             # 即使JSON解析失败，也返回默认的输出目录绝对路径
             default_base_path = str(get_base_path().resolve()) if get_base_path() else ""
-            return ([placeholder_image], "", "JSON解析失败", default_base_path)
+            return ([placeholder_image], final_text_output, "JSON解析失败", default_base_path)
         # --- 🔴 MODIFICATION END ---
 
         file_list = []
@@ -1302,7 +1311,7 @@ class ZML_TagImageLoader:
             # 获取并返回绝对路径
             base_dir = get_base_path(current_custom_base_path)
             base_path_str = str(base_dir.resolve()) if base_dir else ""
-            return ([placeholder_image], "", "选择列表为空或格式不正确。", base_path_str)
+            return ([placeholder_image], final_text_output, "选择列表为空或格式不正确。", base_path_str)
         # --- 🔴 MODIFICATION END ---
 
         image_tensors = []
@@ -1316,7 +1325,7 @@ class ZML_TagImageLoader:
             print(f"ZML_TagImageLoader: 基准目录无效或不存在: {current_custom_base_path or 'output'}")
             # 即使基准目录无效，也返回尝试解析的路径
             attempted_path = str(Path(current_custom_base_path).resolve()) if current_custom_base_path else ""
-            return ([placeholder_image], "", f"基准目录无效或不存在: {current_custom_base_path or 'output'}", attempted_path)
+            return ([placeholder_image], final_text_output, f"基准目录无效或不存在: {current_custom_base_path or 'output'}", attempted_path)
         # --- 🔴 MODIFICATION END ---
 
         for item in file_list:
@@ -1372,15 +1381,8 @@ class ZML_TagImageLoader:
         if not image_tensors:
             final_validation_output = "\n".join(validation_messages)
             # 确保返回绝对路径
-            return ([placeholder_image], "", final_validation_output, str(base_dir.resolve()))
+            return ([placeholder_image], final_text_output, final_validation_output, str(base_dir.resolve()))
         # --- 🔴 MODIFICATION END ---
-
-        # 优先使用输入的文本块，如果存在的话
-        if text_blocks_input.strip():
-            final_text_output = text_blocks_input
-        else:
-            text_separator = "\n\n"
-            final_text_output = text_separator.join(text_blocks)
         
         validation_separator = "\n\n" + ("-"*25) + "\n\n"
         final_validation_output = validation_separator.join(validation_messages)

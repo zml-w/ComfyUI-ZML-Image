@@ -215,7 +215,8 @@ class ZML_TextFormatter:
                 }),
                 "权重转换": (["禁用", "NAI转SD（精确）", "NAI转SD（一位小数）", "清空权重"], {"default": "NAI转SD（精确）"}),
                 "文本格式化": (["禁用", "下划线转空格", "空格转下划线", "空格隔离标签", "逗号追加换行"], {"default": "下划线转空格"}),
-                "格式化标点符号": ([True, False], {"default": True}),
+                "格式化标点符号": ("BOOLEAN", {"default": True, "label_on": "启用", "label_off": "禁用"}),
+                "合并相同提示词": ("BOOLEAN", {"default": False, "label_on": "启用", "label_off": "禁用"}),
             }
         }
     
@@ -348,8 +349,52 @@ class ZML_TextFormatter:
     def format_punctuation(self, text):
         """调用全局格式化函数"""
         return format_punctuation_global(text)
+        
+    def extract_base_tag(self, tag):
+        """提取标签的基础部分，保留权重信息"""
+        # 处理带权重的标签，如(1girl:1.2)
+        weight_match = re.match(r'\(([^:]+):([\d.]+)\)', tag)
+        if weight_match:
+            base_tag = weight_match.group(1).strip()
+            weight = weight_match.group(2)
+            return base_tag, f"({base_tag}:{weight})"
+        return tag.strip(), tag.strip()
+        
+    def merge_duplicate_prompts(self, text):
+        """合并文本中的重复提示词，默认使用第一个出现的提示词的权重"""
+        if not text.strip():
+            return text
+        
+        # 按行处理文本
+        lines = text.splitlines()
+        result_lines = []
+        
+        for line in lines:
+            if not line.strip():
+                result_lines.append(line)
+                continue
+            
+            # 分割标签
+            tags = [tag.strip() for tag in line.split(',') if tag.strip()]
+            
+            # 合并重复标签，默认使用第一个出现的提示词的权重
+            seen_tags = {}
+            for tag in tags:
+                base_tag, processed_tag = self.extract_base_tag(tag)
+                # 只有当base_tag不存在于seen_tags中时才添加，这样就保留了第一个出现的权重
+                if base_tag not in seen_tags:
+                    seen_tags[base_tag] = processed_tag
+            
+            # 重新组合该行
+            result_line = ', '.join(seen_tags.values())
+            result_lines.append(result_line)
+        
+        # 重新组合所有行
+        result_text = '\n'.join(result_lines)
+        
+        return result_text
     
-    def format_text(self, 文本, 权重转换, 文本格式化, 格式化标点符号):
+    def format_text(self, 文本, 权重转换, 文本格式化, 格式化标点符号, 合并相同提示词):
         """处理文本转换"""
         
         # 1. 处理权重转换
@@ -376,7 +421,11 @@ class ZML_TextFormatter:
             文本 = re.sub(r',\s*', ',\n', 文本).strip()
         # 如果为 "禁用", 则不执行任何操作
 
-        # 3. 处理标点符号格式化
+        # 3. 处理合并相同提示词
+        if 合并相同提示词:
+            文本 = self.merge_duplicate_prompts(文本)
+
+        # 4. 处理标点符号格式化
         if 格式化标点符号:
             文本 = self.format_punctuation(文本)
         
@@ -1219,76 +1268,7 @@ class ZML_AppendTextByKeyword:
         
         return (result_text, self.help_text)
 
-# ============================== 合并相同提示词节点 ==============================
-class ZML_MergeDuplicatePrompts:
-    """ZML 合并相同提示词节点"""
-    
-    def __init__(self):
-        self.help_text = "你好~欢迎使用ZML合并相同提示词节点~\n此节点可以合并输入文本中的重复提示词，默认使用第一个出现的提示词的权重。\n例如：输入\"1girl,solo,nsfw,1girl\"，输出\"1girl,solo,nsfw\"\n支持处理包含权重的提示词，如(1girl:1.2)和1girl会被识别为相同提示词并合并，保留第一个出现的权重。\n祝你使用愉快！"    
-    
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "文本": ("STRING", {
-                    "multiline": True,
-                    "default": "",
-                    "placeholder": "输入要处理的文本"
-                }),
-            }
-        }
-    
-    CATEGORY = "image/ZML_图像/文本"
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("文本", "Help")
-    FUNCTION = "merge_duplicate_prompts"
-    
-    def extract_base_tag(self, tag):
-        """提取标签的基础部分，保留权重信息"""
-        # 处理带权重的标签，如(1girl:1.2)
-        weight_match = re.match(r'\(([^:]+):([\d.]+)\)', tag)
-        if weight_match:
-            base_tag = weight_match.group(1).strip()
-            weight = weight_match.group(2)
-            return base_tag, f"({base_tag}:{weight})"
-        return tag.strip(), tag.strip()
-    
-    def merge_duplicate_prompts(self, 文本):
-        """合并文本中的重复提示词，默认使用第一个出现的提示词的权重"""
-        if not 文本.strip():
-            return ("", self.help_text)
-        
-        # 按行处理文本
-        lines = 文本.splitlines()
-        result_lines = []
-        
-        for line in lines:
-            if not line.strip():
-                result_lines.append(line)
-                continue
-            
-            # 分割标签
-            tags = [tag.strip() for tag in line.split(',') if tag.strip()]
-            
-            # 合并重复标签，默认使用第一个出现的提示词的权重
-            seen_tags = {}
-            for tag in tags:
-                base_tag, processed_tag = self.extract_base_tag(tag)
-                # 只有当base_tag不存在于seen_tags中时才添加，这样就保留了第一个出现的权重
-                if base_tag not in seen_tags:
-                    seen_tags[base_tag] = processed_tag
-            
-            # 重新组合该行
-            result_line = ', '.join(seen_tags.values())
-            result_lines.append(result_line)
-        
-        # 重新组合所有行
-        result_text = '\n'.join(result_lines)
-        
-        # 应用全局标点符号格式化
-        result_text = format_punctuation_global(result_text)
-        
-        return (result_text, self.help_text)
+# 合并相同提示词功能已集成到ZML_TextFormatter节点中，作为一个新选项
 
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
@@ -1305,7 +1285,6 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SelectTextV3": ZML_SelectTextV3,
     "ZML_SplitText": ZML_SplitText,
     "ZML_AppendTextByKeyword": ZML_AppendTextByKeyword,
-    "ZML_MergeDuplicatePrompts": ZML_MergeDuplicatePrompts,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1322,5 +1301,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SelectTextV3": "ZML_选择文本V3",
     "ZML_SplitText": "ZML_文本分离",
     "ZML_AppendTextByKeyword": "ZML_追加提示词",
-    "ZML_MergeDuplicatePrompts": "ZML_合并相同提示词",
 }

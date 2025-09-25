@@ -687,7 +687,7 @@ class ZML_ImageMemory:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("图像",)
     FUNCTION = "store_and_retrieve_image"
-    CATEGORY = "image/ZML_图像/图像"
+    CATEGORY = "image/ZML_图像/工具"
 
     def store_and_retrieve_image(self, 关闭输入, 保存模式, 输入图像=None):
         image_to_output = None

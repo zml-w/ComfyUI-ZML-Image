@@ -775,13 +775,17 @@ class ZML_DualIntegerV3:
                 "宽": ("INT", {"forceInput": True}),
                 "高": ("INT", {"forceInput": True}),
                 "阈值": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 1}),
-                "宽列表": ("STRING", {
+                "A小于B": ("STRING", {
                     "multiline": False,
-                    "default": "832,1024,1216"
+                    "default": "1216,832"
                 }),
-                "高列表": ("STRING", {
+                "A等于B": ("STRING", {
                     "multiline": False,
-                    "default": "1216,1024,832"
+                    "default": "1024,1024"
+                }),
+                "A大于B": ("STRING", {
+                    "multiline": False,
+                    "default": "832,1216"
                 }),
             }
         }
@@ -791,38 +795,38 @@ class ZML_DualIntegerV3:
     FUNCTION = "process_comparison"
     CATEGORY = "image/ZML_图像/整数"
 
-    def process_comparison(self, 宽, 高, 阈值, 宽列表, 高列表):
-        # -- 解析输入的列表字符串 --
-        try:
-            widths = [int(x.strip()) for x in 宽列表.split(',')]
-            if len(widths) < 3:
-                raise ValueError()
-        except:
-            widths = [832, 1024, 1216]
+    def process_comparison(self, 宽, 高, 阈值, A小于B, A等于B, A大于B):
+        # -- 解析输入的字符串 --
+        def parse_dimensions(dim_str):
+            try:
+                parts = dim_str.split(',')
+                if len(parts) >= 2:
+                    return int(parts[0].strip()), int(parts[1].strip())
+            except:
+                pass
+            return 1024, 1024
+        
+        # 解析三个不同情况下的尺寸
+        width_less, height_less = parse_dimensions(A小于B)
+        width_equal, height_equal = parse_dimensions(A等于B)
+        width_greater, height_greater = parse_dimensions(A大于B)
 
-        try:
-            heights = [int(x.strip()) for x in 高列表.split(',')]
-            if len(heights) < 3:
-                raise ValueError()
-        except:
-            heights = [1216, 1024, 832]
-
-        # -- 新的判断逻辑 --
+        # -- 判断逻辑 --
         if abs(宽 - 高) <= 阈值:
-            out_w = widths[1]
-            out_h = heights[1]
+            out_w = width_equal
+            out_h = height_equal
             out_int = 2
             out_float = 2.0
             out_bool = True
         elif 宽 < 高:
-            out_w = widths[0]
-            out_h = heights[0]
+            out_w = width_less
+            out_h = height_less
             out_int = 1
             out_float = 1.0
             out_bool = True
         else: # 宽 > 高
-            out_w = widths[2]
-            out_h = heights[2]
+            out_w = width_greater
+            out_h = height_greater
             out_int = 3
             out_float = 3.0
             out_bool = True
@@ -1078,8 +1082,42 @@ class ZML_PresetResolution:
         
         return (width, height, latent_dict)
 
-# 随机分辨率规则存储变量
+# 随机分辨率规则存储变量和文件路径
+ZML_RANDOM_RESOLUTION_RULES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset integer", "random_rules.json")
 ZML_RANDOM_RESOLUTION_RULES = {}  # 用于存储前端传来的随机规则
+
+# 初始化时加载随机规则
+def _load_random_resolution_rules():
+    """从文件加载随机分辨率规则"""
+    global ZML_RANDOM_RESOLUTION_RULES
+    try:
+        # 确保目录存在
+        os.makedirs(os.path.dirname(ZML_RANDOM_RESOLUTION_RULES_FILE), exist_ok=True)
+        
+        # 如果文件存在，加载规则
+        if os.path.exists(ZML_RANDOM_RESOLUTION_RULES_FILE):
+            with open(ZML_RANDOM_RESOLUTION_RULES_FILE, 'r', encoding='utf-8') as f:
+                ZML_RANDOM_RESOLUTION_RULES = json.load(f)
+            print(f"ZML_RANDOM_RESOLUTION_RULES 已从文件加载: {ZML_RANDOM_RESOLUTION_RULES}")
+    except Exception as e:
+        print(f"加载随机分辨率规则错误: {e}")
+
+# 保存随机规则到文件
+def _save_random_resolution_rules(rules):
+    """保存随机分辨率规则到文件"""
+    try:
+        # 确保目录存在
+        os.makedirs(os.path.dirname(ZML_RANDOM_RESOLUTION_RULES_FILE), exist_ok=True)
+        
+        # 保存规则到文件
+        with open(ZML_RANDOM_RESOLUTION_RULES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(rules, f, ensure_ascii=False, indent=4)
+        print(f"ZML_RANDOM_RESOLUTION_RULES 已保存到文件: {rules}")
+    except Exception as e:
+        print(f"保存随机分辨率规则错误: {e}")
+
+# 初始化时加载规则
+_load_random_resolution_rules()
 
 # ============================== API 路由（用于处理前端的添加预设请求）==============================
 
@@ -1091,6 +1129,8 @@ async def set_random_resolution_rules_route(request):
         rules = data.get("rules", {})
         global ZML_RANDOM_RESOLUTION_RULES
         ZML_RANDOM_RESOLUTION_RULES = rules
+        # 保存规则到文件
+        _save_random_resolution_rules(rules)
         print(f"ZML_RANDOM_RESOLUTION_RULES 已更新: {rules}")
         return web.Response(status=200, text="随机分辨率规则已成功更新")
     except Exception as e:

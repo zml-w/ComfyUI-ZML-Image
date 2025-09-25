@@ -8,7 +8,7 @@ import random
 import math
 import re # 导入正则表达式模块
 
-# ============================== ZML_AddTextWatermark 节点 (未修改) ==============================
+# ============================== ZML_AddTextWatermark 节点==============================
 class ZML_AddTextWatermark:
     def __init__(self):
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
@@ -360,7 +360,7 @@ class ZML_AddTextWatermark:
         return (torch.cat(processed_images, dim=0), help_text)
 
 
-# ============================== ZML_TextToImage 节点 (已修改) ==============================
+# ============================== ZML_TextToImage 节点==============================
 class ZML_TextToImage:
     # 文本内容在文本图像区域内的缩放比例，100%表示使用全部可用区域
     TEXT_CONTENT_SCALE_PERCENTAGE = 1.0 
@@ -1033,12 +1033,165 @@ class ZML_TextToImage:
         final_output_tensor = self.pil_to_tensor(final_output_image)
         return (final_output_tensor, help_text)
     
+# ============================== ZML_AddImageWatermark==============================
+class ZML_AddImageWatermark:
+    def __init__(self):
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        self.watermark_dir = os.path.join(self.node_dir, "web", "images")
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "ImageWatermark.txt")
+        self.ensure_counter_file()
+
+    def ensure_counter_file(self):
+        try:
+            if not os.path.exists(self.counter_file):
+                with open(self.counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+        except Exception as e:
+            print(f"创建图像水印计数文件失败: {e}")
+
+    def increment_counter(self):
+        count = 0
+        try:
+            with open(self.counter_file, "r+", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content.isdigit():
+                    count = int(content)
+                count += 1
+                f.seek(0)
+                f.write(str(count))
+                f.truncate()
+        except Exception as e:
+            print(f"更新图像水印计数失败: {e}")
+            return 1
+        return count
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE",),
+                "水印大小比例": ("FLOAT", {"default": 0.25, "min": 0.01, "max": 2.0, "step": 0.01}),
+                "不透明度": ("FLOAT", {"default": 1, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "位置": (["左上", "中上", "右上", "左中", "居中", "右中", "左下", "中下", "右下", "全屏"],),
+                "水平边距": ("INT", {"default": 30, "min": 0, "max": 4096}),
+                "垂直边距": ("INT", {"default": 30, "min": 0, "max": 4096}),
+                "全屏水印旋转角度": ("INT", {"default": -30, "min": -360, "max": 360}),
+                "全屏水印密度": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 5.0, "step": 0.1}),
+                "全屏水印间距": ("INT", {"default": 10, "min": 0, "max": 200})
+            },
+            "optional": {
+                "水印图像": ("IMAGE",)
+            }
+        }
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("图像", "Help")
+    FUNCTION = "add_watermark"
+    CATEGORY = "image/ZML_图像/工具" 
+
+    def tensor_to_pil(self, tensor):
+        return Image.fromarray(np.clip(255. * tensor.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
+
+    def pil_to_tensor(self, pil_image):
+        return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def add_watermark(self, 图像, 水印大小比例=0.25, 不透明度=0.7, 位置="右下", 水平边距=20, 垂直边距=20, 全屏水印旋转角度=-30, 全屏水印密度=1.0, 全屏水印间距=10, 水印图像=None):
+        count = self.increment_counter()
+        help_text = (f"你好，欢迎使用ZML图像水印节点~到目前为止，你通过此节点总共添加了{count}次图像水印！！\n祝你使用愉快~")
+
+        # 加载水印图像
+        watermark_img = None
+        if 水印图像 is not None:
+            try:
+                # 从输入的图像张量创建水印图像
+                watermark_pil = self.tensor_to_pil(水印图像[0]).convert("RGBA")
+                watermark_img = watermark_pil
+            except Exception as e:
+                print(f"水印图像处理失败: {e}")
+                # 如果水印图像处理失败，创建默认水印
+                watermark_img = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(watermark_img)
+                draw.rectangle([0, 0, 100, 100], fill=(0, 0, 0, 100))
+                draw.text((20, 40), "Watermark", fill=(255, 255, 255, 200))
+        else:
+            # 如果没有提供水印图像，创建一个默认的简单水印
+            watermark_img = Image.new('RGBA', (100, 100), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(watermark_img)
+            draw.rectangle([0, 0, 100, 100], fill=(0, 0, 0, 100))
+            draw.text((20, 40), "Watermark", fill=(255, 255, 255, 200))
+
+        processed_images = []
+        for img_tensor in 图像:
+            pil_image = self.tensor_to_pil(img_tensor).convert("RGBA")
+            img_width, img_height = pil_image.size
+            
+            # 基于输入图像的大小计算水印尺寸（等比缩放）
+            base_size = min(img_width, img_height)
+            target_size = int(base_size * 水印大小比例)
+            wm_width, wm_height = watermark_img.size
+            
+            # 计算等比缩放的新尺寸
+            ratio = min(target_size / wm_width, target_size / wm_height)
+            new_width = int(wm_width * ratio)
+            new_height = int(wm_height * ratio)
+            resized_watermark = watermark_img.resize((max(1, new_width), max(1, new_height)), Image.Resampling.LANCZOS)
+            wm_width, wm_height = resized_watermark.size
+            
+            # 调整水印透明度
+            if 不透明度 < 1.0:
+                r, g, b, a = resized_watermark.split()
+                a = a.point(lambda p: p * 不透明度)
+                resized_watermark = Image.merge('RGBA', (r, g, b, a))
+
+            # 根据位置添加水印
+            if 位置 == "全屏":
+                # 全屏平铺水印
+                try:
+                    # 旋转水印图像
+                    rot_img = resized_watermark.rotate(全屏水印旋转角度, expand=True, resample=Image.Resampling.BICUBIC)
+                    r_width, r_height = rot_img.size
+                    # 计算间距
+                    sx, sy = int((r_width + 水平边距) / 全屏水印密度), int((r_height + 垂直边距) / 全屏水印密度)
+                    sx = max(1, sx); sy = max(1, sy) 
+                    # 交错排列水印
+                    offset, row_idx = sx // 2, 0
+                    for y in range(-r_height, img_height, sy):
+                        start_x = -r_width + (offset if (row_idx % 2) != 0 else 0)
+                        for x in range(start_x, img_width, sx):
+                            if 0 <= x + r_width and 0 <= y + r_height:
+                                pil_image.paste(rot_img, (x, y), rot_img)
+                        row_idx += 1
+                except Exception as e:
+                    print(f"全屏水印处理失败: {e}")
+            else:
+                # 在指定位置添加水印
+                x_pos = 水平边距 if "左" in 位置 else (img_width - wm_width - 水平边距 if "右" in 位置 else (img_width - wm_width) // 2)
+                y_pos = 垂直边距 if "上" in 位置 else (img_height - wm_height - 垂直边距 if "下" in 位置 else (img_height - wm_height) // 2)
+
+                # 确保水印在图像范围内
+                x_pos = max(0, min(x_pos, img_width - 1))
+                y_pos = max(0, min(y_pos, img_height - 1))
+                
+                # 添加水印到图像
+                pil_image.paste(resized_watermark, (x_pos, y_pos), resized_watermark)
+            
+            processed_images.append(self.pil_to_tensor(pil_image))
+        return (torch.cat(processed_images, dim=0), help_text)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_AddTextWatermark": ZML_AddTextWatermark,
     "ZML_TextToImage": ZML_TextToImage,
+    "ZML_AddImageWatermark": ZML_AddImageWatermark,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_AddTextWatermark": "ZML_添加文字水印",
     "ZML_TextToImage": "ZML_文本图像",
+    "ZML_AddImageWatermark": "ZML_添加图像水印",
 }
