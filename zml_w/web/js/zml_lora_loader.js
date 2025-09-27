@@ -1327,7 +1327,7 @@ app.registerExtension({
             let zmlBatchLoraDisplayStyle = 'vertical'; // 默认为竖向
             let zmlBatchLoraPreviewGifMode = false; // GIF预览模式开关
             let zmlBatchLoraPreviewGifButton = null; // GIF预览按钮
-            let zmlBatchLoraFixedLocationMode = false; // 固定位置模式开关
+            
             
             function createBatchLoraModal() {
                 if (zmlBatchLoraModalOverlay) return;
@@ -2688,54 +2688,15 @@ app.registerExtension({
                             folderEl.onmouseenter = (e) => e.target.style.backgroundColor = '#5a626d';
                             folderEl.onmouseleave = (e) => e.target.style.backgroundColor = '#3f454d';
                             folderEl.onclick = () => {
-                                if (zmlBatchLoraFixedLocationMode) {
-                                    // 固定位置模式下，只预览文件夹内容，不进入子文件夹
-                                    const tempPath = [...zmlBatchLoraCurrentPath, folderName];
-                                    const previewContent = getLoraContentByPath(zmlBatchLoraCurrentNodeInstance.loraTree, tempPath);
-                                    if (previewContent) {
-                                        // 临时保存当前路径
-                                        const originalPath = [...zmlBatchLoraCurrentPath];
-                                        // 预览子文件夹内容
-                                        zmlBatchLoraCurrentPath = tempPath;
-                                        renderBatchLoraContent();
-                                        // 恢复原路径，但保持内容显示
-                                        setTimeout(() => {
-                                            zmlBatchLoraCurrentPath = originalPath;
-                                        }, 0);
-                                    }
-                                } else {
-                                    // 非固定位置模式，正常进入子文件夹
-                                    zmlBatchLoraCurrentPath.push(folderName);
-                                    renderBatchLoraContent();
-                                }
+                                // 正常进入子文件夹
+                                zmlBatchLoraCurrentPath.push(folderName);
+                                renderBatchLoraContent();
                             };
                             folderEl.innerHTML = `<span style="font-size: 14px;">📁</span><span>${folderName}</span>`;
                             zmlBatchLoraFoldersPanel.appendChild(folderEl);
                         });
                         
-                        // 添加固定位置按钮到文件夹面板的最右边
-                        const fixedLocationBtn = zmlCreateEl("button", {
-                            textContent: zmlBatchLoraFixedLocationMode ? "📍 已固定" : "📍 固定位置",
-                            style: `
-                                margin-left: auto;
-                                padding: 4px 10px;
-                                border: 1px solid ${zmlBatchLoraFixedLocationMode ? '#4CAF50' : '#555'};
-                                background-color: ${zmlBatchLoraFixedLocationMode ? '#4CAF50' : '#333'};
-                                color: #fff;
-                                border-radius: 4px;
-                                cursor: pointer;
-                                font-size: 12px;
-                                white-space: nowrap;
-                                transition: all 0.2s;
-                            `
-                        });
-                        fixedLocationBtn.onclick = function() {
-                            zmlBatchLoraFixedLocationMode = !zmlBatchLoraFixedLocationMode;
-                            fixedLocationBtn.textContent = zmlBatchLoraFixedLocationMode ? "📍 已固定" : "📍 固定位置";
-                            fixedLocationBtn.style.borderColor = zmlBatchLoraFixedLocationMode ? '#4CAF50' : '#555';
-                            fixedLocationBtn.style.backgroundColor = zmlBatchLoraFixedLocationMode ? '#4CAF50' : '#333';
-                        };
-                        zmlBatchLoraFoldersPanel.appendChild(fixedLocationBtn);
+
                     } else {
                         zmlBatchLoraFoldersPanel.style.display = 'none'; // 如果没有文件夹，则隐藏这一行
                         zmlBatchLoraParentPathDisplay.style.borderBottom = '1px solid #3c3c3c'; // 如果隐藏文件夹栏，则路径底部加线
