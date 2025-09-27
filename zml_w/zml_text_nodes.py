@@ -1098,7 +1098,7 @@ def _load_random_resolution_rules():
         if os.path.exists(ZML_RANDOM_RESOLUTION_RULES_FILE):
             with open(ZML_RANDOM_RESOLUTION_RULES_FILE, 'r', encoding='utf-8') as f:
                 ZML_RANDOM_RESOLUTION_RULES = json.load(f)
-            print(f"ZML_RANDOM_RESOLUTION_RULES 已从文件加载: {ZML_RANDOM_RESOLUTION_RULES}")
+        # 删除了打印语句
     except Exception as e:
         print(f"加载随机分辨率规则错误: {e}")
 

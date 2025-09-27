@@ -86,29 +86,6 @@ class ZML_ImageDeform:
                 
                 deformed_image_cv = cv2.remap(image_cv, np.nan_to_num(map_x), np.nan_to_num(map_y), cv2.INTER_CUBIC, borderMode=cv2.BORDER_TRANSPARENT)
 
-            elif mode == "liquify":
-                map_base64 = data["map"]
-                if ',' in map_base64:
-                    _, encoded = map_base64.split(',', 1)
-                else:
-                    encoded = map_base64
-                
-                map_data = base64.b64decode(encoded)
-                map_pil = Image.open(io.BytesIO(map_data)).convert("RGBA")
-                map_cv = cv2.cvtColor(np.array(map_pil), cv2.COLOR_RGBA2BGR)
-                map_cv_resized = cv2.resize(map_cv, (w, h), interpolation=cv2.INTER_LINEAR)
-                
-                # Displacements are stored in the R and G channels of the map image (often shifted)
-                # Assuming R and B channels store x and y displacements, centered at 127.5
-                displacement_x = (map_cv_resized[:, :, 2].astype(np.float32) - 127.5) # Red channel (OpenCV BGR, so index 2 is R)
-                displacement_y = (map_cv_resized[:, :, 1].astype(np.float32) - 127.5) # Green channel (OpenCV BGR, so index 1 is G)
-                
-                grid_x, grid_y = np.meshgrid(np.arange(w), np.arange(h))
-                map_x = (grid_x + displacement_x).astype(np.float32)
-                map_y = (grid_y + displacement_y).astype(np.float32)
-
-                deformed_image_cv = cv2.remap(image_cv, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_TRANSPARENT)
-
             if deformed_image_cv is not None:
                 deformed_pil = Image.fromarray(cv2.cvtColor(deformed_image_cv, cv2.COLOR_BGRA2RGBA))
                 return (self.pil_to_tensor(deformed_pil),)
@@ -286,18 +263,16 @@ class ZML_ImageColorAdjust:
         # 解析颜色调整数据
         try:
             data = json.loads(color_data)
-            brightness = data.get('brightness', 0.0) / 100.0  # 前端用的是-100到100范围，这里转为-1到1
-            contrast = data.get('contrast', 0.0) / 100.0
-            saturation = data.get('saturation', 0.0) / 100.0
-            hue = data.get('hue', 0.0)
-            sharpness = data.get('sharpen', 0.0)  # 注意前端用的是sharpen参数名
+            brightness = data.get('brightness', 0.0)  # 前端用的是-100到100范围
+            contrast = data.get('contrast', 0.0)  # 前端用的是-100到100范围
+            saturation = data.get('saturation', 0.0)  # 前端用的是-100到100范围
+            hue = data.get('hue', 0.0)  # 前端用的是-180到180范围
+            sharpen = data.get('sharpen', 0.0)  # 前端用的是0到100范围
             gamma = data.get('gamma', 1.0)
-            exposure = data.get('exposure', 0.0) / 100.0
+            exposure = data.get('exposure', 0.0)  # 前端用的是-100到100范围
             blur = data.get('blur', 0.0)
-            noise = data.get('noise', 0.0) / 100.0
-            vignette = data.get('vignette', 0.0) / 100.0
-            # 调试信息：输出接收到的模糊参数值
-            # print(f"接收到的模糊参数值: {blur}")
+            noise = data.get('noise', 0.0)
+            vignette = data.get('vignette', 0.0)
         except Exception as e:
             # 如果解析失败，使用默认值并输出错误
             print(f"颜色数据解析错误: {e}")
@@ -305,7 +280,7 @@ class ZML_ImageColorAdjust:
             contrast = 0.0
             saturation = 0.0
             hue = 0.0
-            sharpness = 0.0
+            sharpen = 0.0
             gamma = 1.0
             exposure = 0.0
             blur = 0.0
@@ -327,31 +302,32 @@ class ZML_ImageColorAdjust:
             image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
             alpha = None
 
-        # 亮度调整
+        # 亮度调整 - 保持与前端相同的处理方式
         if brightness != 0:
-            # 创建一个相同大小的图像，填充为亮度增量
-            brightness_scalar = brightness * 255.0
-            image_cv = cv2.add(image_cv, brightness_scalar)
+            image_cv = cv2.add(image_cv, brightness)
 
-        # 对比度调整
+        # 对比度调整 - 使用与前端相同的公式
         if contrast != 0:
-            # 对比度公式: output = input * (1 + contrast) - contrast * 128
-            alpha_contrast = 1.0 + contrast
-            beta_contrast = -contrast * 128.0
-            image_cv = cv2.convertScaleAbs(image_cv, alpha=alpha_contrast, beta=beta_contrast)
+            factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
+            image_cv = cv2.convertScaleAbs(image_cv, alpha=1.0)
+            image_cv = cv2.subtract(image_cv, 128)
+            image_cv = cv2.convertScaleAbs(image_cv, alpha=factor)
+            image_cv = cv2.add(image_cv, 128)
 
         # 转换到HSV色彩空间进行色相和饱和度调整
         hsv = cv2.cvtColor(image_cv, cv2.COLOR_BGR2HSV).astype(np.float32)
 
-        # 色相调整
+        # 色相调整 - 转换到OpenCV的H通道范围(0-180)
         if hue != 0:
-            # H通道范围是0-180，所以调整量需要取模
-            hsv[:, :, 0] = (hsv[:, :, 0] + hue) % 180
+            # 前端色相范围是-180到180，需要转换到OpenCV的HSV范围
+            # OpenCV的H通道范围是0-180（对应0-360度）
+            hue_adjust = (hue / 2.0) % 180  # 将-180到180转换为-90到90，再取模到0-180
+            hsv[:, :, 0] = (hsv[:, :, 0] + hue_adjust) % 180
 
         # 饱和度调整
         if saturation != 0:
             # 饱和度调整，1.0 + saturation因子
-            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * (1.0 + saturation), 0, 255)
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * (1.0 + saturation / 100.0), 0, 255)
 
         # 转换回BGR色彩空间
         image_cv = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
@@ -362,20 +338,28 @@ class ZML_ImageColorAdjust:
             gamma_table = np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in np.arange(0, 256)]).astype(np.uint8)
             image_cv = cv2.LUT(image_cv, gamma_table)
 
-        # 锐化调整
-        if sharpness > 0:
-            # 创建锐化核
-            kernel = np.array([[-1, -1, -1],
-                              [-1, 9 + sharpness, -1],
-                              [-1, -1, -1]])
-            # 应用锐化滤波器
-            image_cv = cv2.filter2D(image_cv, -1, kernel)
+        # 锐化调整 - 使用与前端相似的锐化算法，保持卷积核平衡
+        if sharpen > 0:
+            # 计算锐化强度因子，使用更合理的缩放方式
+            sharpen_factor = min(sharpen / 50.0, 3.0)  # 限制最大强度为3，与前端保持一致
+            
+            # 使用平衡的锐化核
+            kernel = np.array([[0, -1, 0],
+                              [-1, 5, -1],
+                              [0, -1, 0]])
+            
+            # 先应用标准锐化核
+            sharpened = cv2.filter2D(image_cv, -1, kernel)
+            
+            # 使用混合方式应用锐化效果，避免亮度失衡
+            # 锐化结果 = 原图 + (锐化结果 - 原图) * 锐化因子
+            image_cv = cv2.addWeighted(image_cv, 1.0, cv2.subtract(sharpened, image_cv), sharpen_factor, 0)
         
-        # 曝光调整
+        # 曝光调整 - 使用乘法因子而不是加法，避免全白问题
         if exposure != 0:
-            # 曝光调整类似于亮度，但通常范围更大
-            exposure_scalar = exposure * 255.0
-            image_cv = cv2.add(image_cv, exposure_scalar)
+            # 使用与前端相似的曝光调整方法
+            exposure_factor = 1.0 + (exposure / 100.0)
+            image_cv = cv2.convertScaleAbs(image_cv, alpha=exposure_factor)
         
         # 模糊调整
         if blur > 0:
@@ -393,11 +377,11 @@ class ZML_ImageColorAdjust:
         
         # 噪点调整
         if noise > 0:
-            # 添加高斯噪声
+            # 添加高斯噪声 - 与前端保持一致，先除以100再乘以255
             mean = 0
-            std_dev = noise * 255.0
-            noise = np.random.normal(mean, std_dev, image_cv.shape).astype(np.float32)
-            image_cv = np.clip(image_cv + noise, 0, 255).astype(np.uint8)
+            std_dev = (noise / 100.0) * 255.0  # 修复：先除以100再乘以255
+            noise_array = np.random.normal(mean, std_dev, image_cv.shape).astype(np.float32)
+            image_cv = np.clip(image_cv + noise_array, 0, 255).astype(np.uint8)
         
         # 暗角调整
         if vignette != 0:
@@ -415,8 +399,11 @@ class ZML_ImageColorAdjust:
             dist = np.sqrt((xx - center_x)**2 + (yy - center_y)**2)
             # 归一化距离
             dist_norm = dist / max_dist
+            # 修复：将暗角值除以100进行归一化，与前端保持一致
+            vignette_strength = vignette / 100.0
             # 创建暗角蒙版（值越大，暗角越强）
-            vignette_mask = 1.0 - vignette * np.power(dist_norm, 2)
+            # 与前端使用相同的计算公式：1.0 - (dist_norm) * vignette_strength
+            vignette_mask = 1.0 - (dist_norm) * vignette_strength
             # 确保蒙版值在0-1之间
             vignette_mask = np.clip(vignette_mask, 0, 1)
             # 将蒙版应用到每个通道

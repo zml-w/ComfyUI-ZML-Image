@@ -127,18 +127,56 @@ class ZML_AddTextWatermark:
                 current_line = ''
                 current_width = 0
                 
+                # 智能处理英文单词，避免在单词中间换行
+                # 首先尝试按单词分割文本
+                words = []
+                current_word = ''
                 for char in manual_line:
-                    char_width = self._get_char_size(char, font)[0]
-                    # 检查添加当前字符是否会超出最大宽度
-                    if current_line and (current_width + char_width + char_spacing > max_dim):
-                        result_lines.append(current_line)
-                        current_line = char
-                        current_width = char_width
+                    if char.isspace():
+                        if current_word:
+                            words.append(current_word)
+                            words.append(char)  # 保留空格
+                            current_word = ''
+                        else:
+                            words.append(char)  # 连续空格
                     else:
-                        if current_line:  # 如果不是行首，添加字符间距
-                            current_width += char_spacing
-                        current_line += char
-                        current_width += char_width
+                        current_word += char
+                if current_word:
+                    words.append(current_word)
+                
+                # 如果成功分割了单词（有空格分隔），则按单词进行换行处理
+                if len(words) > 1 and any(char.isspace() for char in manual_line):
+                    for word in words:
+                        word_width = sum(self._get_char_size(c, font)[0] for c in word) + (max(0, len(word) - 1) * char_spacing)
+                        
+                        # 如果是空格且当前行为空，跳过
+                        if word.isspace() and not current_line:
+                            continue
+                        
+                        # 检查添加当前单词是否会超出最大宽度
+                        if current_line and (current_width + word_width + char_spacing > max_dim):
+                            result_lines.append(current_line)
+                            current_line = word
+                            current_width = word_width
+                        else:
+                            if current_line and not word.isspace():  # 如果不是行首且当前单词不是纯空格，添加字符间距
+                                current_width += char_spacing
+                            current_line += word
+                            current_width += word_width
+                else:
+                    # 纯字符模式，按原始字符逐个处理
+                    for char in manual_line:
+                        char_width = self._get_char_size(char, font)[0]
+                        # 检查添加当前字符是否会超出最大宽度
+                        if current_line and (current_width + char_width + char_spacing > max_dim):
+                            result_lines.append(current_line)
+                            current_line = char
+                            current_width = char_width
+                        else:
+                            if current_line:  # 如果不是行首，添加字符间距
+                                current_width += char_spacing
+                            current_line += char
+                            current_width += char_width
                 
                 if current_line:  # 添加最后一行
                     result_lines.append(current_line)
@@ -363,7 +401,7 @@ class ZML_AddTextWatermark:
 # ============================== ZML_TextToImage 节点==============================
 class ZML_TextToImage:
     # 文本内容在文本图像区域内的缩放比例，100%表示使用全部可用区域
-    TEXT_CONTENT_SCALE_PERCENTAGE = 1.0 
+    TEXT_CONTENT_SCALE_PERCENTAGE = 0.9 
     BATCH_INDEX_PLACEHOLDER = r"#(\d+(\.\d+)?):(\d+(\.\d+)?)#" # 正则表达式匹配 #start:step#
 
     def __init__(self):
@@ -481,18 +519,56 @@ class ZML_TextToImage:
                 current_line = ''
                 current_width = 0
                 
+                # 智能处理英文单词，避免在单词中间换行
+                # 首先尝试按单词分割文本
+                words = []
+                current_word = ''
                 for char in manual_line:
-                    char_width = self._get_char_size(char, font)[0]
-                    # 检查添加当前字符是否会超出最大宽度
-                    if current_line and (current_width + char_width + char_spacing > max_dim):
-                        result_lines.append(current_line)
-                        current_line = char
-                        current_width = char_width
+                    if char.isspace():
+                        if current_word:
+                            words.append(current_word)
+                            words.append(char)  # 保留空格
+                            current_word = ''
+                        else:
+                            words.append(char)  # 连续空格
                     else:
-                        if current_line:  # 如果不是行首，添加字符间距
-                            current_width += char_spacing
-                        current_line += char
-                        current_width += char_width
+                        current_word += char
+                if current_word:
+                    words.append(current_word)
+                
+                # 如果成功分割了单词（有空格分隔），则按单词进行换行处理
+                if len(words) > 1 and any(char.isspace() for char in manual_line):
+                    for word in words:
+                        word_width = sum(self._get_char_size(c, font)[0] for c in word) + (max(0, len(word) - 1) * char_spacing)
+                        
+                        # 如果是空格且当前行为空，跳过
+                        if word.isspace() and not current_line:
+                            continue
+                        
+                        # 检查添加当前单词是否会超出最大宽度
+                        if current_line and (current_width + word_width + char_spacing > max_dim):
+                            result_lines.append(current_line)
+                            current_line = word
+                            current_width = word_width
+                        else:
+                            if current_line and not word.isspace():  # 如果不是行首且当前单词不是纯空格，添加字符间距
+                                current_width += char_spacing
+                            current_line += word
+                            current_width += word_width
+                else:
+                    # 纯字符模式，按原始字符逐个处理
+                    for char in manual_line:
+                        char_width = self._get_char_size(char, font)[0]
+                        # 检查添加当前字符是否会超出最大宽度
+                        if current_line and (current_width + char_width + char_spacing > max_dim):
+                            result_lines.append(current_line)
+                            current_line = char
+                            current_width = char_width
+                        else:
+                            if current_line:  # 如果不是行首，添加字符间距
+                                current_width += char_spacing
+                            current_line += char
+                            current_width += char_width
                 
                 if current_line:  # 添加最后一行
                     result_lines.append(current_line)

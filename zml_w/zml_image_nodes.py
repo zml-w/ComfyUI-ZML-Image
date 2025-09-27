@@ -74,26 +74,26 @@ class ZML_SaveImage:
     def INPUT_TYPES(cls):
         return {
             "optional": {
-                "图像": ("IMAGE", {}),  # 将图像改为可选输入
+                "图像": ("IMAGE", {}), 
             },
             "required": {
-                "操作模式": (["保存图像", "仅预览图像"], {"default": "保存图像"}), # 新增操作模式
-                "文件名前缀": ("STRING", {"default": "ZML", "placeholder": "文件名前缀"}),
+                "操作模式": (["保存图像", "仅预览图像"], {"default": "保存图像"}), 
                 "保存路径": ("STRING", {"default": "output/ZML/%Y-%m-%d", "placeholder": "相对/绝对路径 (留空使用output)"}),
-                "使用时间戳": (["启用", "禁用"], {"default": "禁用"}),
-                "使用计数器": (["启用", "禁用"], {"default": "启用"}),
-                "文件名后缀": ("STRING", {"default": "", "placeholder": "可选后缀"}),
-                "生成预览": (["启用", "禁用"], {"default": "启用"}),
                 "文本块存储": ("STRING", {"default": "", "placeholder": "存储到PNG文本块的文本内容"}),
+                "文件名前缀": ("STRING", {"default": "", "placeholder": "文件名前缀"}),
+                "文件名后缀": ("STRING", {"default": "", "placeholder": "可选后缀"}),
+                "使用时间戳": ("BOOLEAN", {"default": True}),  # 按钮样式，默认开启
+                "使用计数器": ("BOOLEAN", {"default": False}),  # 按钮样式，默认关闭
+                "生成预览": (["启用", "禁用"], {"default": "启用"}),
                 "保存同名txt文件": (["启用", "禁用"], {"default": "禁用"}),
-                "缩放图像": (["禁用", "启用"], {"default": "禁用"}), # 新增缩放图像选项
-                "缩放比例": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}), # 新增缩放比例
-                "清除元数据": (["禁用", "启用"], {"default": "禁用"}), # 新增清除元数据选项
+                "限制图像大小": (["禁用", "启用"], {"default": "禁用"}), 
+                "最大分辨率": ("INT", {"default": 1024, "min": 8, "max": 8888, "step": 8}),
+                "清除元数据": (["禁用", "启用"], {"default": "禁用"}),
             },
             "hidden": {
                 "prompt": "PROMPT", 
                 "extra_pnginfo": "EXTRA_PNGINFO",
-                "unique_id": "UNIQUE_ID", # ComfyUI 内部使用的唯一ID，用于避免打印 "Prompt executed in..."
+                "unique_id": "UNIQUE_ID",
             },
         }
     
@@ -185,21 +185,20 @@ class ZML_SaveImage:
     def save_images(self, 图像=None, **kwargs):
         """
         保存图像的主要函数（使用PNG文本块存储）
-        修改：支持无图像输入，增加缩放和清除元数据功能，更新txt保存格式
         """
         # 从kwargs中获取其他参数
         操作模式 = kwargs.get("操作模式", "保存图像")
-        文件名前缀 = kwargs.get("文件名前缀", "ZML")
         保存路径 = kwargs.get("保存路径", "")
         保存路径 = datetime.datetime.now().strftime(保存路径)
-        使用时间戳 = kwargs.get("使用时间戳", "禁用")
-        使用计数器 = kwargs.get("使用计数器", "启用")
-        文件名后缀 = kwargs.get("文件名后缀", "")
-        生成预览 = kwargs.get("生成预览", "启用")
         文本块存储 = kwargs.get("文本块存储", "")
+        文件名前缀 = kwargs.get("文件名前缀", "")
+        文件名后缀 = kwargs.get("文件名后缀", "")
+        使用时间戳 = kwargs.get("使用时间戳", True)
+        使用计数器 = kwargs.get("使用计数器", False)
+        生成预览 = kwargs.get("生成预览", "启用")
         保存同名txt文件 = kwargs.get("保存同名txt文件", "禁用")
-        缩放图像 = kwargs.get("缩放图像", "禁用")
-        缩放比例 = kwargs.get("缩放比例", 1.0)
+        限制图像大小 = kwargs.get("限制图像大小", "禁用")
+        最大分辨率 = kwargs.get("最大分辨率", 1024)
         清除元数据 = kwargs.get("清除元数据", "禁用")
         prompt = kwargs.get("prompt", None)
         extra_pnginfo = kwargs.get("extra_pnginfo", None)
@@ -266,12 +265,12 @@ class ZML_SaveImage:
         if filename_prefix:
             components.append(filename_prefix)
         
-        if 使用时间戳 == "启用":
+        if 使用时间戳:
             timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
             components.append(timestamp)
         
-        if 使用计数器 == "启用":
-            # 仅在“保存图像”模式下增加计数器
+        if 使用计数器:
+            # 仅在"保存图像"模式下增加计数器
             if 操作模式 == "保存图像":
                 counter_value = self.get_next_counter()
                 components.append(f"{counter_value:05d}")
@@ -304,11 +303,18 @@ class ZML_SaveImage:
 
             original_width, original_height = pil_image.size # 获取原始分辨率
 
-            # 处理图像缩放
-            if 缩放图像 == "启用" and 缩放比例 > 0:
-                new_width = int(pil_image.width * 缩放比例)
-                new_height = int(pil_image.height * 缩放比例)
-                pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+            # 处理图像缩放（根据最大分辨率等比缩放）
+            if 限制图像大小 == "启用" and 最大分辨率 > 0:
+                # 计算缩放比例，使图像的长边不超过最大分辨率
+                max_dim = max(pil_image.width, pil_image.height)
+                if max_dim > 最大分辨率:
+                    scale_factor = 最大分辨率 / max_dim
+                    new_width = int(pil_image.width * scale_factor)
+                    new_height = int(pil_image.height * scale_factor)
+                    # 确保宽高都是8的倍数（符合某些模型的要求）
+                    new_width = (new_width // 8) * 8
+                    new_height = (new_height // 8) * 8
+                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
             
             # 获取最终保存图像的分辨率
             saved_width, saved_height = pil_image.size

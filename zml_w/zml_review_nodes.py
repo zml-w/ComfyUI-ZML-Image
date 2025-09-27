@@ -608,21 +608,21 @@ async def get_audio_file(request):
         return web.Response(status=500, text=f"Error reading file: {e}")
 
 # ============================== AnyType HACK ==============================
-# Hack: 一个在“不等于”比较中永远返回 False 的字符串类型，从而在逻辑上“等于”任何东西。
-class AnyType(str):
-    def __ne__(self, __value: object) -> bool:
+# 实现可以匹配任意类型的代理类
+class AlwaysEqualProxy(str):
+    def __eq__(self, _):
+        return True
+
+    def __ne__(self, _):
         return False
 
-# 创建一个 AnyType 的实例，其值为通配符"*"
-any = AnyType("*")
+# 创建一个 AlwaysEqualProxy 的实例，其值为通配符"*"
+any_type = AlwaysEqualProxy("*")
 # =====================================================================================
 
 
 # ============================== 音频播放器节点 ==============================
 class ZML_AudioPlayerNode:
-    # 恢复为终端节点 (Output Node)
-    OUTPUT_NODE = True
-
     def __init__(self):
         self.audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio")
         os.makedirs(self.audio_dir, exist_ok=True)
@@ -644,19 +644,23 @@ class ZML_AudioPlayerNode:
                 "音频文件": (audio_files,),
             },
             "optional": {
-                # 使用 any 对象实例作为类型，而不是字符串 "*"
-                "任意": (any, {}),
+                # 使用 any_type 对象实例作为类型
+                "任意输入": (any_type, {}),
             }
         }
 
-    # 返回类型为空，因为它是一个终端节点
-    RETURN_TYPES = ()
-    FUNCTION = "do_nothing"
+    # 返回任意类型，以便可以连接到任何其他节点
+    RETURN_TYPES = (any_type,)
+    RETURN_NAMES = ("任意输出",)
+    FUNCTION = "play_audio"
     CATEGORY = "image/ZML_图像/工具"
 
-    def do_nothing(self, 音频文件, 任意=None):
-        # 后端什么也不做，返回一个空的 UI 结果即可
-        return {"ui": {"text": ["played audio"]}}
+    def play_audio(self, 音频文件, 任意输入=None):
+        # 后端什么也不做，只是传递输入的任意类型数据
+        # 如果没有输入，则返回一个空元组作为占位符
+        output = 任意输入 if 任意输入 is not None else tuple()
+        # 返回结果，可以连接到其他任何节点
+        return (output,)
 
 
 # ============================== 桥接预览节点 ==============================
@@ -677,7 +681,6 @@ class ZML_ImageMemory:
         return {
             "required": {
                 "关闭输入": ("BOOLEAN", {"default": False}),
-                "保存模式": (["仅内存", "仅本地", "内存+本地"], {"default": "仅内存"}),
             },
             "optional": {
                 "输入图像": ("IMAGE",),
@@ -689,37 +692,19 @@ class ZML_ImageMemory:
     FUNCTION = "store_and_retrieve_image"
     CATEGORY = "image/ZML_图像/工具"
 
-    def store_and_retrieve_image(self, 关闭输入, 保存模式, 输入图像=None):
+    def store_and_retrieve_image(self, 关闭输入, 输入图像=None):
         image_to_output = None
 
         if 关闭输入:
-            # 关闭输入时，根据保存模式获取图像
-            if 保存模式 == "仅内存":
-                image_to_output = self.stored_image
-            elif 保存模式 == "仅本地":
-                image_to_output = self._load_from_local()
-            else:  # 内存+本地
-                image_to_output = self.stored_image if self.stored_image is not None else self._load_from_local()
+            # 关闭输入时，从内存获取图像
+            image_to_output = self.stored_image
         elif 输入图像 is not None:
-            # 有新输入图像时，根据保存模式存储
-            if 保存模式 == "仅内存":
-                self.stored_image = 输入图像
-                image_to_output = 输入图像
-            elif 保存模式 == "仅本地":
-                self._save_to_local(输入图像)
-                image_to_output = 输入图像
-            else:  # 内存+本地
-                self.stored_image = 输入图像
-                self._save_to_local(输入图像)
-                image_to_output = 输入图像
+            # 有新输入图像时，存储到内存
+            self.stored_image = 输入图像
+            image_to_output = 输入图像
         else:
-            # 无新输入图像时，根据保存模式获取
-            if 保存模式 == "仅内存":
-                image_to_output = self.stored_image
-            elif 保存模式 == "仅本地":
-                image_to_output = self._load_from_local()
-            else:  # 内存+本地
-                image_to_output = self.stored_image if self.stored_image is not None else self._load_from_local()
+            # 无新输入图像时，从内存获取
+            image_to_output = self.stored_image
 
         if image_to_output is None:
             default_size = 1
