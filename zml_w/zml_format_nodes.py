@@ -374,6 +374,9 @@ class ZML_TextFormatter:
                 result_lines.append(line)
                 continue
             
+            # 检查原始行是否以逗号结尾（忽略行尾空白）
+            original_line_ends_with_comma = line.rstrip().endswith(',')
+            
             # 分割标签
             tags = [tag.strip() for tag in line.split(',') if tag.strip()]
             
@@ -387,6 +390,11 @@ class ZML_TextFormatter:
             
             # 重新组合该行
             result_line = ', '.join(seen_tags.values())
+            
+            # 如果原始行以逗号结尾，则在处理后也添加逗号
+            if original_line_ends_with_comma:
+                result_line += ','
+                
             result_lines.append(result_line)
         
         # 重新组合所有行
