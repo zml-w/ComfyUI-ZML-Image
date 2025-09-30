@@ -437,7 +437,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageColorAdjust": ZML_ImageColorAdjust,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ZML_ImageDeform": "ZML_图像形变",
+    "ZML_ImageDeform": "ZML_图像形变-液化",
     "ZML_CylindricalProjection": "ZML_圆柱投影",
     "ZML_PanoViewer": "ZML_全景图预览",
     "ZML_ImageColorAdjust": "ZML_可视化调色",

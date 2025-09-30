@@ -1675,12 +1675,170 @@ class ZML_LoadVideoFromPath:
         # 对于其他模式，只要路径或索引改变，就重新加载
         return (文件夹路径, 索引模式, 索引值, 读取帧数上限, 帧率限制)
 
+# ============================== 从路径加载图像V2节点==============================
+class ZML_LoadImageFromPathV2:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "模式": (["选择", "随机", "关闭预览"], {"default": "选择"}),
+                "selected_files_json": ("STRING", {"multiline": False, "default": '{"path": "", "files": []}'}),
+            },
+            "hidden": { "unique_id": "UNIQUE_ID", "prompt": "PROMPT" },
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING",)
+    RETURN_NAMES = ("图像", "文本块",)
+    FUNCTION = "load_images_v2"
+    CATEGORY = "image/ZML_图像/图像"
+    OUTPUT_IS_LIST = (True, False,)
+
+    def _create_placeholder_image(self, size=64) -> torch.Tensor:
+        """创建一个黑色的占位符图像张量"""
+        return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
+
+    def load_images_v2(self, 模式, selected_files_json, **kwargs):
+        try:
+            data = json.loads(selected_files_json)
+            folder_path = data.get("path", "")
+        except (json.JSONDecodeError, TypeError):
+            return ([self._create_placeholder_image()], "")
+
+        selected_files = []
+
+        if 模式 == "选择":
+            selected_files = data.get("files", [])
+        
+        elif 模式 == "随机" or 模式 == "关闭预览":
+            if not folder_path:
+                print("[ZMLv2-随机模式] 警告: 文件夹路径为空。")
+                return ([self._create_placeholder_image()], "")
+            
+            try:
+                target_path = Path(folder_path).resolve()
+                if target_path.is_dir():
+                    all_images = [f for f in target_path.iterdir() if f.is_file() and f.suffix.lower() in supported_image_extensions]
+                    if all_images:
+                        random_file = random.choice(all_images)
+                        selected_files.append(str(random_file.resolve()))
+                    else:
+                        print(f"[ZMLv2-随机模式] 警告: 文件夹 '{target_path}' 中没有找到任何支持的图像。")
+                else:
+                    print(f"[ZMLv2-随机模式] 警告: 路径 '{target_path}' 不是一个有效的目录。")
+            except Exception as e:
+                print(f"[ZMLv2-随机模式] 扫描文件夹时出错: {e}")
+
+        if not selected_files:
+            return ([self._create_placeholder_image()], "")
+
+        image_tensors = []
+        text_blocks = []
+
+        for full_path_str in selected_files:
+            try:
+                image_path = Path(full_path_str).resolve()
+                if not image_path.is_file():
+                    print(f"[ZMLv2] 警告: 跳过不存在的文件: {image_path}")
+                    continue
+
+                with Image.open(image_path) as img:
+                    text_content = img.text.get(DEFAULT_TEXT_BLOCK_KEY, "")
+                    if text_content:
+                        text_blocks.append(text_content)
+                    
+                    img = ImageOps.exif_transpose(img).convert("RGB")
+                    image_np = np.array(img).astype(np.float32) / 255.0
+                    image_tensor = torch.from_numpy(image_np)[None,]
+                    image_tensors.append(image_tensor)
+
+            except Exception as e:
+                print(f"[ZMLv2] 加载图像时出错 '{full_path_str}': {e}")
+                continue
+        
+        if not image_tensors:
+            return ([self._create_placeholder_image()], "")
+
+        final_text = "\n\n".join(text_blocks)
+        
+        return (image_tensors, final_text)
+
+    @classmethod
+    def IS_CHANGED(cls, 模式, selected_files_json, **kwargs):
+        # "随机" 和 "关闭预览" 模式都需要每次强制刷新
+        if 模式 == "随机" or 模式 == "关闭预览":
+            return float("nan")
+        
+        return (selected_files_json,)
+
+# ============================== V2 节点所需的 API 路由 ==============================
+
+@server.PromptServer.instance.routes.get("/zml/v2/list_images")
+async def list_images_v2(request):
+    """API: 根据绝对路径列出目录中的图像文件"""
+    path_param = request.query.get("path", "")
+    if not path_param:
+        return web.json_response({"error": "缺少路径参数"}, status=400)
+
+    try:
+        # 安全性: 解析路径以防止目录遍历攻击 (如 ../)
+        target_path = Path(path_param).resolve()
+
+        # 安全性: 确保路径是一个存在的目录
+        if not target_path.is_dir():
+            return web.json_response({"error": "路径不是一个有效的目录"}, status=404)
+        
+        # 扫描目录中所有支持的图像文件
+        files = [f.name for f in target_path.iterdir() if f.is_file() and f.suffix.lower() in supported_image_extensions]
+        
+        files.sort() # 按名称排序
+        
+        return web.json_response({"path": str(target_path), "files": files})
+
+    except Exception as e:
+        return web.json_response({"error": f"发生错误: {str(e)}"}, status=500)
+
+@server.PromptServer.instance.routes.get("/zml/v2/view_thumb")
+async def view_thumb_v2(request):
+    """API: 根据绝对路径获取图像的缩略图"""
+    path_param = request.query.get("path", "")
+    if not path_param:
+        return web.Response(status=400, text="缺少路径参数")
+
+    try:
+        # 安全性: 解码并解析路径
+        image_path = Path(urllib.parse.unquote(path_param)).resolve()
+
+        # 安全性: 确保它是一个文件且存在
+        if not image_path.is_file():
+            return web.Response(status=404, text="图像文件未找到")
+        
+        # 安全性: 确保它是一个图像文件
+        if image_path.suffix.lower() not in supported_image_extensions:
+            return web.Response(status=400, text="不支持的文件类型")
+
+        # 生成并返回缩略图
+        with Image.open(image_path) as img:
+            img = ImageOps.exif_transpose(img).convert('RGB')
+            img.thumbnail((128, 128)) # 缩略图尺寸
+            
+            from io import BytesIO
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG", quality=85)
+            buffer.seek(0)
+            
+            return web.Response(body=buffer.getvalue(), content_type="image/jpeg")
+
+    except Exception as e:
+        print(f"为 {path_param} 生成v2缩略图时出错: {e}")
+        return web.Response(status=500, text=f"生成缩略图时出错: {e}")
+
 # ============================== 节点注册==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_SaveImage": ZML_SaveImage,
     "ZML_SimpleSaveImage": ZML_SimpleSaveImage,
     "ZML_LoadImage": ZML_LoadImage,
     "ZML_LoadImageFromPath": ZML_LoadImageFromPath,
+    "ZML_LoadImageFromPathV2": ZML_LoadImageFromPathV2,
     "ZML_LoadVideoFromPath": ZML_LoadVideoFromPath,
     "ZML_TagImageLoader": ZML_TagImageLoader,
     "ZML_ClassifyImage": ZML_ClassifyImage, 
@@ -1691,6 +1849,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SimpleSaveImage": "ZML_简易_保存图像",
     "ZML_LoadImage": "ZML_加载图像",
     "ZML_LoadImageFromPath": "ZML_从路径加载图像",
+    "ZML_LoadImageFromPathV2": "ZML_从路径加载图像V2",
     "ZML_LoadVideoFromPath": "ZML_从路径加载视频",
     "ZML_TagImageLoader": "ZML_标签化图像加载器", 
     "ZML_ClassifyImage": "ZML_分类图像", 

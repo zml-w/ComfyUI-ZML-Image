@@ -305,12 +305,34 @@ class ZML_ImageEncryption:
             return (torch.zeros((1, 1, 1, 3)), torch.zeros((1, 1, 1, 3)))
         
         return (encrypted_output, decrypted_output)
+
+#==========================布尔开关节点==========================
+
+class ZML_BooleanSwitch:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "启用": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("开关状态",)
+    FUNCTION = "get_value"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def get_value(self, 启用):
+        return (启用,)
+
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageTransition": ZML_ImageTransition,
     "ZML_ImageEncryption": ZML_ImageEncryption,
+    "ZML_BooleanSwitch": ZML_BooleanSwitch,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageTransition": "ZML_图像过渡动画",
     "ZML_ImageEncryption": "ZML_图像加密",
+    "ZML_BooleanSwitch": "ZML_布尔开关",
 }

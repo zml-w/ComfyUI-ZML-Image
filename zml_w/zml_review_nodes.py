@@ -10,6 +10,9 @@ import json
 from scipy.spatial.distance import cdist
 
 
+# 全局字典，用于存储节点ID和预览图像路径的映射
+node_preview_images = {}
+
 try:
     from ultralytics import YOLO
 except ImportError:
@@ -51,17 +54,67 @@ async def unpause_node(request):
     try:
         data = await request.json()
         node_id = data.get("node_id")
-        selected_output = data.get("selected_output")
-        if node_id is not None and selected_output is not None:
+        
+        if node_id is not None:
             temp_dir = folder_paths.get_temp_directory()
             signal_file = os.path.join(temp_dir, f"zml_unpause_{node_id}.signal")
+            
+            # 检查是否有新格式的通道图像映射数据
+            channels_images_map = data.get("channels_images_map", {})
+            
+            if channels_images_map:
+                # 新格式：将所有通道的映射保存到信号文件
+                # 格式: CHANNELS_MAP|json_dumps(channels_images_map)
+                content = f"CHANNELS_MAP|{json.dumps(channels_images_map)}"
+            else:
+                # 兼容旧格式
+                selected_output = data.get("selected_output")
+                selected_images = data.get("selected_images", [])
+                if selected_output is not None:
+                    content = f"{selected_output}|{json.dumps(selected_images)}"
+                else:
+                    return web.Response(status=400, text="Invalid data format")
+            
             with open(signal_file, "w", encoding="utf-8") as f:
-                f.write(str(selected_output))
+                f.write(content)
             return web.Response(status=200, text="Unpaused")
         else:
-            return web.Response(status=400, text="Node ID or selected output not provided")
+            return web.Response(status=400, text="Node ID not provided")
     except Exception as e:
         return web.Response(status=500, text=f"Error: {e}")
+
+# --- API Endpoint for Preview Images ---
+@server.PromptServer.instance.routes.get("/zml_pause_node/preview/{node_id}")
+async def get_preview_image(request):
+    try:
+        node_id = request.match_info["node_id"]
+        
+        # 获取索引参数，如果没有提供则默认为0
+        index = int(request.query.get("index", 0))
+        
+        # 检查全局字典中是否有该节点的预览图像信息
+        if node_id in node_preview_images:
+            # 现在node_preview_images[node_id]存储的是图像数量
+            image_count = node_preview_images[node_id]
+            
+            # 构建图像路径
+            temp_dir = folder_paths.get_temp_directory()
+            image_path = os.path.join(temp_dir, f"zml_preview_{node_id}_{index}.png")
+            
+            # 检查文件是否存在且索引在有效范围内
+            if os.path.exists(image_path) and 0 <= index < image_count:
+                # 读取图像文件
+                with open(image_path, 'rb') as f:
+                    image_data = f.read()
+                
+                # 返回图像数据，设置正确的MIME类型
+                return web.Response(body=image_data, content_type="image/png")
+        
+        # 如果没有找到图像，返回404错误
+        return web.HTTPNotFound(text="Preview image not found")
+    except Exception as e:
+        print(f"Error serving preview image: {e}")
+        return web.HTTPInternalServerError(text="Error serving preview image")
 
 # --- Compatibility Loader ---
 @contextmanager
@@ -82,22 +135,14 @@ class ZML_AutoCensorNode:
     def ensure_counter_file(self):
         if not os.path.exists(self.counter_file):
             with open(self.counter_file, "w", encoding="utf-8") as f: f.write("0")
-    def increment_and_get_help_text(self):
-        count = 0
-        try:
-            with open(self.counter_file, "r+", encoding="utf-8") as f:
-                content = f.read().strip(); count = int(content) if content.isdigit() else 0; count += 1; f.seek(0); f.write(str(count)); f.truncate()
-        except Exception: count = 1
-        return f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共处理了{count}次！！"
     @classmethod
     def INPUT_TYPES(cls):
         try: model_list = folder_paths.get_filename_list("ultralytics") or []
         except KeyError: model_list = []
-        return {"required": {"原始图像": ("IMAGE",), "YOLO模型": (model_list,), "置信度阈值": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}), "覆盖模式": (["图像", "马赛克"],), "拉伸图像": (["关闭", "启用"], {"default": "关闭"}), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256, "step": 1}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),}, "optional": { "覆盖图": ("IMAGE",), }}
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING"); RETURN_NAMES = ("处理后图像", "检测遮罩", "Help"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/工具"
-    def process(self, 原始图像, YOLO模型, 置信度阈值, 覆盖模式, 拉伸图像, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
-        help_text = self.increment_and_get_help_text()
-        if not YOLO模型: _, h, w, _ = 原始图像.shape; return (原始图像, torch.zeros((1, h, w), dtype=torch.float32), help_text)
+        return {"required": {"原始图像": ("IMAGE",), "YOLO模型": (model_list,), "置信度阈值": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}), "覆盖模式": (["图像", "马赛克"],), "拉伸图像": ("BOOLEAN", {"default": False}), "检测模式": ("BOOLEAN", {"default": False, "description": "开启后如果YOLO检测到目标，则输出覆盖图像"}), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256, "step": 1}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),}, "optional": { "覆盖图": ("IMAGE",), }}
+    RETURN_TYPES = ("IMAGE", "MASK"); RETURN_NAMES = ("处理后图像", "检测遮罩"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/工具"
+    def process(self, 原始图像, YOLO模型, 置信度阈值, 覆盖模式, 拉伸图像, 检测模式, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
+        if not YOLO模型: _, h, w, _ = 原始图像.shape; return (原始图像, torch.zeros((1, h, w), dtype=torch.float32))
         if 覆盖模式 == "图像" and 覆盖图 is None: 覆盖图 = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
         model_path = folder_paths.get_full_path("ultralytics", YOLO模型)
         if not model_path: raise FileNotFoundError(f"模型文件 '{YOLO模型}' 未找到。")
@@ -105,15 +150,51 @@ class ZML_AutoCensorNode:
         source_pil = self.tensor_to_pil(原始图像); source_cv2 = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR); h, w = source_cv2.shape[:2]
         results = model(source_pil, conf= 置信度阈值, verbose=False)
         final_combined_mask = Image.new('L', (w, h), 0)
-        if len(results[0]) > 0:
+        has_detections = len(results[0]) > 0
+        
+        if has_detections and 检测模式 and 覆盖模式 == "图像":
+            # 当检测到目标且检测模式开启时，直接返回覆盖图像（调整大小到原始图像尺寸）
+            overlay_pil = self.tensor_to_pil(覆盖图)
+            if 拉伸图像:
+                # 拉伸到原始图像尺寸
+                overlay_pil = overlay_pil.resize((w, h), Image.LANCZOS)
+            else:
+                # 保持比例，居中放置，透明背景
+                target_size = max(w, h)
+                result_image = Image.new('RGBA', (target_size, target_size), (0, 0, 0, 0))
+                overlay_ratio = min(target_size / overlay_pil.width, target_size / overlay_pil.height)
+                new_width = int(overlay_pil.width * overlay_ratio)
+                new_height = int(overlay_pil.height * overlay_ratio)
+                resized_overlay = overlay_pil.resize((new_width, new_height), Image.LANCZOS)
+                paste_x = (target_size - new_width) // 2
+                paste_y = (target_size - new_height) // 2
+                # 确保使用正确的透明度掩码
+                if resized_overlay.mode == 'RGBA':
+                    # 如果有alpha通道，使用它作为掩码
+                    result_image.paste(resized_overlay, (paste_x, paste_y), resized_overlay.split()[-1])
+                else:
+                    # 如果没有alpha通道，直接粘贴（不使用透明度掩码）
+                    result_image.paste(resized_overlay, (paste_x, paste_y))
+                # 裁剪到原始图像尺寸
+                crop_x = (target_size - w) // 2
+                crop_y = (target_size - h) // 2
+                overlay_pil = result_image.crop((crop_x, crop_y, crop_x + w, crop_y + h))
+            # 转换为OpenCV格式
+            source_cv2 = cv2.cvtColor(np.array(overlay_pil.convert('RGB')), cv2.COLOR_RGB2BGR)
+        elif has_detections:
             for result in results[0]:
                 mask_cv, mask_type = self.get_mask(result, w, h)
                 if mask_cv is None: continue
                 processed_mask_cv = self.process_mask(mask_cv, 遮罩缩放系数, 遮罩膨胀)
                 source_cv2 = self.apply_overlay(source_cv2, processed_mask_cv, 覆盖模式, 覆盖图, 马赛克数量, 拉伸图像, mask_type)
                 final_combined_mask.paste(Image.fromarray(processed_mask_cv), (0,0), Image.fromarray(processed_mask_cv))
+        # 未检测到目标时，保持原始图像不变
+        
         final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
-        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1), help_text)
+        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1))
+        
+        final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
+        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1))
     def get_mask(self, result, w, h):
         if hasattr(result, 'masks') and result.masks: return (cv2.resize(result.masks.data[0].cpu().numpy(), (w, h), interpolation=cv2.INTER_NEAREST) * 255).astype(np.uint8), 'segm'
         elif hasattr(result, 'boxes') and result.boxes: box = result.boxes.xyxy[0].cpu().numpy().astype(int); mask_cv = np.zeros((h, w), dtype=np.uint8); cv2.rectangle(mask_cv, (box[0], box[1]), (box[2], box[3]), 255, -1); return mask_cv, 'bbox' # 修正了box[1]这里的问题
@@ -135,29 +216,164 @@ class ZML_AutoCensorNode:
             small_roi = cv2.resize(roi, (mosaic_count, max(1, int(mosaic_count * (h/w if w > 0 else 1)))), interpolation=cv2.INTER_LINEAR)
             mosaic_roi = cv2.resize(small_roi, (w, h), interpolation=cv2.INTER_NEAREST); source_cv2[y:y+h, x:x+w][mask_roi.astype(bool)] = mosaic_roi[mask_roi.astype(bool)]
         elif mode == "图像":
-            overlay_cv2_bgr = cv2.cvtColor(np.array(self.tensor_to_pil(overlay_image_tensor).convert("RGB")), cv2.COLOR_RGB2BGR)
-            if mask_type == 'bbox' and stretch_image == '关闭':
-                oh, ow = overlay_cv2_bgr.shape[:2]; box_aspect = w/h if h>0 else 1; overlay_aspect = ow/oh if oh>0 else 1
-                if box_aspect > overlay_aspect: new_h, new_w = h, int(overlay_aspect * h)
-                else: new_w, new_h = w, int(w / overlay_aspect)
-                scaled_overlay = cv2.resize(overlay_cv2_bgr, (new_w, new_h)); canvas = np.zeros((h, w, 3), dtype=np.uint8)
-                paste_x, paste_y = (w - new_w) // 2, (h - new_h) // 2; canvas[paste_y:paste_y+new_h, paste_x:paste_x+new_w] = scaled_overlay; resized_overlay = canvas
-            else: resized_overlay = cv2.resize(overlay_cv2_bgr, (w, h))
-            np.copyto(source_cv2[y:y+h, x:x+w], resized_overlay, where=np.stack([mask_roi]*3, axis=-1).astype(bool))
+            # 不要强制转换为RGB，保留原始图像模式（可能包含alpha通道）
+            overlay_pil = self.tensor_to_pil(overlay_image_tensor)
+            
+            # 计算目标尺寸
+            # 支持布尔值和字符串值的stretch_image参数
+            should_stretch = stretch_image if isinstance(stretch_image, bool) else stretch_image == '启用'
+            if mask_type == 'bbox' and not should_stretch:
+                oh, ow = overlay_pil.size[::-1]
+                box_aspect = w/h if h>0 else 1
+                overlay_aspect = ow/oh if oh>0 else 1
+                if box_aspect > overlay_aspect: 
+                    new_h, new_w = h, int(overlay_aspect * h)
+                else: 
+                    new_w, new_h = w, int(w / overlay_aspect)
+                # 调整覆盖图大小
+                resized_overlay_pil = overlay_pil.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                # 创建透明画布居中放置
+                canvas = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+                paste_x, paste_y = (w - new_w) // 2, (h - new_h) // 2
+                canvas.paste(resized_overlay_pil, (paste_x, paste_y))
+                final_overlay_pil = canvas
+            else: 
+                final_overlay_pil = overlay_pil.resize((w, h), Image.Resampling.LANCZOS)
+                # 确保是RGBA格式
+                if final_overlay_pil.mode != 'RGBA':
+                    final_overlay_pil = final_overlay_pil.convert('RGBA')
+            
+            # 将PIL图像转换为numpy数组 (PIL使用RGB/RGBA格式)
+            overlay_np = np.array(final_overlay_pil)
+            
+            # 由于source_cv2是BGR格式，需要将overlay_np的RGB转换为BGR
+            if overlay_np.shape[2] == 4:  # RGBA
+                # 提取RGB和A通道
+                overlay_rgb = overlay_np[:, :, :3]
+                alpha = overlay_np[:, :, 3:4] / 255.0  # 归一化到0-1
+                
+                # 将RGB转换为BGR以匹配source_cv2的颜色空间
+                overlay_bgr = overlay_rgb[:, :, ::-1].copy()
+                
+                # 创建应用遮罩的alpha通道
+                mask_normalized = mask_roi.astype(np.float32) / 255.0
+                mask_3channel = np.stack([mask_normalized] * 3, axis=-1)
+                
+                # 混合：目标 = 源*(1-混合系数) + 覆盖*混合系数
+                # 混合系数 = alpha * 遮罩
+                blend_factor = alpha * mask_3channel
+                
+                # 只对遮罩区域应用混合
+                for c in range(3):
+                    roi[:, :, c] = (roi[:, :, c] * (1 - blend_factor[:, :, c]) + 
+                                   overlay_bgr[:, :, c] * blend_factor[:, :, c]).astype(np.uint8)
+            else:  # RGB
+                # 将RGB转换为BGR以匹配source_cv2的颜色空间
+                overlay_bgr = overlay_np[:, :, :3][:, :, ::-1].copy()
+                mask_3channel = np.stack([mask_roi] * 3, axis=-1).astype(bool)
+                np.copyto(roi, overlay_bgr, where=mask_3channel)
         return source_cv2
     def tensor_to_pil(self, tensor): return Image.fromarray((tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
     def pil_to_tensor(self, pil_image): return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
 class ZML_CustomCensorNode(ZML_AutoCensorNode):
     @classmethod
-    def INPUT_TYPES(cls): return {"required": {"原始图像": ("IMAGE",), "遮罩": ("MASK",), "覆盖模式": (["图像", "马赛克"],), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128}), }, "optional": { "覆盖图": ("IMAGE",), }}
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING"); RETURN_NAMES = ("处理后图像", "处理后遮罩", "Help")
-    def process(self, 原始图像, 遮罩, 覆盖模式, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
-        help_text = self.increment_and_get_help_text(); source_cv2 = cv2.cvtColor(np.array(self.tensor_to_pil(原始图像)), cv2.COLOR_RGB2BGR)
-        mask_cv = (遮罩.squeeze(0).cpu().numpy() * 255).astype(np.uint8); processed_mask_cv = self.process_mask(mask_cv, 遮罩缩放系数, 遮罩膨胀)
-        source_cv2 = self.apply_overlay(source_cv2, processed_mask_cv, 覆盖模式, 覆盖图 or torch.zeros((1, 1, 1, 3)), 马赛克数量, "启用", 'bbox')
+    def INPUT_TYPES(cls): return {"required": {"原始图像": ("IMAGE",), "遮罩": ("MASK",), "覆盖模式": (["图像", "马赛克"],), "拉伸图像": ("BOOLEAN", {"default": False}), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128}), }, "optional": { "覆盖图": ("IMAGE",), }}
+    RETURN_TYPES = ("IMAGE", "MASK"); RETURN_NAMES = ("处理后图像", "处理后遮罩")
+    def process(self, 原始图像, 遮罩, 覆盖模式, 拉伸图像, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
+        source_cv2 = cv2.cvtColor(np.array(self.tensor_to_pil(原始图像)), cv2.COLOR_RGB2BGR)
+        mask_cv = (遮罩.squeeze(0).cpu().numpy() * 255).astype(np.uint8)
+        
+        # 找到所有遮罩轮廓
+        contours, _ = cv2.findContours(mask_cv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # 创建最终处理后的遮罩
+        final_mask_cv = np.zeros_like(mask_cv)
+        
+        # 对每个轮廓单独处理
+        for contour in contours:
+            # 计算轮廓面积
+            contour_area = cv2.contourArea(contour)
+            
+            # 只处理面积大于0的轮廓
+            if contour_area > 0:
+                # 创建单个遮罩
+                single_mask = np.zeros_like(mask_cv)
+                cv2.drawContours(single_mask, [contour], -1, 255, -1)
+                
+                # 处理单个遮罩
+                processed_single_mask = self.process_mask(single_mask, 遮罩缩放系数, 遮罩膨胀)
+                
+                # 应用覆盖
+                source_cv2 = self.apply_overlay(source_cv2, processed_single_mask, 覆盖模式, 
+                                              torch.zeros((1, 1, 1, 3)) if 覆盖图 is None else 覆盖图, 
+                                              马赛克数量, 拉伸图像, 'bbox')
+                
+                # 将处理后的遮罩添加到最终遮罩
+                final_mask_cv = cv2.bitwise_or(final_mask_cv, processed_single_mask)
+        
         final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
-        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(Image.fromarray(processed_mask_cv)).squeeze(-1), help_text)
+        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(Image.fromarray(final_mask_cv)).squeeze(-1))
+
+class ZML_ImageSelectorNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像1": ("IMAGE",),  # 必选接口
+                "索引选择": ("INT", {"default": 1, "min": 1, "max": 5, "step": 1}),  # 1-5对应五个图像
+                "随机选择": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {
+                "图像2": ("IMAGE",),
+                "图像3": ("IMAGE",),
+                "图像4": ("IMAGE",),
+                "图像5": ("IMAGE",),
+            }
+        }
+    
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("选择的图像",)
+    FUNCTION = "select_image"
+    CATEGORY = "image/ZML_图像/图像"
+    
+    # 添加IS_CHANGED方法确保每次运行都重新计算随机结果
+    def IS_CHANGED(self, 随机选择, **kwargs):
+        # 如果启用了随机选择，每次都强制重新计算
+        if 随机选择:
+            import time
+            return float(time.time())
+        # 否则使用默认行为
+        return ""
+
+    
+    def select_image(self, 图像1, 索引选择, 随机选择, 图像2=None, 图像3=None, 图像4=None, 图像5=None):
+        # 创建图像列表，确保第一个图像总是存在
+        images = [图像1]
+        
+        # 添加其他可选图像
+        if 图像2 is not None:
+            images.append(图像2)
+        if 图像3 is not None:
+            images.append(图像3)
+        if 图像4 is not None:
+            images.append(图像4)
+        if 图像5 is not None:
+            images.append(图像5)
+        
+        # 如果启用随机选择
+        if 随机选择 and len(images) > 1:
+            import random
+            selected_image = random.choice(images)
+        else:
+            # 根据索引选择图像，将1-5的索引转换为0-4的列表索引
+            # 如果索引超出范围则选择第一个图像
+            index = min(索引选择 - 1, len(images) - 1)
+            if index < 0:  # 防止索引为0的情况
+                index = 0
+            selected_image = images[index]
+        
+        return (selected_image,)
 
 class ZML_MaskCropNode:
     @classmethod
@@ -242,7 +458,6 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
                 "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),
                 "描边颜色": ("STRING", {"default": "#FF0000", "tooltip": "描边颜色，十六进制代码 (例如 #RRGGBB)。默认红色。", "pysssss.color": True}),
                 "描边厚度": ("INT", {"default": 2, "min": 0, "max": 30, "step": 1}),
-                "外扩描边像素": ("INT", {"default": 0, "min": 0, "max": 50, "step": 1}),
                 "保持裁剪图像原始分辨率": ("BOOLEAN", {"default": False, "tooltip": "如果为True，裁剪图像将保持原始输入图像的分辨率并填充透明像素；如果为False，裁剪图像将自动剪裁周围的透明区域，只保留最小有效内容。"}),
             }
         }
@@ -251,7 +466,7 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
     FUNCTION = "process_yolo_to_mask"
     CATEGORY = "image/ZML_图像/遮罩" # 放在遮罩分类下
 
-    def process_yolo_to_mask(self, 图像, YOLO模型, 置信度阈值, 遮罩缩放系数, 遮罩膨胀, 描边颜色, 描边厚度, 外扩描边像素, 保持裁剪图像原始分辨率):
+    def process_yolo_to_mask(self, 图像, YOLO模型, 置信度阈值, 遮罩缩放系数, 遮罩膨胀, 描边颜色, 描边厚度, 保持裁剪图像原始分辨率):
         if not YOLO模型: 
             _, h, w, _ = 图像.shape
             # 返回空遮罩、全白反转遮罩、原始图像和全黑图像作为裁剪图像
@@ -313,28 +528,8 @@ class ZML_YoloToMask(ZML_AutoCensorNode): # 继承自 ZML_AutoCensorNode 以复�
         stroked_image_cv2 = source_cv2_bgr.copy() 
 
         if 描边厚度 > 0 and len(all_contours_to_draw) > 0:
-            # 描边前先对外扩描边像素进行处理（如果大于0）
-            if 外扩描边像素 > 0:
-                # 对每个轮廓进行外扩处理
-                expanded_contours = []
-                for contour in all_contours_to_draw:
-                    # 创建一个只包含当前轮廓的空白遮罩
-                    temp_mask = np.zeros_like(source_cv2_bgr[:,:,0], dtype=np.uint8)
-                    cv2.drawContours(temp_mask, [contour], -1, 255, cv2.FILLED) # Use 255 and cv2.FILLED to make a solid mask
-                    
-                    # 膨胀这个遮罩
-                    kernel = np.ones((外扩描边像素 * 2 + 1, 外扩描边像素 * 2 + 1), np.uint8)
-                    dilated_mask = cv2.dilate(temp_mask, kernel, iterations=1)
-                    
-                    # 找到新遮罩的轮廓
-                    new_contours, _ = cv2.findContours(dilated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    expanded_contours.extend(new_contours) # 将膨胀后的轮廓加入列表
-                
-                # 在描边图像上绘制膨胀后的轮廓描边
-                cv2.drawContours(stroked_image_cv2, expanded_contours, -1, line_color_bgr_tuple, 描边厚度)
-            else:
-                # 直接绘制原始轮廓的描边
-                cv2.drawContours(stroked_image_cv2, all_contours_to_draw, -1, line_color_bgr_tuple, 描边厚度)
+            # 直接使用处理后的遮罩轮廓绘制描边，确保描边大小和遮罩大小一致
+            cv2.drawContours(stroked_image_cv2, all_contours_to_draw, -1, line_color_bgr_tuple, 描边厚度)
 
         # 将描边图像从OpenCV BGR格式转换为ComfyUI的IMAGE张量格式 (B, H, W, 3)
         stroked_image_pil = Image.fromarray(cv2.cvtColor(stroked_image_cv2, cv2.COLOR_BGR2RGB))
@@ -505,35 +700,53 @@ class ZML_ImageRotate:
         return (output_tensor,)
 
 class ZML_PauseNode:
+    # 启用OUTPUT_NODE，使其能在UI中预览图像
+    OUTPUT_NODE = True
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "暂停时长": ("INT", {"default": 15, "min": 0, "max": 3600}),
                 "占位符大小": (["1x1", "64x64"],),
-            },
-            "optional": {
                 "图像": ("IMAGE",),
             },
             "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
 
-    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "STRING",)
-    RETURN_NAMES = ("图像_1", "图像_2", "图像_3", "help",)
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE",)
+    RETURN_NAMES = ("图像_1", "图像_2", "图像_3",)
     FUNCTION = "pause_workflow"
     CATEGORY = "image/ZML_图像/工具"
 
-    def pause_workflow(self, 暂停时长, 占位符大小, 图像=None, prompt=None, unique_id=None):
-        help_text = "如果后续的节点要连上VAE和采样器，那需要将占位符大小改为64x64像素。如果只是对图像进行处理，则可以选择1x1像素。如果后面接保存图像节点，那推荐你使用我的‘ZML_保存图像’节点，它在收到1*1的图像和64*64的纯黑图像时并不会保存，和这个节点完美契合。"
-
+    def pause_workflow(self, 占位符大小, 图像, prompt=None, unique_id=None):
         size = 64 if 占位符大小 == "64x64" else 1
+        real_output = 图像
+        dummy_image = torch.zeros((1, size, size, 3), dtype=图像.dtype, device=图像.device)
 
-        if 图像 is None:
-            dummy_image = torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
-            real_output = None
-        else:
-            dummy_image = torch.zeros((1, size, size, 3), dtype=图像.dtype, device=图像.device)
-            real_output = 图像
+        # 实现图像预览功能
+        if unique_id is not None:
+            try:
+                # 将图像保存到临时目录用于预览
+                temp_dir = folder_paths.get_temp_directory()
+                
+                # 保存所有图像用于预览
+                for i in range(len(图像)):
+                    preview_path = os.path.join(temp_dir, f"zml_preview_{unique_id}_{i}.png")
+                    
+                    # 获取第i张图像并转换为PIL格式
+                    img_tensor = 图像[i].clone()
+                    img_tensor = img_tensor.mul(255).byte().cpu().numpy()
+                    img_pil = Image.fromarray(img_tensor)
+                    
+                    # 保存预览图像
+                    img_pil.save(preview_path)
+                
+                # 将图像数量保存到全局字典中
+                node_preview_images[str(unique_id)] = len(图像)
+                
+            except Exception as e:
+                # 如果预览失败，不影响节点正常功能
+                print(f"保存预览图像到全局字典时出错: {e}")
 
         node_id = unique_id
         temp_dir = folder_paths.get_temp_directory()
@@ -548,34 +761,106 @@ class ZML_PauseNode:
         start_time = time.time()
 
         selected_path = 0
+        selected_images_indices = []
         interrupted = False
+        channels_images_map = None  # 新增：用于存储多通道图像映射
 
-        while (time.time() - start_time) < 暂停时长:
+        # 无限期等待直到收到用户操作信号
+        while True:
             if os.path.exists(signal_file):
                 try:
                     with open(signal_file, "r", encoding="utf-8") as f:
-                        content = f.read(); selected_path = int(content)
+                        content = f.read()
+                    
+                    # 尝试解析信号文件内容
+                    if '|' in content:
+                        parts = content.split('|', 1)
+                        
+                        # 检测是否是新的多通道格式
+                        if parts[0] == "CHANNELS_MAP":
+                            try:
+                                # 解析通道-图像映射
+                                channels_images_map = json.loads(parts[1])
+                            except:
+                                channels_images_map = {}
+                        else:
+                            # 处理旧格式：单个通道和图像列表
+                            try:
+                                selected_path = int(parts[0])
+                                # 尝试解析选中的图像索引列表
+                                try:
+                                    selected_images_indices = json.loads(parts[1])
+                                except:
+                                    selected_images_indices = []
+                            except:
+                                # 兼容最旧的格式
+                                selected_path = int(content)
+                                selected_images_indices = []
+                    else:
+                        # 兼容旧格式
+                        selected_path = int(content)
+                        selected_images_indices = []
+                    
                     interrupted = True
                     break
                 except Exception as e:
                     pass
             time.sleep(0.1)
 
-        if not interrupted:
-            selected_path = 0
-
         outputs = [dummy_image, dummy_image, dummy_image]
 
-        active_output = real_output if real_output is not None else dummy_image
-
-        if 0 <= selected_path < len(outputs):
-            outputs[selected_path] = active_output
+        # 处理新的多通道格式
+        if channels_images_map:
+            for channel_str, indices in channels_images_map.items():
+                try:
+                    # 将通道字符串转换为整数，然后转换为0-index
+                    channel_index = int(channel_str) - 1
+                    
+                    # 确保通道索引有效
+                    if 0 <= channel_index < len(outputs):
+                        # 收集该通道选中的图像
+                        selected_images = []
+                        for idx in indices:
+                            if 0 <= idx < len(real_output):
+                                selected_images.append(real_output[idx])
+                        
+                        # 如果有选中的图像，将它们合并为该通道的输出
+                        if selected_images:
+                            outputs[channel_index] = torch.stack(selected_images)
+                except Exception as e:
+                    print(f"处理通道 {channel_str} 时出错: {e}")
         else:
-            outputs[0] = active_output
+            # 处理旧的单通道格式
+            active_output = real_output
+            
+            # 如果有选中的图像索引，过滤输出
+            if selected_images_indices:
+                # 创建一个空的张量，用于存储选中的图像
+                selected_images = []
+                
+                # 收集选中的图像
+                for idx in selected_images_indices:
+                    if 0 <= idx < len(real_output):
+                        selected_images.append(real_output[idx])
+                
+                # 如果有选中的图像，将它们合并为新的输出
+                if selected_images:
+                    active_output = torch.stack(selected_images)
+                else:
+                    active_output = dummy_image
 
-        return tuple(outputs) + (help_text,)
+            # 根据选中的输出路径设置输出
+            if 0 <= selected_path < len(outputs):
+                outputs[selected_path] = active_output
+            else:
+                outputs[0] = active_output
 
-# --- API Endpoint (For Audio Player) ---
+        # 返回结果
+        output_tuple = tuple(outputs)
+        
+        # 只保留第一个预览图像保存逻辑，移除UI输出以避免与JS端预览功能冲突
+        return output_tuple
+
 @server.PromptServer.instance.routes.get("/zml/get_audio")
 async def get_audio_file(request):
     filename = request.query.get('filename')
@@ -1337,7 +1622,7 @@ class ZML_LimitImageAspect:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("处理后图像",)
     FUNCTION = "adjust_aspect_ratio"
-    CATEGORY = "image/ZML_图像/图像" # 分类为 ZML_图像/图像
+    CATEGORY = "image/ZML_图像/图像"
 
     def _tensor_to_pil(self, tensor: torch.Tensor) -> Image.Image:
         """Helper to convert ComfyUI IMAGE tensor to PIL Image (RGBA)."""
@@ -1506,6 +1791,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_LimitMaskShape": ZML_LimitMaskShape,
     "ZML_LimitImageAspect": ZML_LimitImageAspect,
     "ZML_MaskCropNode": ZML_MaskCropNode,
+    "ZML_ImageSelectorNode": ZML_ImageSelectorNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1515,7 +1801,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MaskSplitNode": "ZML_遮罩分割",
     "ZML_MaskSplitNode_Five": "ZML_遮罩分割-五",
     "ZML_ImageRotate": "ZML_图像旋转",
-    "ZML_PauseNode": "ZML_图像暂停",
+    "ZML_PauseNode": "ZML_图像暂停选择",
     "ZML_AudioPlayerNode": "ZML_音频播放器",
     "ZML_ImageMemory": "ZML_桥接预览图像",
     "ZML_MaskSeparateDistance": "ZML_遮罩分离-二",
@@ -1524,4 +1810,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LimitMaskShape": "ZML_限制遮罩形状",
     "ZML_LimitImageAspect": "ZML_限制图像比例",
     "ZML_MaskCropNode": "ZML_遮罩裁剪",
+    "ZML_ImageSelectorNode": "ZML_多图选择",
 }
