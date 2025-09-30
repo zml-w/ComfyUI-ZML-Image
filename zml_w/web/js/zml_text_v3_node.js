@@ -1147,17 +1147,17 @@ function createPresetTextItemDOM(preset) {
 function createPresetFolderItemDOM(folder) {
     const folderCard = createEl("div", "zml-preset-folder-card", {
         style: `
-            background-color: #FFF3CD; // 黄色背景色
-            border: 1px solid #FFEAA7;
+            background-color: transparent; // 移除默认黄色背景
+            border: 1px solid ${adjustBrightness(ZML_PRESET_BASE_COLOR, 40)};
             border-radius: 8px;
             padding: 5px; 
             margin-bottom: 5px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
             transition: background-color 0.2s ease, box-shadow 0.2s ease;
         `
     });
-    folderCard.onmouseenter = (e) => { e.target.style.backgroundColor = '#FFEAA7'; e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)'; };
-    folderCard.onmouseleave = (e) => { e.target.style.backgroundColor = '#FFF3CD'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)'; };
+    folderCard.onmouseenter = (e) => { e.target.style.backgroundColor = adjustBrightness(ZML_PRESET_BASE_COLOR, 80); e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'; };
+    folderCard.onmouseleave = (e) => { e.target.style.backgroundColor = 'transparent'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.05)'; };
 
     const header = createEl("div", "zml-preset-folder-header", {
         style: `
@@ -2038,7 +2038,7 @@ app.registerExtension({
                     this.compactView = this.compactView ?? false;
                     this.isLocked = this.isLocked ?? false;
                     this.titleWidth = this.titleWidth ?? 80;
-                    this.folderColor = this.folderColor ?? "#FFF3CD"; // 默认黄色文件夹背景
+                    this.folderColor = this.folderColor ?? "#30353C"; // 深色背景
                     this.textboxColor = this.textboxColor ?? "#3a3a3a"; // 文本框背景颜色
                     this.textboxDisabledColor = this.textboxDisabledColor ?? "#2a2a2a"; // 禁用的文本框背景颜色
                     this.textboxBorderColor = this.textboxBorderColor ?? "#555"; // 文本框边框颜色
@@ -2807,7 +2807,7 @@ app.registerExtension({
                 if (obj.titleWidth !== undefined) {
                     this.titleWidth = obj.titleWidth;
                 }
-                this.folderColor = obj.folderColor ?? "#FFF3CD"; // 默认黄色文件夹背景
+                this.folderColor = obj.folderColor ?? "#30353C"; // 深色背景
                     this.textboxColor = obj.textboxColor ?? "#3a3a3a";
                     this.textboxDisabledColor = obj.textboxDisabledColor ?? "#2a2a2a";
                     this.textboxBorderColor = obj.textboxBorderColor ?? "#555";

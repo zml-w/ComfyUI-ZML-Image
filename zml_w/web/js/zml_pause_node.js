@@ -1,133 +1,13 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-// =================================================================
-// ZML_PauseNode: FLOATING UI AND LOGIC
-// =================================================================
+// 布尔开关节点的最小尺寸常量
+const ZML_BOOLEAN_SWITCH_MIN_WIDTH = 270;
+const ZML_BOOLEAN_SWITCH_MIN_HEIGHT = 180;
 
-
-let currentlyPausedNodeId = null, countdownIntervalId = null, isDragging = false;
-let dragStartPos = { x: 0, y: 0 }, elementStartPos = { x: 0, y: 0 };
-const floatingContainer = document.createElement("div");
-
-// Calculate and set the default center position for the floating ball
-Object.assign(floatingContainer.style, {
-    position: "fixed",
-    display: "none",
-    flexDirection: "column",
-    alignItems: "center",
-    backgroundColor: "rgba(40, 40, 40, 0.85)",
-    borderRadius: "12px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-    backdropFilter: "blur(8px)",
-    userSelect: "none",
-    transition: "transform 0.2s ease",
-    padding: "8px",
-    zIndex: "9999", 
-    bottom: "auto",
-    right: "auto",
-});
-
-const mainButton = document.createElement("button");
-mainButton.textContent = "选择输出的管道";
-Object.assign(mainButton.style, {
-    padding: "6px 12px",
-    background: "linear-gradient(45deg, #4a90e2, #7aaee0)",
-    color: "white",
-    border: "none",
-    borderRadius: "40px",
-    cursor: "pointer",
-    fontSize: "14px",
-    lineHeight: "1",
-    width: "auto",
-    height: "auto",
-    backgroundImage: "none",
-    transition: "background 0.3s ease, transform 0.2s ease",
-});
-mainButton.onmouseover = () => { mainButton.style.background = "linear-gradient(45deg, #3a7bd5, #6aa0de)"; };
-mainButton.onmouseout = () => { mainButton.style.background = "linear-gradient(45deg, #4a90e2, #7aaee0)"; };
-
-
-const countdownText = document.createElement("div");
-countdownText.style.cssText = "color: white; font-size: 16px; font-weight: bold; text-align: center; padding: 6px 0; padding-top:2px;";
-const choicePanel = document.createElement("div");
-choicePanel.style.cssText = "display: none; flex-direction: column; padding-top: 6px; gap: 6px; width: 100%;";
-for (let i = 0; i < 3; i++) {
-    const choiceButton = document.createElement("button");
-    choiceButton.textContent = `执行路径 ${i + 1}`;
-    Object.assign(choiceButton.style, { padding: "8px", backgroundColor: "#4a90e2", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px" });
-    choiceButton.addEventListener("click", async () => {
-        if (!currentlyPausedNodeId) return;
-        try {
-            await api.fetchApi("/zml/unpause", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ node_id: currentlyPausedNodeId, selected_output: i }),
-            });
-        } catch (error) {
-            console.error(`[ZML_PauseNode] Failed to unpause with path ${i}:`, error);
-        } finally {
-            stopAndHidePauseUI();
-        }
-    });
-    choicePanel.appendChild(choiceButton);
-}
-floatingContainer.append(mainButton, countdownText, choicePanel);
-document.body.appendChild(floatingContainer);
-
-function centerFloatingContainer() {
-    floatingContainer.style.visibility = "hidden";
-    floatingContainer.style.display = "flex";
-    const containerWidth = floatingContainer.offsetWidth;
-    const containerHeight = floatingContainer.offsetHeight;
-    floatingContainer.style.left = `${(window.innerWidth - containerWidth) / 2}px`;
-    floatingContainer.style.top = `${(window.innerHeight - containerHeight) / 2}px`;
-    floatingContainer.style.visibility = "visible";
-}
-
-mainButton.addEventListener("click", (e) => {
-    if (isDragging) return;
-    choicePanel.style.display = choicePanel.style.display === "flex" ? "none" : "flex";
-});
-
-floatingContainer.addEventListener("mousedown", (e) => {
-    floatingContainer.style.bottom = "auto";
-    floatingContainer.style.right = "auto";
-    dragStartPos = { x: e.clientX, y: e.clientY };
-    const rect = floatingContainer.getBoundingClientRect();
-    elementStartPos = { x: rect.left, y: rect.top };
-    isDragging = false;
-    function onMouseMove(e) {
-        const dx = e.clientX - dragStartPos.x, dy = e.clientY - dragStartPos.y;
-        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true;
-        if (isDragging) {
-            floatingContainer.style.cursor = "move";
-            floatingContainer.style.left = `${elementStartPos.x + dx}px`;
-            floatingContainer.style.top = `${elementStartPos.y + dy}px`;
-        }
-    }
-    function onMouseUp() {
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        floatingContainer.style.cursor = "default";
-    }
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-});
-
-window.addEventListener("resize", () => {
-    if (floatingContainer.style.display === "flex" && !isDragging) {
-        centerFloatingContainer();
-    }
-});
-
-function stopAndHidePauseUI() {
-    if (countdownIntervalId) clearInterval(countdownIntervalId);
-    countdownIntervalId = null;
-    floatingContainer.style.display = "none";
-    choicePanel.style.display = "none";
-    currentlyPausedNodeId = null;
-}
+// 暂停节点的最小尺寸常量
+const ZML_PAUSE_NODE_MIN_WIDTH = 265;
+const ZML_PAUSE_NODE_MIN_HEIGHT = 350;
 
 // =================================================================
 // ZML_AudioPlayerNode: HELPER FUNCTION AND GLOBAL STATE
@@ -432,6 +312,1095 @@ app.registerExtension({
                 });
             };
         }
+        // --- Add image preview to ZML_PauseNode ---
+        else if (nodeData.name === "ZML_PauseNode") {
+            const onNodeCreated = nodeType.prototype.onNodeCreated;
+            
+            nodeType.prototype.onNodeCreated = function () {
+                onNodeCreated?.apply(this, arguments);
+                
+                // 检查是否已经有预览图像容器，如果有则不重复添加
+                if (this.widgets.find(w => w.name === "预览")) {
+                    return;
+                }
+                
+                // 预先定义CSS样式
+                if (!document.getElementById('zml-pause-preview-styles')) {
+                    const styleSheet = document.createElement('style');
+                    styleSheet.id = 'zml-pause-preview-styles';
+                    styleSheet.textContent = `
+                        .zml-node-image-container {
+                            border: 1px solid #444;
+                            border-radius: 8px;
+                            background-color: #2a2a2a;
+                            padding: 8px;
+                            width: 100%;
+                            box-sizing: border-box;
+                            margin-top: -5px;
+                            overflow: hidden;
+                            position: relative;
+                        }
+                        .zml-node-preview-image {
+                            max-width: 100%;
+                            max-height: 200px;
+                            object-fit: contain;
+                            border-radius: 4px;
+                            display: block;
+                            margin: 0 auto;
+                        }
+                        .zml-node-image-loading {
+                            padding: 16px;
+                            color: #ccc;
+                            text-align: center;
+                            font-size: 12px;
+                        }
+                        .zml-image-grid {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                            gap: 8px;
+                            margin-top: 8px;
+                            max-height: 400px;
+                            overflow-y: auto;
+                        }
+                        .zml-grid-image-item {
+                            border: 1px solid #555;
+                            border-radius: 4px;
+                            overflow: hidden;
+                            aspect-ratio: 1/1;
+                            position: relative;
+                            cursor: pointer;
+                        }
+                        .zml-grid-image {
+                            width: 100%;
+                            height: 100%;
+                            object-fit: cover;
+                        }
+                        .zml-grid-image-item:hover {
+                            border-color: #4a90e2;
+                        }
+                        .zml-grid-image-item.selected {
+                            border-color: #4a90e2;
+                            box-shadow: 0 0 8px rgba(74, 144, 226, 0.5);
+                        }
+                        .zml-image-mark {
+                            position: absolute;
+                            bottom: 4px;
+                            left: 4px;
+                            background-color: rgba(74, 144, 226, 0.9);
+                            color: white;
+                            padding: 2px 6px;
+                            border-radius: 3px;
+                            font-size: 10px;
+                            font-weight: bold;
+                            z-index: 10;
+                            min-width: 20px;
+                            text-align: center;
+                        }
+                        .zml-channel-effect {
+                            animation: pulse 0.3s ease-in-out;
+                        }
+                        @keyframes pulse {
+                            0% { transform: scale(1); }
+                            50% { transform: scale(1.1); background: linear-gradient(45deg, #ff6b6b, #ee5a24); }
+                            100% { transform: scale(1); }
+                        }
+                        /* 按钮按下状态样式 */
+                        .zml-refresh-button:active {
+                            transform: scale(0.95);
+                            background-color: #333 !important;
+                        }
+                        .zml-channel-button:active {
+                            transform: scale(0.95) !important;
+                            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+                        }
+                    `;
+                    document.head.appendChild(styleSheet);
+                }
+                
+                // 创建主容器
+                const mainContainer = document.createElement("div");
+                mainContainer.className = "zml-node-image-container";
+                
+                mainContainer.style.cssText = "display: block;";
+                // 创建按钮容器（包含刷新按钮和通道按钮）
+                const buttonsContainer = document.createElement("div");
+                buttonsContainer.style.cssText = "display: flex; gap: 8px; margin-bottom: 12px; width: 100%; align-items: center;";
+                
+                // 创建刷新按钮
+                const refreshButton = document.createElement("button");
+                refreshButton.textContent = "刷新";
+                refreshButton.className = "zml-refresh-button";
+                refreshButton.style.cssText = `
+                    padding: 4px 8px;
+                    background-color: #444;
+                    color: #ccc;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 10px;
+                    height: 32px;
+                    transition: all 0.1s ease;
+                `;
+                buttonsContainer.appendChild(refreshButton);
+                
+                // 添加三个通道选择按钮
+                for (let i = 0; i < 3; i++) {
+                    const channelButton = document.createElement("button");
+                    channelButton.textContent = `${i + 1}`;
+                    channelButton.dataset.channel = i;
+                    channelButton.className = "zml-channel-button";
+                    channelButton.style.cssText = `
+                        padding: 4px 8px;
+                        background: linear-gradient(45deg, #4a90e2, #7aaee0);
+                        color: white;
+                        border: 2px solid #4a90e2;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        font-weight: bold;
+                        transition: all 0.2s ease;
+                        min-width: 32px;
+                        height: 32px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    `;
+                    
+                    // 添加通道按钮点击状态样式
+                    const channelButtonStyle = document.createElement('style');
+                    channelButtonStyle.textContent = `
+                        .zml-channel-button.clicked {
+                            background: linear-gradient(45deg, #28a745, #4caf50) !important;
+                            border-color: #218838 !important;
+                            color: white !important;
+                            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.4);
+                        }
+                    `;
+                    document.head.appendChild(channelButtonStyle);
+                    
+                    channelButton.onmouseover = () => {
+                        channelButton.style.transform = "scale(1.05)";
+                        channelButton.style.background = "linear-gradient(45deg, #3a7bd5, #6aa0de)";
+                        channelButton.style.boxShadow = "0 2px 8px rgba(74, 144, 226, 0.4)";
+                    };
+                    
+                    channelButton.onmouseout = () => {
+                        channelButton.style.transform = "scale(1)";
+                        channelButton.style.background = "linear-gradient(45deg, #4a90e2, #7aaee0)";
+                        channelButton.style.boxShadow = "none";
+                    };
+                    
+                    channelButton.onclick = async (e) => {
+                        e.stopPropagation();
+                        const channelNum = i + 1;
+                        
+                        // 为按钮1添加特效
+                        if (channelNum === 1) {
+                            channelButton.classList.add('zml-channel-effect');
+                            setTimeout(() => {
+                                channelButton.classList.remove('zml-channel-effect');
+                            }, 300);
+                        }
+                        
+                        // 标记当前活动的通道按钮
+                        document.querySelectorAll('.zml-channel-button').forEach(btn => {
+                            btn.classList.remove('clicked');
+                        });
+                        channelButton.classList.add('clicked');
+                        
+                        // 存储当前活动的通道编号到图像网格容器
+                        imageGrid.dataset.activeChannel = channelNum;
+                        
+                        // 不再修改已选中图像的通道标记，保留它们的原始通道
+                        // 只需确保所有带标记的图像都有正确的显示
+                        document.querySelectorAll('.zml-grid-image-item.selected').forEach(imgItem => {
+                            const channel = imgItem.dataset.channel || channelNum;
+                            let mark = imgItem.querySelector('.zml-image-mark');
+                            if (!mark) {
+                                mark = document.createElement('div');
+                                mark.className = 'zml-image-mark';
+                                imgItem.appendChild(mark);
+                            }
+                            mark.textContent = channel;
+                        });
+                    };
+                    
+                    buttonsContainer.appendChild(channelButton);
+                }
+                
+                // 添加输出按钮
+                const outputButton = document.createElement("button");
+                outputButton.textContent = "输出";
+                outputButton.style.cssText = `
+                    padding: 4px 12px;
+                    background: linear-gradient(45deg, #28a745, #4caf50);
+                    color: white;
+                    border: 2px solid #28a745;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    font-weight: bold;
+                    transition: all 0.2s ease;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+                
+                outputButton.onmouseover = () => {
+                    outputButton.style.transform = "scale(1.05)";
+                    outputButton.style.background = "linear-gradient(45deg, #218838, #388e3c)";
+                    outputButton.style.boxShadow = "0 2px 8px rgba(40, 167, 69, 0.4)";
+                };
+                
+                outputButton.onmouseout = () => {
+                    outputButton.style.transform = "scale(1)";
+                    outputButton.style.background = "linear-gradient(45deg, #28a745, #4caf50)";
+                    outputButton.style.boxShadow = "none";
+                };
+                
+                outputButton.onclick = async (e) => {
+                    e.stopPropagation();
+                    try {
+                        // 获取选中的图像并按通道分组
+                        const selectedImages = document.querySelectorAll('.zml-grid-image-item.selected');
+                        
+                        // 按通道分组图像
+                        const imagesByChannel = {};
+                        selectedImages.forEach(img => {
+                            const channel = img.dataset.channel || '1'; // 默认通道1
+                            if (!imagesByChannel[channel]) {
+                                imagesByChannel[channel] = [];
+                            }
+                            imagesByChannel[channel].push(parseInt(img.dataset.index));
+                        });
+                        
+                        // 将所有通道的选择信息合并到一个请求中发送
+                        await api.fetchApi("/zml/unpause", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                node_id: this.id, 
+                                // 发送所有通道的图像映射，而不是单个通道
+                                channels_images_map: imagesByChannel
+                            }),
+                        });
+                        
+                        // 按钮点击后添加视觉反馈
+                        outputButton.style.background = "linear-gradient(45deg, #1e7e34, #388e3c)";
+                        outputButton.style.borderColor = "#1e7e34";
+                        setTimeout(() => {
+                            outputButton.style.background = "linear-gradient(45deg, #28a745, #4caf50)";
+                            outputButton.style.borderColor = "#28a745";
+                        }, 500);
+                    } catch (error) {
+                        console.error("[ZML_PauseNode] Failed to output selected images:", error);
+                        // 错误时的视觉反馈
+                        outputButton.style.background = "linear-gradient(45deg, #dc3545, #f44336)";
+                        outputButton.style.borderColor = "#dc3545";
+                        setTimeout(() => {
+                            outputButton.style.background = "linear-gradient(45deg, #28a745, #4caf50)";
+                            outputButton.style.borderColor = "#28a745";
+                        }, 1000);
+                    }
+                };
+                
+                buttonsContainer.appendChild(outputButton);
+                
+                // 添加按钮容器到主容器
+                mainContainer.appendChild(buttonsContainer);
+                
+                // 创建加载指示器
+                const loadingIndicator = document.createElement("div");
+                loadingIndicator.className = "zml-node-image-loading";
+                loadingIndicator.textContent = "暂无预览图像";
+                mainContainer.appendChild(loadingIndicator);
+                
+                // 创建图像网格容器
+                const imageGrid = document.createElement("div");
+                imageGrid.className = "zml-image-grid";
+                imageGrid.style.display = "none";
+                mainContainer.appendChild(imageGrid);
+                
+                // 加载预览图像的函数 - 支持多张图像
+                const loadNodePreviewImages = (nodeId) => {
+                    loadingIndicator.textContent = "加载预览中...";
+                    imageGrid.style.display = "none";
+                    
+                    let retryCount = 0;
+                    const maxRetries = 5;
+                    const retryInterval = 300;
+                    
+                    function tryLoadImages() {
+                        // 清空现有图像
+                        imageGrid.innerHTML = '';
+                        
+                        // 尝试加载多张图像
+                        const maxImages = 100; // 设置一个较大的上限
+                        const imagePromises = [];
+                        
+                        for (let i = 0; i < maxImages; i++) {
+                            imagePromises.push(
+                                fetch(`/zml_pause_node/preview/${nodeId}?index=${i}`)
+                                    .then(response => {
+                                        if (!response.ok) {
+                                            throw new Error(`Image ${i} not found`);
+                                        }
+                                        return response.blob();
+                                    })
+                                    .then(blob => {
+                                        return { index: i, blob: blob };
+                                    })
+                                    .catch(() => null)
+                            );
+                            
+                            // 为了避免一次请求过多图像，每5个图像添加一个短暂延迟
+                            if ((i + 1) % 5 === 0 && i + 1 < maxImages) {
+                                const delayPromise = new Promise(resolve => {
+                                    setTimeout(() => resolve(null), 100);
+                                });
+                                imagePromises.push(delayPromise);
+                            }
+                        }
+                        
+                        Promise.all(imagePromises)
+                            .then(results => {
+                                // 过滤掉失败的图像和延迟promise
+                                const validImages = results.filter(img => img !== null);
+                                
+                                if (validImages.length === 0) {
+                                    throw new Error("没有可显示的图像");
+                                }
+                                
+                                // 创建图像元素并添加到网格
+                                validImages.forEach(({ index, blob }) => {
+                                    const imageItem = document.createElement("div");
+                                    imageItem.className = "zml-grid-image-item";
+                                    imageItem.dataset.index = index;
+                                    
+                                    const image = document.createElement("img");
+                                    image.className = "zml-grid-image";
+                                    image.src = URL.createObjectURL(blob);
+                                    
+                                    // 添加点击事件，允许用户选择图像
+                                    imageItem.onclick = () => {
+                                        // 切换选中状态（而不是移除其他选中项）
+                                        if (imageItem.classList.contains('selected')) {
+                                            imageItem.classList.remove('selected');
+                                            // 移除标记和通道信息
+                                            const existingMark = imageItem.querySelector('.zml-image-mark');
+                                            if (existingMark) existingMark.remove();
+                                            delete imageItem.dataset.channel;
+                                        } else {
+                                            imageItem.classList.add('selected');
+                                            // 获取当前活动通道
+                                            const activeChannel = imageGrid.dataset.activeChannel || '1'; // 默认使用通道1
+                                            
+                                            // 为图像存储其通道信息
+                                            imageItem.dataset.channel = activeChannel;
+                                            
+                                            // 添加对应通道的标记
+                                            const mark = document.createElement('div');
+                                            mark.className = 'zml-image-mark';
+                                            mark.textContent = activeChannel;
+                                            imageItem.appendChild(mark);
+                                        }
+                                    };
+                                    
+                                    imageItem.appendChild(image);
+                                    imageGrid.appendChild(imageItem);
+                                });
+                                
+                                // 显示网格，隐藏加载指示器
+                                imageGrid.style.display = "grid";
+                                loadingIndicator.style.display = "none";
+                            })
+                            .catch(error => {
+                                if (retryCount < maxRetries) {
+                                    retryCount++;
+                                    setTimeout(tryLoadImages, retryInterval);
+                                } else {
+                                    loadingIndicator.textContent = "无法加载预览图像";
+                                }
+                            });
+                    }
+                    
+                    tryLoadImages();
+                };
+                
+                // 绑定刷新按钮事件
+                refreshButton.addEventListener("click", () => {
+                    loadNodePreviewImages(this.id);
+                });
+                
+                // 监听节点执行事件，自动加载预览
+                const nodeId = this.id;
+                const handleNodeExecuting = (event) => {
+                    if (event.detail === nodeId) {
+                        loadNodePreviewImages(nodeId);
+                    }
+                };
+                
+                api.addEventListener("executing", handleNodeExecuting);
+                
+                // 组件销毁时清理
+                this.onRemoved = () => {
+                    api.removeEventListener("executing", handleNodeExecuting);
+                };
+                
+                // 使用addDOMWidget将自定义UI挂载到节点
+                this.addDOMWidget(
+                    "pause_preview",
+                    "预览",
+                    mainContainer,
+                    {}
+                );
+                
+                // 设置节点的最小尺寸
+                this.size = [
+                    Math.max(this.size[0] || 0, ZML_PAUSE_NODE_MIN_WIDTH),
+                    Math.max(this.size[1] || 0, ZML_PAUSE_NODE_MIN_HEIGHT)
+                ];
+                
+                // 重写onResize方法以确保最小尺寸限制
+                const origOnResize = this.onResize;
+                this.onResize = function(size) {
+                    // 确保最小宽度
+                    size[0] = Math.max(size[0], ZML_PAUSE_NODE_MIN_WIDTH);
+                    // 确保最小高度
+                    size[1] = Math.max(size[1], ZML_PAUSE_NODE_MIN_HEIGHT);
+                    
+                    this.size = size;
+                    
+                    if (origOnResize) origOnResize.call(this, size);
+                };
+            };
+        }
+        // --- Add custom toggle UI to ZML_BooleanSwitch ---
+        else if (nodeData.name === "ZML_BooleanSwitch") {
+            const onNodeCreated = nodeType.prototype.onNodeCreated;
+            
+            nodeType.prototype.onNodeCreated = function () {
+                onNodeCreated?.apply(this, arguments);
+                
+                // 找到布尔值widget
+                const booleanWidget = this.widgets.find(w => w.name === "启用");
+                if (!booleanWidget) return;
+                
+                // 隐藏所有默认widgets
+                this.widgets.forEach(widget => {
+                    if (widget.element) {
+                        widget.element.style.display = 'none';
+                    }
+                });
+                
+                // 预先定义CSS动画和样式
+                if (!document.getElementById('zml-toggle-styles')) {
+                    const styleSheet = document.createElement('style');
+                    styleSheet.id = 'zml-toggle-styles';
+                    styleSheet.textContent = `
+                        .zml-toggle-ripple {
+                            position: absolute;
+                            border-radius: 50%;
+                            background: rgba(255,255,255,0.3);
+                            transform: scale(0);
+                            animation: zml-ripple-animation 0.6s ease-out forwards;
+                            pointer-events: none;
+                        }
+                        @keyframes zml-ripple-animation {
+                            0% { transform: scale(0); opacity: 1; }
+                            100% { transform: scale(2); opacity: 0; }
+                        }
+                        .zml-checkbox-check {
+                            position: absolute;
+                            left: 50%;
+                            top: 50%;
+                            width: 0;
+                            height: 0;
+                            transform: translate(-50%, -50%) scale(0);
+                            transition: transform 0.2s ease;
+                        }
+                        .zml-checkbox-check.checked {
+                            transform: translate(-50%, -50%) scale(1);
+                        }
+                        .zml-node-container {
+                            border: 1px solid #444;
+                            border-radius: 8px;
+                            background-color: #2a2a2a;
+                            padding: 12px;
+                            width: 100%;
+                            box-sizing: border-box;
+                        }
+                    `;
+                    document.head.appendChild(styleSheet);
+                }
+                
+                // 创建主容器 - 模拟右侧节点的框式布局
+                const mainContainer = document.createElement("div");
+                mainContainer.className = "zml-node-container";
+                mainContainer.style.cssText = `
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    padding: 6px 16px 10px 16px;
+                    box-sizing: border-box;
+                    margin-top: -8px;
+                `;
+                
+                // 移除标题行，不再显示开关状态和值
+                
+                // 创建开关容器
+                const toggleContainer = document.createElement("div");
+                toggleContainer.style.cssText = `
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 10px;
+                    width: 100%;
+                    padding-left: 5px;
+                `;
+                
+                // 添加样式选择器和尺寸控制容器
+                const controlsRow = document.createElement("div");
+                controlsRow.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    width: 100%;
+                    padding-left: 0;
+                `;
+                
+                // 添加样式选择器
+                const styleSelectorContainer = document.createElement("div");
+                styleSelectorContainer.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    font-size: 10px;
+                    color: #ccc;
+                    margin-left: -16px;
+                    white-space: nowrap;
+                    padding-left: 0;
+                `;
+                
+                const styleLabel = document.createElement("span");
+                styleLabel.textContent = "样式:";
+                styleSelectorContainer.appendChild(styleLabel);
+                
+                // 创建样式选择按钮组
+                const styleGroup = document.createElement("div");
+                styleGroup.style.cssText = `
+                    display: flex;
+                    border: 1px solid #555;
+                    border-radius: 4px;
+                    overflow: hidden;
+                `;
+                
+                // 创建样式选择状态变量
+                let currentStyle = 'slider'; // 默认样式为滑块
+                
+                // 滑块样式按钮
+                const sliderStyleBtn = document.createElement("button");
+                sliderStyleBtn.textContent = "滑块";
+                sliderStyleBtn.style.cssText = `
+                    padding: 3px 6px;
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 9px;
+                    transition: background-color 0.2s ease;
+                    min-width: 28px;
+                    text-align: center;
+                    height: 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+                
+                // 方框样式按钮
+                const checkboxStyleBtn = document.createElement("button");
+                checkboxStyleBtn.textContent = "方框";
+                checkboxStyleBtn.style.cssText = `
+                    padding: 3px 6px;
+                    background-color: #444;
+                    color: #ccc;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 9px;
+                    transition: background-color 0.2s ease;
+                    min-width: 28px;
+                    text-align: center;
+                    height: 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+                
+                styleGroup.appendChild(sliderStyleBtn);
+                styleGroup.appendChild(checkboxStyleBtn);
+                styleSelectorContainer.appendChild(styleGroup);
+                controlsRow.appendChild(styleSelectorContainer);
+                
+                // 添加尺寸控制
+                const sizeControlsContainer = document.createElement("div");
+                sizeControlsContainer.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    font-size: 10px;
+                    color: #ccc;
+                    margin-right: 5px;
+                `;
+                
+                // 宽度控制
+                const widthContainer = document.createElement("div");
+                widthContainer.style.display = 'flex';
+                widthContainer.style.alignItems = 'center';
+                widthContainer.style.gap = '3px';
+                
+                const widthLabel = document.createElement("span");
+                widthLabel.textContent = "宽:";
+                
+                const widthInput = document.createElement("input");
+                widthInput.type = "number";
+                widthInput.min = "40";
+                widthInput.max = "300";
+                widthInput.value = "160";
+                widthInput.style.cssText = `
+                    width: 54px;
+                    height: 30px;
+                    font-size: 14px;
+                    padding: 4px 3px;
+                    background-color: #333;
+                    color: #ccc;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    text-align: center;
+                `;
+                
+                widthContainer.appendChild(widthLabel);
+                widthContainer.appendChild(widthInput);
+                
+                // 高度控制
+                const heightContainer = document.createElement("div");
+                heightContainer.style.display = 'flex';
+                heightContainer.style.alignItems = 'center';
+                heightContainer.style.gap = '3px';
+                
+                const heightLabel = document.createElement("span");
+                heightLabel.textContent = "高:";
+                
+                const heightInput = document.createElement("input");
+                heightInput.type = "number";
+                heightInput.min = "20";
+                heightInput.max = "200";
+                heightInput.value = "40";
+                heightInput.style.cssText = `
+                    width: 54px;
+                    height: 30px;
+                    font-size: 14px;
+                    padding: 4px 3px;
+                    background-color: #333;
+                    color: #ccc;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    text-align: center;
+                `;
+                
+                heightContainer.appendChild(heightLabel);
+                heightContainer.appendChild(heightInput);
+                
+                sizeControlsContainer.appendChild(widthContainer);
+                sizeControlsContainer.appendChild(heightContainer);
+                controlsRow.appendChild(sizeControlsContainer);
+                
+                toggleContainer.appendChild(controlsRow);
+                
+                // 创建实际开关的容器
+                const switchContainer = document.createElement("div");
+                switchContainer.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 100%;
+                    margin-top: 5px;
+                `;
+                toggleContainer.appendChild(switchContainer);
+                
+                // 将开关容器添加到主容器
+                mainContainer.appendChild(toggleContainer);
+                
+                // 滑块样式开关元素
+                const sliderToggleButton = document.createElement("div");
+                const isEnabled = booleanWidget.value;
+                sliderToggleButton.style.cssText = `
+                    width: ${parseInt(widthInput.value)}px;
+                    height: ${parseInt(heightInput.value)}px;
+                    background-color: ${isEnabled ? '#4CAF50' : '#ccc'};
+                    border-radius: ${parseInt(heightInput.value) / 2}px;
+                    position: relative;
+                    cursor: pointer;
+                    transition: background-color 0.3s ease;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    user-select: none;
+                    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.05);
+                    overflow: hidden;
+                    will-change: background-color;
+                `;
+                
+                // 添加内部光晕效果
+                const innerGlow = document.createElement("div");
+                innerGlow.style.cssText = `
+                    position: absolute;
+                    width: 30%;
+                    height: 100%;
+                    background: linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent);
+                    left: -30%;
+                    top: 0;
+                    opacity: 0;
+                    transition: all 0.6s ease;
+                    pointer-events: none;
+                `;
+                sliderToggleButton.appendChild(innerGlow);
+                
+                // 创建滑块元素
+                const toggleSlider = document.createElement("div");
+                toggleSlider.style.cssText = `
+                    position: absolute;
+                    width: ${parseInt(heightInput.value)}px;
+                    height: ${parseInt(heightInput.value)}px;
+                    background: linear-gradient(145deg, #ffffff, #f0f0f0);
+                    border-radius: 50%;
+                    top: 0;
+                    left: 0;
+                    right: auto;
+                    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: bold;
+                    font-size: 12px;
+                    user-select: none;
+                    box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+                    will-change: transform;
+                `;
+                
+                // 方框样式开关元素
+                const checkboxToggleButton = document.createElement("div");
+                checkboxToggleButton.style.cssText = `
+                    width: ${parseInt(widthInput.value)}px;
+                    height: ${parseInt(heightInput.value)}px;
+                    background-color: ${isEnabled ? '#4CAF50' : '#ccc'};
+                    border-radius: 8px;
+                    position: relative;
+                    cursor: pointer;
+                    transition: background-color 0.3s ease, transform 0.2s ease;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    user-select: none;
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                `;
+                
+                // 更新尺寸的函数
+                function updateSwitchDimensions() {
+                    const width = parseInt(widthInput.value) || 54;
+                    const height = parseInt(heightInput.value) || 36;
+                    
+                    if (currentStyle === 'slider') {
+                        // 设置滑块模式下的尺寸
+                        sliderToggleButton.style.width = `${width}px`;
+                        sliderToggleButton.style.height = `${height}px`;
+                        
+                        toggleSlider.style.width = `${height}px`;
+                        toggleSlider.style.height = `${height}px`;
+                        toggleSlider.style.fontSize = `${Math.max(10, height * 0.3)}px`;
+                    } else {
+                        // 设置方框模式下的尺寸
+                        checkboxToggleButton.style.width = `${width}px`;
+                        checkboxToggleButton.style.height = `${height}px`;
+                    }
+                }
+                
+                // 监听尺寸输入变化
+                widthInput.addEventListener('change', updateSwitchDimensions);
+                heightInput.addEventListener('change', updateSwitchDimensions);
+                
+                // 创建对号元素
+                const checkMark = document.createElement("div");
+                checkMark.className = isEnabled ? "zml-checkbox-check checked" : "zml-checkbox-check";
+                checkboxToggleButton.appendChild(checkMark);
+                
+                // 初始只显示滑块样式
+                switchContainer.appendChild(sliderToggleButton);
+                sliderToggleButton.appendChild(toggleSlider);
+                
+                // 滑块样式的位置更新函数
+                function updateSliderPosition(isOn) {
+                    if (isOn) {
+                        // 开启状态：滑块移到右侧
+                        toggleSlider.style.transform = `translateX(calc(100% - ${parseInt(heightInput.value)}px)) scale(1.05)`;
+                        toggleSlider.style.left = 'auto';
+                        toggleSlider.style.right = '0';
+                        toggleSlider.textContent = ''; // 删除开启状态的提示文本
+                        toggleSlider.style.color = '#4CAF50';
+                        toggleSlider.style.background = 'linear-gradient(145deg, #ffffff, #e6e6e6)';
+                        // 添加开启时的发光效果
+                        toggleSlider.style.boxShadow = '0 4px 12px rgba(76, 175, 80, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.6)';
+                    } else {
+                        // 关闭状态：滑块在左侧
+                        toggleSlider.style.transform = 'translateX(0) scale(1)';
+                        toggleSlider.style.left = '0';
+                        toggleSlider.style.right = 'auto';
+                        toggleSlider.textContent = 'OFF';
+                        toggleSlider.style.color = '#666';
+                        toggleSlider.style.background = 'linear-gradient(145deg, #ffffff, #f0f0f0)';
+                        toggleSlider.style.boxShadow = '0 3px 8px rgba(0,0,0,0.2)';
+                    }
+                }
+                
+                // 方框样式的更新函数
+                function updateCheckboxStyle(isOn) {
+                    checkboxToggleButton.style.backgroundColor = isOn ? '#4CAF50' : '#ccc';
+                    if (isOn) {
+                        checkMark.classList.add('checked');
+                    } else {
+                        checkMark.classList.remove('checked');
+                    }
+                }
+                
+                // 样式切换函数
+                function switchStyle(style) {
+                    currentStyle = style;
+                    
+                    // 更新按钮状态
+                    if (style === 'slider') {
+                        sliderStyleBtn.style.backgroundColor = '#4CAF50';
+                        sliderStyleBtn.style.color = 'white';
+                        checkboxStyleBtn.style.backgroundColor = '#444';
+                        checkboxStyleBtn.style.color = '#ccc';
+                        
+                        // 显示滑块样式，隐藏方框样式
+                        switchContainer.innerHTML = '';
+                        switchContainer.appendChild(sliderToggleButton);
+                        sliderToggleButton.appendChild(toggleSlider);
+                        
+                        // 更新滑块状态和尺寸
+                        sliderToggleButton.style.backgroundColor = booleanWidget.value ? '#4CAF50' : '#ccc';
+                        updateSwitchDimensions();
+                        updateSliderPosition(booleanWidget.value);
+                    } else {
+                        checkboxStyleBtn.style.backgroundColor = '#4CAF50';
+                        checkboxStyleBtn.style.color = 'white';
+                        sliderStyleBtn.style.backgroundColor = '#444';
+                        sliderStyleBtn.style.color = '#ccc';
+                        
+                        // 显示方框样式，隐藏滑块样式
+                        switchContainer.innerHTML = '';
+                        switchContainer.appendChild(checkboxToggleButton);
+                        checkboxToggleButton.appendChild(checkMark);
+                        
+                        // 更新方框状态和尺寸
+                        updateSwitchDimensions();
+                        updateCheckboxStyle(booleanWidget.value);
+                    }
+                }
+                
+                // 初始化滑块位置
+                updateSliderPosition(isEnabled);
+                updateCheckboxStyle(isEnabled);
+                
+                // 滑块样式的点击事件
+                sliderToggleButton.addEventListener('click', (e) => {
+                    // 显示光晕效果
+                    innerGlow.style.opacity = '1';
+                    innerGlow.style.left = '130%';
+                    setTimeout(() => {
+                        innerGlow.style.opacity = '0';
+                        innerGlow.style.left = '-30%';
+                    }, 600);
+                    
+                    // 创建波纹效果 - 使用预定义的CSS类
+                    const ripple = document.createElement("span");
+                    const rect = sliderToggleButton.getBoundingClientRect();
+                    const size = Math.max(rect.width, rect.height);
+                    const x = e.clientX - rect.left - size / 2;
+                    const y = e.clientY - rect.top - size / 2;
+                    
+                    ripple.className = 'zml-toggle-ripple';
+                    ripple.style.cssText += `
+                        width: ${size}px;
+                        height: ${size}px;
+                        transform: translate(${x}px, ${y}px) scale(0);
+                    `;
+                    
+                    sliderToggleButton.appendChild(ripple);
+                    
+                    // 清理波纹元素
+                    setTimeout(() => {
+                        ripple.remove();
+                    }, 600);
+                    
+                    // 更新状态
+                    updateState();
+                });
+                
+                // 方框样式的点击事件
+                checkboxToggleButton.addEventListener('click', () => {
+                    // 添加点击反馈动画
+                    checkboxToggleButton.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        checkboxToggleButton.style.transform = 'scale(1)';
+                    }, 100);
+                    
+                    // 更新状态
+                    updateState();
+                });
+                
+                // 通用状态更新函数
+                function updateState() {
+                    booleanWidget.value = !booleanWidget.value;
+                    const newValue = booleanWidget.value;
+                    
+                    // 根据当前样式更新UI
+                    if (currentStyle === 'slider') {
+                        sliderToggleButton.style.backgroundColor = newValue ? '#4CAF50' : '#ccc';
+                        updateSliderPosition(newValue);
+                    } else {
+                        updateCheckboxStyle(newValue);
+                    }
+                    
+                    // 通知应用程序节点数据已更改
+                    app.graph.setDirtyCanvas(true, false);
+                }
+                
+                // 样式选择按钮事件
+                sliderStyleBtn.addEventListener('click', () => switchStyle('slider'));
+                checkboxStyleBtn.addEventListener('click', () => switchStyle('checkbox'));
+                
+                // 使用ResizeObserver监听节点大小变化，以确保开关按钮大小合适
+                const resizeObserver = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        const { width } = entry.contentRect;
+                        if (currentStyle === 'slider') {
+                            // 重新计算滑块位置以适应新宽度
+                            updateSliderPosition(booleanWidget.value);
+                        }
+                    }
+                });
+                
+                // 观察节点容器
+                if (this.parentElement) {
+                    resizeObserver.observe(this.parentElement);
+                }
+                
+                // 组件销毁时清理
+                this.onRemoved = () => {
+                    resizeObserver.disconnect();
+                    // 移除事件监听器
+                    widthInput.removeEventListener('change', updateSwitchDimensions);
+                    heightInput.removeEventListener('change', updateSwitchDimensions);
+                };
+                
+                // 使用addDOMWidget将自定义UI挂载到节点
+                this.addDOMWidget(
+                    "toggle_switch", // widget ID
+                    "", // 空名称，避免显示额外标题
+                    mainContainer, // 使用主容器作为DOM元素
+                    {
+                        serializeValue: () => {
+                            // 只保存布尔值，这是Python节点定义中唯一的参数
+                            return booleanWidget.value;
+                        },
+                        loadValue: (data) => {
+                            // 设置开关状态
+                            booleanWidget.value = data;
+                            
+                            // 更新UI状态
+                            updateSwitchDimensions();
+                        }
+                    }
+                );
+                
+                // 使用localStorage保存UI特定配置（样式、尺寸等）
+                // 生成唯一的节点实例ID
+                const nodeInstanceId = `${nodeData.name}_${this.id}`;
+                
+                // 加载保存的UI配置
+                const loadUIConfig = () => {
+                    try {
+                        const savedConfig = localStorage.getItem(`zml_ui_config_${nodeInstanceId}`);
+                        if (savedConfig) {
+                            const config = JSON.parse(savedConfig);
+                            if (config.style) {
+                                currentStyle = config.style;
+                            }
+                            if (config.width) {
+                                widthInput.value = config.width;
+                            }
+                            if (config.height) {
+                                heightInput.value = config.height;
+                            }
+                            // 应用加载的样式
+                            switchStyle(currentStyle);
+                        }
+                    } catch (e) {
+                        console.error('Failed to load ZML UI config:', e);
+                    }
+                };
+                
+                // 保存UI配置到localStorage
+                const saveUIConfig = () => {
+                    try {
+                        const config = {
+                            style: currentStyle,
+                            width: parseInt(widthInput.value),
+                            height: parseInt(heightInput.value)
+                        };
+                        localStorage.setItem(`zml_ui_config_${nodeInstanceId}`, JSON.stringify(config));
+                    } catch (e) {
+                        console.error('Failed to save ZML UI config:', e);
+                    }
+                };
+                
+                // 初始加载UI配置
+                loadUIConfig();
+                
+                // 监听样式和尺寸变化，自动保存
+                sliderStyleBtn.addEventListener('click', saveUIConfig);
+                checkboxStyleBtn.addEventListener('click', saveUIConfig);
+                widthInput.addEventListener('change', () => {
+                    updateSwitchDimensions();
+                    saveUIConfig();
+                });
+                heightInput.addEventListener('change', () => {
+                    updateSwitchDimensions();
+                    saveUIConfig();
+                });
+                
+                // 设置节点的最小尺寸
+                this.size = [
+                    Math.max(this.size[0] || 0, ZML_BOOLEAN_SWITCH_MIN_WIDTH),
+                    Math.max(this.size[1] || 0, ZML_BOOLEAN_SWITCH_MIN_HEIGHT)
+                ];
+                
+                // 重写onResize方法以确保最小尺寸限制
+                const origOnResize = this.onResize;
+                this.onResize = function(size) {
+                    // 确保最小宽度
+                    size[0] = Math.max(size[0], ZML_BOOLEAN_SWITCH_MIN_WIDTH);
+                    // 确保最小高度
+                    size[1] = Math.max(size[1], ZML_BOOLEAN_SWITCH_MIN_HEIGHT);
+                    
+                    this.size = size;
+                    
+                    if (origOnResize) origOnResize.call(this, size);
+                };
+            };
+        }
     },
 
     setup() {
@@ -441,31 +1410,10 @@ app.registerExtension({
             const node = app.graph.getNodeById(nodeId);
             if (!node) return;
 
-            // --- Logic for ZML_PauseNode ---
-            if (node.type === "ZML_PauseNode") {
-                currentlyPausedNodeId = nodeId;
-                const durationWidget = node.widgets.find(w => w.name === "暂停时长");
-                let duration = durationWidget ? durationWidget.value : 30;
-                countdownText.textContent = `${duration}s`;
-                countdownIntervalId = setInterval(() => {
-                    duration--;
-                    countdownText.textContent = `${duration}s`;
-                    if (duration <= 0) stopAndHidePauseUI();
-                }, 1000);
-                centerFloatingContainer();
-                floatingContainer.style.display = "flex";
-            }
             // --- Logic for ZML_AudioPlayerNode (workflow trigger) ---
-            else if (node.type === "ZML_AudioPlayerNode") {
+            if (node.type === "ZML_AudioPlayerNode") {
                 // Automatically play audio when the node is executed by the workflow
                 playAudioForNode(node);
-            }
-        });
-
-        // Listen for when a node finishes execution to hide the pause UI
-        api.addEventListener("executed", ({ detail: { node } }) => {
-            if (node && node === currentlyPausedNodeId) {
-                stopAndHidePauseUI();
             }
         });
     }
