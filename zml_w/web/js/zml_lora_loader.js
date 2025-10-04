@@ -33,6 +33,8 @@ let loraImages = {};
 globalThis.zmlMp4Previews = {};
 // 新增：控制MP4预览模式的全局变量
 globalThis.zmlBatchLoraPreviewMp4Mode = false;
+// 新增：每个LoRA独立的视频播放状态对象
+globalThis.zmlLoraVideoPlayStates = {};
 
 const loadImageList = async () => {
     try {
@@ -1609,6 +1611,19 @@ app.registerExtension({
                             toggleInput.checked = zmlBatchLoraPreviewMp4Mode;
                             toggleSlider.style.backgroundColor = zmlBatchLoraPreviewMp4Mode ? '#4CAF50' : '#666';
                             toggleSlider.querySelector('span').style.transform = `translateX(${zmlBatchLoraPreviewMp4Mode ? '16px' : '0'})`;
+                            
+                            // 同时更新所有LoRA的视频播放状态
+                            if (!globalThis.zmlLoraVideoPlayStates) {
+                                globalThis.zmlLoraVideoPlayStates = {};
+                            }
+                            
+                            // 根据开关状态设置所有有MP4预览的LoRA的播放状态
+                            if (globalThis.zmlMp4Previews) {
+                                for (const loraPath in globalThis.zmlMp4Previews) {
+                                    globalThis.zmlLoraVideoPlayStates[loraPath] = zmlBatchLoraPreviewMp4Mode;
+                                }
+                            }
+                            
                             // 刷新网格
                             refreshBatchLoraGrid();
                             // 添加CSS反馈效果到开关
@@ -2772,8 +2787,12 @@ app.registerExtension({
                     // 新增：MP4预览模式处理
                     let previewUrl = civitaiPreviewUrl;
                     let isMp4Preview = false;
+                    // 初始化播放状态对象（如果不存在）
+                    if (!globalThis.zmlLoraVideoPlayStates) {
+                        globalThis.zmlLoraVideoPlayStates = {};
+                    }
                     // 检查是否启用了MP4预览模式，并且存在对应的MP4文件
-                    if (globalThis.zmlBatchLoraPreviewMp4Mode && globalThis.zmlMp4Previews && globalThis.zmlMp4Previews[loraPath]) {
+                    if (globalThis.zmlLoraVideoPlayStates[loraPath] && globalThis.zmlMp4Previews && globalThis.zmlMp4Previews[loraPath]) {
                         const mp4Path = globalThis.zmlMp4Previews[loraPath];
                         previewUrl = `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(mp4Path)}?${+new Date()}`;
                         isMp4Preview = true;
@@ -3131,6 +3150,16 @@ app.registerExtension({
                         `
                     });
                     
+                    // 检查当前LoRA是否处于视频播放状态
+                    const isCurrentlyPlaying = globalThis.zmlLoraVideoPlayStates && globalThis.zmlLoraVideoPlayStates[loraPath];
+                    if (isCurrentlyPlaying) {
+                        playIcon.textContent = "⏸";
+                        playIcon.style.backgroundColor = "rgba(255, 140, 0, 0.8)"; /* 视频模式时变为橙色 */
+                    } else {
+                        playIcon.textContent = "▶";
+                        playIcon.style.backgroundColor = "rgba(76, 175, 80, 0.8)"; /* 图像模式时恢复绿色 */
+                    }
+                    
                     // 添加点击事件，实现视频预览切换功能
                     playIcon.onclick = (e) => {
                         e.stopPropagation(); // 阻止事件冒泡
@@ -3139,11 +3168,15 @@ app.registerExtension({
                         const hasMp4 = globalThis.zmlMp4Previews && globalThis.zmlMp4Previews[loraPath];
                         
                         if (hasMp4) {
-                            // 切换MP4预览模式
-                            globalThis.zmlBatchLoraPreviewMp4Mode = !globalThis.zmlBatchLoraPreviewMp4Mode;
+                            // 初始化播放状态对象（如果不存在）
+                            if (!globalThis.zmlLoraVideoPlayStates) {
+                                globalThis.zmlLoraVideoPlayStates = {};
+                            }
+                            // 切换当前LoRA的MP4预览模式
+                            globalThis.zmlLoraVideoPlayStates[loraPath] = !globalThis.zmlLoraVideoPlayStates[loraPath];
                             
                             // 更新按钮图标
-                            if (globalThis.zmlBatchLoraPreviewMp4Mode) {
+                            if (globalThis.zmlLoraVideoPlayStates[loraPath]) {
                                 playIcon.textContent = "⏸";
                                 playIcon.style.backgroundColor = "rgba(255, 140, 0, 0.8)"; /* 视频模式时变为橙色 */
                             } else {
@@ -3151,8 +3184,52 @@ app.registerExtension({
                                 playIcon.style.backgroundColor = "rgba(76, 175, 80, 0.8)"; /* 图像模式时恢复绿色 */
                             }
                             
-                            // 强制重新渲染LoRA项目以显示视频或图像
-                            renderBatchLoraContent();
+                            // 只重新渲染当前项目，避免重新渲染整个列表
+                            // 重新创建imageWrapper内容
+                            imageWrapper.innerHTML = '';
+                            
+                            // 根据新的状态重新创建视频或图片
+                            if (globalThis.zmlLoraVideoPlayStates[loraPath]) {
+                                // 创建视频元素
+                                const video = zmlCreateEl("video", {
+                                    className: "zml-batch-lora-item-video",
+                                    style: `
+                                        width: 100%;
+                                        height: 100%;
+                                        object-fit: cover;
+                                    `,
+                                    autoplay: true,
+                                    loop: true,
+                                    muted: true,
+                                    playsinline: true
+                                });
+                                const source = zmlCreateEl("source", {
+                                    src: `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(globalThis.zmlMp4Previews[loraPath])}?${+new Date()}`,
+                                    type: "video/mp4"
+                                });
+                                video.appendChild(source);
+                                video.onerror = function() {
+                                    console.warn(`[ZML] Failed to load MP4 preview: ${previewUrl}`);
+                                    imageWrapper.textContent = "预览视频加载失败";
+                                };
+                                imageWrapper.appendChild(video);
+                            } else {
+                                // 创建图片元素
+                                const img = zmlCreateEl("img", {
+                                    src: civitaiPreviewUrl,
+                                    className: "zml-batch-lora-item-image",
+                                    style: `
+                                        width: 100%;
+                                        height: 100%;
+                                        object-fit: cover;
+                                    `
+                                });
+                                img.onerror = function() {
+                                    console.warn(`[ZML] Failed to load image preview: ${previewUrl}`);
+                                    imageWrapper.textContent = "预览图加载失败";
+                                };
+                                imageWrapper.appendChild(img);
+                            }
                         } else {
                             // 没有视频时显示提示消息
                             // 检查是否存在showNotification函数，如果不存在则创建
