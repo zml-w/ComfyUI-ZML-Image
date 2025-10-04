@@ -465,8 +465,8 @@ class ZML_TextToImage:
             },
             "optional": {
                 "输入图像": ("IMAGE", {"forceInput": True}),
-                "图像拼接方向": (["上", "下", "左", "右"], {"default": "左"}), # 移动到接缝选项上方
-                "多图模式图像接缝": ("INT", {"default": 10, "min": 0, "max": 256}), # 新增接缝选项
+                "图像拼接方向": (["上", "下", "左", "右"], {"default": "下"}), 
+                "多图模式图像接缝": ("INT", {"default": 10, "min": 0, "max": 256}),
             }
         }
 

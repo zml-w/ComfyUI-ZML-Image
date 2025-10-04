@@ -168,13 +168,7 @@ class ZML_AutoCensorNode:
                 resized_overlay = overlay_pil.resize((new_width, new_height), Image.LANCZOS)
                 paste_x = (target_size - new_width) // 2
                 paste_y = (target_size - new_height) // 2
-                # 确保使用正确的透明度掩码
-                if resized_overlay.mode == 'RGBA':
-                    # 如果有alpha通道，使用它作为掩码
-                    result_image.paste(resized_overlay, (paste_x, paste_y), resized_overlay.split()[-1])
-                else:
-                    # 如果没有alpha通道，直接粘贴（不使用透明度掩码）
-                    result_image.paste(resized_overlay, (paste_x, paste_y))
+                result_image.paste(resized_overlay, (paste_x, paste_y), resized_overlay)
                 # 裁剪到原始图像尺寸
                 crop_x = (target_size - w) // 2
                 crop_y = (target_size - h) // 2
@@ -337,16 +331,6 @@ class ZML_ImageSelectorNode:
     FUNCTION = "select_image"
     CATEGORY = "image/ZML_图像/图像"
     
-    # 添加IS_CHANGED方法确保每次运行都重新计算随机结果
-    def IS_CHANGED(self, 随机选择, **kwargs):
-        # 如果启用了随机选择，每次都强制重新计算
-        if 随机选择:
-            import time
-            return float(time.time())
-        # 否则使用默认行为
-        return ""
-
-    
     def select_image(self, 图像1, 索引选择, 随机选择, 图像2=None, 图像3=None, 图像4=None, 图像5=None):
         # 创建图像列表，确保第一个图像总是存在
         images = [图像1]
@@ -383,6 +367,7 @@ class ZML_MaskCropNode:
                 "图像": ("IMAGE",),
                 "遮罩": ("MASK",),
                 "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": -1.0, "max": 3.0, "step": 0.05}),
+                "保持原始分辨率": ("BOOLEAN", {"default": True, "description": "保持原始图像分辨率，关闭时将自动裁剪周围空白区域"}),
             }
         }
     RETURN_TYPES = ("IMAGE", "IMAGE", "MASK")
@@ -390,45 +375,105 @@ class ZML_MaskCropNode:
     FUNCTION = "process_mask_crop"
     CATEGORY = "image/ZML_图像/遮罩"
 
-    def process_mask_crop(self, 图像, 遮罩, 遮罩缩放系数):
-        # 将tensor转换为PIL图像
-        source_pil = self.tensor_to_pil(图像)
-        h, w = source_pil.height, source_pil.width
+    def process_mask_crop(self, 图像, 遮罩, 遮罩缩放系数, 保持原始分辨率):
+        # 处理多批次图像的情况
+        batch_size = 图像.shape[0]
         
-        # 处理遮罩
-        mask_pil = Image.fromarray((遮罩.squeeze(0).cpu().numpy() * 255).astype(np.uint8), mode='L')
+        # 创建空列表来存储结果
+        all_crop_tensors = []
+        all_inverted_crop_tensors = []
         
-        # 应用遮罩缩放系数
-        if 遮罩缩放系数 != 1.0 and np.any(遮罩.squeeze(0).cpu().numpy()):
-            mask_cv = np.array(mask_pil)
-            # 计算质心
-            M = cv2.moments(mask_cv)
-            if M["m00"] != 0:
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                # 应用缩放变换
-                T = cv2.getRotationMatrix2D((cX, cY), 0, 遮罩缩放系数)
-                mask_cv = cv2.warpAffine(mask_cv, T, (w, h))
-                mask_pil = Image.fromarray(mask_cv, mode='L')
-        
-        # 创建裁剪图像 (基于遮罩保留内容)
-        crop_pil = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-        source_rgba = source_pil.convert('RGBA')
-        crop_pil.paste(source_rgba, (0, 0), mask_pil)
-        
-        # 创建反转裁剪图像 (基于遮罩移除内容)
-        inverted_mask_pil = Image.fromarray(255 - np.array(mask_pil), mode='L')
-        inverted_crop_pil = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-        inverted_crop_pil.paste(source_rgba, (0, 0), inverted_mask_pil)
-        
-        # 计算反转遮罩
+        # 处理反转遮罩（无论是否有遮罩都能生成）
         inverted_mask_tensor = 1.0 - 遮罩
         
-        # 将PIL图像转换回tensor
-        crop_tensor = self.pil_to_tensor(crop_pil)
-        inverted_crop_tensor = self.pil_to_tensor(inverted_crop_pil)
+        # 逐批次处理图像
+        for batch_idx in range(batch_size):
+            # 获取当前批次的图像
+            current_image = 图像[batch_idx:batch_idx+1]
+            
+            # 尝试获取当前批次的遮罩，如果遮罩只有一个批次，则使用同一个遮罩
+            try:
+                if len(遮罩.shape) > 3 and batch_idx < 遮罩.shape[0]:
+                    current_mask = 遮罩[batch_idx:batch_idx+1]
+                else:
+                    # 如果遮罩批次不匹配或只有一个批次，则使用同一个遮罩
+                    current_mask = 遮罩[0:1] if len(遮罩.shape) > 0 else torch.ones_like(遮罩)
+                has_valid_mask = torch.any(current_mask > 0)
+            except:
+                # 如果遮罩批次不匹配或不存在，则使用全1遮罩（即不裁剪）
+                current_mask = torch.ones_like(遮罩)
+                has_valid_mask = False
+            
+            # 将tensor转换为PIL图像
+            source_pil = self.tensor_to_pil(current_image)
+            h, w = source_pil.height, source_pil.width
+            
+            # 处理遮罩 - 确保它是2维数组
+            mask_np = current_mask.cpu().numpy()
+            # 移除所有维度为1的维度，并确保最终是2维
+            mask_np = np.squeeze(mask_np)
+            if len(mask_np.shape) > 2:
+                mask_np = mask_np[0]  # 取第一个通道
+            if len(mask_np.shape) < 2:
+                mask_np = np.expand_dims(mask_np, axis=0)
+                mask_np = np.expand_dims(mask_np, axis=0)
+                mask_np = np.repeat(mask_np, h, axis=0)
+                mask_np = np.repeat(mask_np, w, axis=1)
+            mask_pil = Image.fromarray((mask_np * 255).astype(np.uint8), mode='L')
+            
+            # 应用遮罩缩放系数（仅在有有效遮罩时）
+            if has_valid_mask and 遮罩缩放系数 != 1.0 and np.any(mask_np):
+                mask_cv = np.array(mask_pil)
+                # 计算质心
+                M = cv2.moments(mask_cv)
+                if M["m00"] != 0:
+                    cX = int(M["m10"] / M["m00"])
+                    cY = int(M["m01"] / M["m00"])
+                    # 应用缩放变换
+                    T = cv2.getRotationMatrix2D((cX, cY), 0, 遮罩缩放系数)
+                    mask_cv = cv2.warpAffine(mask_cv, T, (w, h))
+                    mask_pil = Image.fromarray(mask_cv, mode='L')
+            
+            # 创建裁剪图像 (基于遮罩保留内容) - 带透明通道
+            crop_pil = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+            source_rgba = source_pil.convert('RGBA')
+            crop_pil.paste(source_rgba, (0, 0), mask_pil)
+            
+            # 创建反转裁剪图像 (基于遮罩移除内容) - 带透明通道
+            inverted_mask_pil = Image.fromarray(255 - np.array(mask_pil), mode='L')
+            inverted_crop_pil = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+            inverted_crop_pil.paste(source_rgba, (0, 0), inverted_mask_pil)
+            
+            # 如果不保持原始分辨率，自动裁剪空白区域
+            if not 保持原始分辨率:
+                # 裁剪图像自动裁剪
+                bbox = crop_pil.getbbox()
+                if bbox:
+                    crop_pil = crop_pil.crop(bbox)
+                else:
+                    # 如果没有有效内容，保持1x1像素的透明图像
+                    crop_pil = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+                
+                # 反转裁剪图像自动裁剪
+                inverted_bbox = inverted_crop_pil.getbbox()
+                if inverted_bbox:
+                    inverted_crop_pil = inverted_crop_pil.crop(inverted_bbox)
+                else:
+                    # 如果没有有效内容，保持1x1像素的透明图像
+                    inverted_crop_pil = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+            
+            # 将PIL图像转换回tensor并添加到结果列表
+            crop_tensor = self.pil_to_tensor(crop_pil)
+            inverted_crop_tensor = self.pil_to_tensor(inverted_crop_pil)
+            
+            all_crop_tensors.append(crop_tensor)
+            all_inverted_crop_tensors.append(inverted_crop_tensor)
         
-        return (crop_tensor, inverted_crop_tensor, inverted_mask_tensor)
+        # 合并结果
+        final_crop_tensor = torch.cat(all_crop_tensors, dim=0)
+        final_inverted_crop_tensor = torch.cat(all_inverted_crop_tensors, dim=0)
+        
+        return (final_crop_tensor, final_inverted_crop_tensor, inverted_mask_tensor)
     
     def tensor_to_pil(self, tensor):
         # 处理RGBA和RGB情况

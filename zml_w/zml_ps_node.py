@@ -220,6 +220,9 @@ class ZML_PanoViewer:
         return {
             "required": {
                 "全景图像": ("IMAGE",),
+            },
+            "optional": {
+                "预览模式": (["360°预览", "平面预览"], {"default": "360°预览"}),
             }
         }
 
@@ -229,7 +232,7 @@ class ZML_PanoViewer:
     
     CATEGORY = "image/ZML_图像/高级图像工具" 
 
-    def return_image(self, 全景图像):
+    def return_image(self, 全景图像, 预览模式="360°预览"):
         # 直接返回全景图像，不做任何处理
         return (全景图像,)
 

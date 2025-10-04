@@ -19,8 +19,8 @@ class ZML_ImageTransition:
             }
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("过渡批次",)
+    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_NAMES = ("过渡批次", "遮罩批次")
     FUNCTION = "generate_transition"
     CATEGORY = "image/ZML_图像/图像"
 
@@ -57,6 +57,7 @@ class ZML_ImageTransition:
             pil_image_b = pil_image_b.resize((width, height), Image.LANCZOS)
         
         transition_frames = []
+        mask_frames = []
 
         # 预计算坐标网格，避免在循环中重复计算
         y_coords, x_coords = np.indices((height, width))
@@ -113,6 +114,11 @@ class ZML_ImageTransition:
                 mask_np_current = (diagonal_gradient_map <= eased_progress).astype(np.uint8) * 255
             
             mask = Image.fromarray(mask_np_current, 'L')
+            
+            # 将遮罩转换为张量并添加到遮罩批次中
+            # 遮罩使用单通道格式以符合ComfyUI的MASK标准
+            mask_tensor = torch.from_numpy(np.array(mask).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)  # 添加批次和通道维度
+            mask_frames.append(mask_tensor)
 
             # 使用 composite 方法进行图像B到图像A的过渡
             # mask 为 255 的地方显示 pil_image_b，为 0 的地方显示 pil_image_a
@@ -121,7 +127,10 @@ class ZML_ImageTransition:
 
         # 将所有帧合并为一个图像批次
         output_batch = torch.cat(transition_frames, dim=0)
-        return (output_batch,)
+        # 合并遮罩批次，保持单通道格式
+        mask_batch = torch.cat(mask_frames, dim=1).squeeze(0)  # 合并通道维度并移除批次维度
+        
+        return (output_batch, mask_batch)
 
 #==========================图像加密解密==========================
 
@@ -325,14 +334,132 @@ class ZML_BooleanSwitch:
     def get_value(self, 启用):
         return (启用,)
 
+#==========================遮罩描边节点==========================
+
+class ZML_MaskStroke:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "遮罩": ("MASK",),
+                "描边大小": ("INT", {"default": 3, "min": 1, "max": 20, "step": 1}),
+            },
+            "optional": {
+                "图像": ("IMAGE",),
+            }
+        }
+
+    RETURN_TYPES = ("MASK", "IMAGE")
+    RETURN_NAMES = ("遮罩描边", "描边图像")
+    FUNCTION = "generate_mask_stroke"
+    CATEGORY = "image/ZML_图像/遮罩"
+
+    def _tensor_to_pil(self, tensor, is_mask=False):
+        """将ComfyUI的张量转换为PIL图像"""
+        if is_mask:
+            # 遮罩是单通道的，形状为 (1, height, width) 或 (height, width)
+            if len(tensor.shape) == 3:
+                tensor = tensor.squeeze(0)
+            mask_np = np.clip(255. * tensor.cpu().numpy(), 0, 255).astype(np.uint8)
+            return Image.fromarray(mask_np, 'L')
+        else:
+            # 图像是多通道的，形状为 (1, height, width, channels) 或 (height, width, channels)
+            if len(tensor.shape) == 4:
+                tensor = tensor.squeeze(0)
+            img_np = np.clip(255. * tensor.cpu().numpy(), 0, 255).astype(np.uint8)
+            if img_np.ndim == 2:
+                return Image.fromarray(img_np, 'L').convert('RGB')
+            elif img_np.shape[2] == 3:
+                return Image.fromarray(img_np, 'RGB')
+            elif img_np.shape[2] == 4:
+                return Image.fromarray(img_np, 'RGBA').convert('RGB')
+            raise ValueError("不支持的图像张量格式")
+
+    def _pil_to_tensor(self, pil_image, is_mask=False):
+        """将PIL图像转换为ComfyUI的张量"""
+        if is_mask:
+            # 遮罩转换为单通道张量
+            if pil_image.mode != 'L':
+                pil_image = pil_image.convert('L')
+            return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+        else:
+            # 图像转换为3通道张量
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def generate_mask_stroke(self, 遮罩, 描边大小, 图像=None):
+        """生成遮罩的描边"""
+        # 将遮罩转换为PIL图像
+        mask_pil = self._tensor_to_pil(遮罩, is_mask=True)
+        width, height = mask_pil.size
+        
+        # 创建一个空白图像用于绘制描边
+        stroke_mask = Image.new('L', (width, height), 0)
+        draw = ImageDraw.Draw(stroke_mask)
+        
+        # 将PIL遮罩转换为numpy数组以便处理
+        mask_np = np.array(mask_pil)
+        
+        # 使用PIL的find_edges查找边缘
+        from PIL import ImageFilter
+        edges = mask_pil.filter(ImageFilter.FIND_EDGES)
+        
+        # 如果需要更厚的描边，使用膨胀操作
+        if 描边大小 > 1:
+            # 使用PIL的膨胀滤镜或者手动实现
+            for _ in range(描边大小 - 1):
+                edges = edges.filter(ImageFilter.MaxFilter(3))
+        
+        # 将边缘转换为numpy数组
+        edges_np = np.array(edges)
+        
+        # 创建最终的描边遮罩（只有描边，没有原遮罩）
+        stroke_mask = Image.fromarray(edges_np, 'L')
+        
+        # 准备描边图像
+        if 图像 is not None:
+            # 如果提供了图像，在图像上绘制红色描边
+            image_pil = self._tensor_to_pil(图像, is_mask=False)
+            # 创建一个可编辑的副本
+            stroke_image = image_pil.copy()
+            # 创建红色描边图层
+            red_stroke = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+            red_draw = ImageDraw.Draw(red_stroke)
+            
+            # 找到所有边缘像素并绘制红色
+            y_coords, x_coords = np.where(edges_np > 0)
+            for y, x in zip(y_coords, x_coords):
+                red_draw.ellipse([(x - 描边大小, y - 描边大小), (x + 描边大小, y + 描边大小)], fill=(255, 0, 0, 255))
+            
+            # 将红色描边合并到原图上
+            stroke_image.paste(red_stroke, (0, 0), red_stroke)
+        else:
+            # 如果没有提供图像，创建一个黑色背景的红色描边图像
+            stroke_image = Image.new('RGB', (width, height), (0, 0, 0))
+            stroke_draw = ImageDraw.Draw(stroke_image)
+            
+            # 找到所有边缘像素并绘制红色
+            y_coords, x_coords = np.where(edges_np > 0)
+            for y, x in zip(y_coords, x_coords):
+                stroke_draw.ellipse([(x - 描边大小, y - 描边大小), (x + 描边大小, y + 描边大小)], fill=(255, 0, 0))
+        
+        # 将结果转换回张量
+        stroke_mask_tensor = self._pil_to_tensor(stroke_mask, is_mask=True)
+        stroke_image_tensor = self._pil_to_tensor(stroke_image, is_mask=False)
+        
+        return (stroke_mask_tensor, stroke_image_tensor)
+
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageTransition": ZML_ImageTransition,
     "ZML_ImageEncryption": ZML_ImageEncryption,
     "ZML_BooleanSwitch": ZML_BooleanSwitch,
+    "ZML_MaskStroke": ZML_MaskStroke,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageTransition": "ZML_图像过渡动画",
     "ZML_ImageEncryption": "ZML_图像加密",
     "ZML_BooleanSwitch": "ZML_布尔开关",
+    "ZML_MaskStroke": "ZML_遮罩描边",
 }
