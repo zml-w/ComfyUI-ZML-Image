@@ -778,11 +778,20 @@ app.registerExtension({
                     textContent: "LoRA 自定义文本" // 默认标题，将在 showPllEditContentModal 中更新
                 });
 
+                // 创建文本区域包装器
+                const textWrapper = zmlCreateEl("div", {
+                    style: `
+                        position: relative;
+                        width: 100%;
+                        height: 350px;
+                    `
+                });
+                
                 zmlPllModalTextarea = zmlCreateEl("textarea", { // 使用 zmlCreateEl
                     className: "zml-st3-modal-textarea", // 使用与文本节点相同的类名
                     style: `
                         width: 100%;
-                        height: 350px;
+                        height: 100%;
                         resize: vertical;
                         background-color: #1a1a1a;
                         border: 1px solid #4a4a4a;
@@ -804,14 +813,34 @@ app.registerExtension({
                     e.target.style.borderColor = '#4a4a4a';
                     e.target.style.boxShadow = 'none';
                 };
+                
+                // 将文本区域添加到包装器
+                textWrapper.appendChild(zmlPllModalTextarea);
 
                 const buttonGroup = zmlCreateEl("div", { // 使用 zmlCreateEl
                     className: "zml-st3-modal-buttons", // 使用与文本节点相同的类名
                     style: `
                         display: flex;
-                        justify-content: flex-end;
-                        gap: 12px;
+                        justify-content: space-between;
+                        align-items: center;
                         padding-top: 10px;
+                    `
+                });
+                
+                // 添加注释文本
+                const textComment = zmlCreateEl("div", {
+                    style: `
+                        color: #888;
+                        font-size: 14px;
+                        padding: 4px 8px;
+                    `
+                });
+                textComment.textContent = "这里的文本从'自定义文本'接口进行输出";
+                
+                const buttonContainer = zmlCreateEl("div", {
+                    style: `
+                        display: flex;
+                        gap: 12px;
                     `
                 });
 
@@ -852,8 +881,11 @@ app.registerExtension({
                     `
                 });
 
-                buttonGroup.append(cancelButton, saveButton);
-                modalContainer.append(zmlPllModalTitle, zmlPllModalTextarea, buttonGroup);
+                // 将按钮添加到按钮容器
+                buttonContainer.append(cancelButton, saveButton);
+                // 将按钮容器和注释添加到按钮组
+                buttonGroup.append(textComment, buttonContainer);
+                modalContainer.append(zmlPllModalTitle, textWrapper, buttonGroup);
                 zmlPllModalOverlay.appendChild(modalContainer);
                 document.body.appendChild(zmlPllModalOverlay);
 
@@ -1109,6 +1141,7 @@ app.registerExtension({
                     txtTab.style.color = 'white';
                     logTab.style.backgroundColor = '#31353a';
                     logTab.style.color = '#aaa';
+                    txtComment.style.display = 'block';
                     zmlLoraContentEditTxtTextarea.focus();
                 };
 
@@ -1119,16 +1152,37 @@ app.registerExtension({
                     txtTab.style.color = '#aaa';
                     logTab.style.backgroundColor = '#4a515a';
                     logTab.style.color = 'white';
+                    txtComment.style.display = 'none';
                     zmlLoraContentEditLogTextarea.focus();
                 };
 
-                const buttonGroup = zmlCreateEl("div", {
-                    className: "zml-st3-modal-buttons",
+                const buttonGroup = zmlCreateEl("div", { // 使用 zmlCreateEl
+                    className: "zml-st3-modal-buttons", // 使用与文本节点相同的类名
                     style: `
                         display: flex;
                         justify-content: flex-end;
-                        gap: 12px;
                         padding-top: 10px;
+                    `
+                });
+                
+                // 添加注释文本
+                const txtComment = zmlCreateEl("div", {
+                    style: `
+                        position: absolute;
+                        bottom: 20px;
+                        left: 20px;
+                        color: #888;
+                        font-size: 14px;
+                        z-index: 10;
+                        pointer-events: none;
+                    `
+                });
+                txtComment.textContent = "这里的文本从\"触发词\"接口进行输出";
+                
+                const buttonContainer = zmlCreateEl("div", {
+                    style: `
+                        display: flex;
+                        gap: 12px;
                     `
                 });
 
@@ -1169,8 +1223,12 @@ app.registerExtension({
                     `
                 });
 
-                buttonGroup.append(cancelButton, saveButton);
-                modalContainer.append(titleContainer, tabContainer, zmlLoraContentEditTxtTextarea, zmlLoraContentEditLogTextarea, buttonGroup);
+                // 将按钮添加到按钮容器
+                buttonContainer.append(cancelButton, saveButton);
+                // 将按钮容器添加到按钮组
+                buttonGroup.append(buttonContainer);
+                
+                modalContainer.append(titleContainer, tabContainer, zmlLoraContentEditTxtTextarea, zmlLoraContentEditLogTextarea, txtComment, buttonGroup);
                 zmlLoraContentEditModalOverlay.appendChild(modalContainer);
                 document.body.appendChild(zmlLoraContentEditModalOverlay);
 
@@ -2873,9 +2931,104 @@ app.registerExtension({
                         e.stopPropagation(); // 阻止事件冒泡，避免触发LoRA选择
                         
                         if (isNoPreviewAndFetch) {
-                            // 保留原始逻辑：从Civitai获取信息
-                            const confirmFetch = confirm(`您确定要从Civitai获取LoRA '${file.name}' 的信息吗？这可能需要一些时间，并将下载文件到您的本地。`);
-                            if (confirmFetch) {
+                            // 自定义对话框替代confirm
+                            const confirmDialog = zmlCreateEl("div", {
+                                style: `
+                                    position: fixed;
+                                    top: 50%;
+                                    left: 50%;
+                                    transform: translate(-50%, -50%);
+                                    background-color: #1a1a1a;
+                                    border: 1px solid #4a4a4a;
+                                    border-radius: 8px;
+                                    padding: 20px;
+                                    min-width: 350px;
+                                    z-index: 20202; /* 使用最大z-index值确保显示在最上层 */
+                                    color: #f0f0f0;
+                                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+                                `
+                            });
+                            
+                            const overlay = zmlCreateEl("div", {
+                                style: `
+                                    position: fixed;
+                                    top: 0;
+                                    left: 0;
+                                    width: 100%;
+                                    height: 100%;
+                                    background-color: rgba(0, 0, 0, 0.1);
+                                    z-index: 20201;
+                                `
+                            });
+                            
+                            const dialogMessage = zmlCreateEl("p", {
+                                style: `
+                                    margin: 0 0 20px 0;
+                                    color: #ccc;
+                                    line-height: 1.5;
+                                `,
+                                textContent: `您确定要从Civitai获取LoRA '${file.name}' 的信息吗？这可能需要一些时间，并将下载文件到您的本地。`
+                            });
+                            
+                            const buttonsContainer = zmlCreateEl("div", {
+                                style: `
+                                    display: flex;
+                                    gap: 12px;
+                                    justify-content: flex-end;
+                                `
+                            });
+                            
+                            const fetchBtn = zmlCreateEl("button", {
+                                style: `
+                                    padding: 8px 16px;
+                                    background-color: #4CAF50;
+                                    color: white;
+                                    border: none;
+                                    border-radius: 4px;
+                                    cursor: pointer;
+                                    font-size: 14px;
+                                `,
+                                textContent: "爬取信息"
+                            });
+                            
+                            const editBtn = zmlCreateEl("button", {
+                                style: `
+                                    padding: 8px 16px;
+                                    background-color: #2196F3;
+                                    color: white;
+                                    border: none;
+                                    border-radius: 4px;
+                                    cursor: pointer;
+                                    font-size: 14px;
+                                `,
+                                textContent: "编辑文件"
+                            });
+                            
+                            const cancelBtn = zmlCreateEl("button", {
+                                style: `
+                                    padding: 8px 16px;
+                                    background-color: #666;
+                                    color: white;
+                                    border: none;
+                                    border-radius: 4px;
+                                    cursor: pointer;
+                                    font-size: 14px;
+                                `,
+                                textContent: "取消"
+                            });
+                            
+                            const closeDialog = () => {
+                                document.body.removeChild(confirmDialog);
+                                document.body.removeChild(overlay);
+                            };
+                            
+                            // 阻止点击遮罩层关闭对话框，避免误操作
+                            overlay.onclick = function(e) {
+                                e.stopPropagation();
+                            };
+                            
+                            fetchBtn.onclick = async () => {
+                                closeDialog();
                                 fetchMetadataBtn.classList.add('fetching');
                                 fetchMetadataBtn.textContent = '...'; // Loading indicator
                                 fetchMetadataBtn.disabled = true;
@@ -2903,7 +3056,25 @@ app.registerExtension({
                                     fetchMetadataBtn.textContent = '☰';
                                     fetchMetadataBtn.disabled = false;
                                 }
-                            }
+                            };
+                            
+                            editBtn.onclick = () => {
+                                closeDialog();
+                                // 打开编辑窗口编辑txt和log文件
+                                showLoraContentEditModal(loraPath, file.name);
+                            };
+                            
+                            cancelBtn.onclick = closeDialog;
+                            
+                            buttonsContainer.appendChild(fetchBtn);
+                            buttonsContainer.appendChild(editBtn);
+                            buttonsContainer.appendChild(cancelBtn);
+                            
+                            confirmDialog.appendChild(dialogMessage);
+                            confirmDialog.appendChild(buttonsContainer);
+                            
+                            document.body.appendChild(overlay);
+                            document.body.appendChild(confirmDialog);
                         } else {
                             // 新功能：打开编辑窗口编辑txt和log文件
                             showLoraContentEditModal(loraPath, file.name);

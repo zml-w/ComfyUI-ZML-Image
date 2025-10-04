@@ -2117,7 +2117,24 @@ async function showPanoViewerModal(node) {
         return;
     }
     const imageUrl = imageNode.imgs[0].src;
+    
+    // 获取预览模式设置
+    let previewMode = "360°预览";
+    const modeWidget = node.widgets.find(w => w.name === "预览模式");
+    if (modeWidget && modeWidget.value) {
+        previewMode = modeWidget.value;
+    }
 
+    // 根据预览模式选择不同的预览方式
+    if (previewMode === "平面预览") {
+        showPlanePreview(imageUrl);
+    } else {
+        show360Preview(imageUrl);
+    }
+}
+
+// 360度预览函数
+async function show360Preview(imageUrl) {
     // 2. 加载 Three.js 库 (只加载一次)
     if (typeof THREE === 'undefined') {
         const threeJsPath = new URL('../lib/three.min.js', import.meta.url).href;
@@ -2253,8 +2270,15 @@ async function showPanoViewerModal(node) {
     // 加载图像并初始化 Three.js 场景
     const loader = new THREE.TextureLoader();
     loader.load(imageUrl, texture => {
+        // 配置纹理参数
+        texture.encoding = THREE.sRGBEncoding;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        
         // 创建 Three.js 场景
         scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000); // 纯黑色背景
         
         // 创建相机
         camera = new THREE.PerspectiveCamera(fov, container.clientWidth / container.clientHeight, 0.1, 2000);
@@ -2264,6 +2288,7 @@ async function showPanoViewerModal(node) {
         renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputEncoding = THREE.sRGBEncoding;
 
         // 创建球体几何体
         // THREE.SphereGeometry(radius, widthSegments, heightSegments)
@@ -2407,5 +2432,278 @@ async function showPanoViewerModal(node) {
 
     // 首次调用调整大小函数
     onWindowResize();
+}
+
+// 3D视角预览函数 - 允许在3D空间中旋转2D图像
+async function showPlanePreview(imageUrl) {
+    // 加载 Three.js 库 (只加载一次)
+    if (typeof THREE === 'undefined') {
+        const threeJsPath = new URL('../lib/three.min.js', import.meta.url).href;
+        await loadScript(threeJsPath);
+    }
+
+    // 创建3D预览模态框
+    const modalHtml = `
+        <div id="zml-plane-viewer-modal" class="zml-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1002; flex-direction: column;">
+            <p style="color: white; margin-bottom: 10px;">拖动鼠标旋转视角，滚轮缩放，按ESC关闭</p>
+            <div id="zml-plane-viewer-container" style="width: 80vw; height: 80vh; max-width: 1200px; max-height: 800px; background-color: #000000; overflow: hidden; position: relative;">
+                <canvas id="zml-plane-canvas" style="display: block;"></canvas>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button id="zml-plane-reset-btn" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">重置视角</button>
+                <button id="zml-plane-close-btn" style="padding: 10px 20px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer;">关闭预览</button>
+            </div>
+            <style>
+                /* 基本的模态框和按钮样式 */
+                .zml-modal button {
+                    background-color: #555;
+                    border: 1px solid #777;
+                    padding: 5px 10px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    color: white;
+                }
+                .zml-modal button:hover {
+                    background-color: #666;
+                }
+                .zml-modal button.active {
+                    background-color: #007bff;
+                    border-color: #007bff;
+                }
+            </style>
+        </div>
+    `;
+    
+    const modal = createModal(modalHtml, 'zml-plane-viewer-modal');
+    const container = modal.querySelector('#zml-plane-viewer-container');
+    const canvas = modal.querySelector('#zml-plane-canvas');
+    
+    // Three.js 变量
+    let scene, camera, renderer;
+    let planeMesh;
+    let controls = {
+        isDragging: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        currentY: 0,
+        targetRotationX: 0,
+        targetRotationY: 0,
+        scale: 1
+    };
+    
+    // 初始化 Three.js 场景
+    function init() {
+        // 创建场景
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000); // 纯黑色背景
+        
+        // 创建相机
+        camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(0, 0, 5); // 初始相机位置
+        
+        // 创建渲染器
+        renderer = new THREE.WebGLRenderer({ 
+            canvas: canvas, 
+            antialias: true
+        });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        
+        // 加载纹理并创建平面
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load(imageUrl, (texture) => {
+            // 设置纹理参数
+            texture.encoding = THREE.sRGBEncoding;
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            texture.generateMipmaps = false;
+            
+            // 计算平面尺寸以保持图像比例
+            const aspectRatio = texture.image.width / texture.image.height;
+            const planeWidth = 3;
+            const planeHeight = planeWidth / aspectRatio;
+            
+            // 创建平面几何体
+            const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+            
+            // 创建材质
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide
+            });
+            
+            // 创建平面网格
+            planeMesh = new THREE.Mesh(geometry, material);
+            scene.add(planeMesh);
+            
+            // 更新相机位置，使平面在视图中合适大小
+            updateCameraPosition();
+        });
+        
+        // 启动渲染循环
+        animate();
+    }
+    
+    // 渲染循环
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // 更新平面旋转
+        if (planeMesh) {
+            // 使用缓动效果使旋转更平滑
+            planeMesh.rotation.x += (controls.targetRotationX - planeMesh.rotation.x) * 0.1;
+            planeMesh.rotation.y += (controls.targetRotationY - planeMesh.rotation.y) * 0.1;
+            planeMesh.scale.set(controls.scale, controls.scale, controls.scale);
+        }
+        
+        renderer.render(scene, camera);
+    }
+    
+    // 更新相机位置以合适查看图像
+    function updateCameraPosition() {
+        if (!planeMesh) return;
+        
+        // 获取平面的边界框
+        planeMesh.geometry.computeBoundingBox();
+        const box = planeMesh.geometry.boundingBox;
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        
+        // 计算相机距离，确保整个平面可见
+        const maxDim = Math.max(size.x, size.y);
+        const fov = camera.fov * (Math.PI / 180);
+        let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5; // 1.5倍的距离以留出空间
+        
+        camera.position.z = cameraZ;
+        
+        // 重置初始缩放
+        controls.scale = 1;
+    }
+    
+    // 重置视角
+    function resetView() {
+        if (planeMesh) {
+            controls.targetRotationX = 0;
+            controls.targetRotationY = 0;
+            controls.scale = 1;
+            
+            // 更新相机位置
+            updateCameraPosition();
+        }
+    }
+    
+    // 鼠标事件处理
+    function onMouseDown(e) {
+        controls.isDragging = true;
+        controls.startX = e.clientX;
+        controls.startY = e.clientY;
+        container.style.cursor = 'grabbing';
+        e.preventDefault();
+    }
+    
+    function onMouseMove(e) {
+        if (!controls.isDragging) return;
+        
+        const deltaX = e.clientX - controls.startX;
+        const deltaY = e.clientY - controls.startY;
+        
+        // 根据鼠标移动更新目标旋转角度
+        controls.targetRotationY += deltaX * 0.005; // 水平旋转 (Y轴)
+        controls.targetRotationX += deltaY * 0.005; // 垂直旋转 (X轴)
+        
+        // 限制垂直旋转范围，避免过度翻转
+        controls.targetRotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, controls.targetRotationX));
+        
+        controls.startX = e.clientX;
+        controls.startY = e.clientY;
+        
+        e.preventDefault();
+    }
+    
+    function onMouseUp() {
+        controls.isDragging = false;
+        container.style.cursor = 'grab';
+    }
+    
+    // 滚轮缩放事件
+    function onWheel(e) {
+        e.preventDefault();
+        
+        // 根据滚轮方向调整缩放
+        const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        controls.scale = Math.max(0.1, Math.min(5, controls.scale * scaleFactor));
+    }
+    
+    // ESC键关闭
+    function onDocumentKeyUp(event) {
+        if (event.key === 'Escape') {
+            closeModal(modal);
+            cleanup();
+        }
+    }
+    
+    // 清理函数
+    function cleanup() {
+        if (planeMesh) {
+            if (planeMesh.material && planeMesh.material.map) {
+                planeMesh.material.map.dispose(); // 释放纹理资源
+            }
+            if (planeMesh.material) planeMesh.material.dispose();
+            if (planeMesh.geometry) planeMesh.geometry.dispose();
+            scene.remove(planeMesh);
+            planeMesh = null;
+        }
+        
+        if (renderer) {
+            renderer.dispose();
+            renderer = null;
+        }
+        
+        // 移除所有事件监听器
+        container.removeEventListener('mousedown', onMouseDown);
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        container.removeEventListener('wheel', onWheel);
+        document.removeEventListener('keyup', onDocumentKeyUp);
+        window.removeEventListener('resize', onWindowResize);
+    }
+    
+    // 窗口大小调整处理
+    function onWindowResize() {
+        if (!renderer || !camera) return;
+        
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        
+        renderer.setSize(width, height);
+    }
+    
+    // 绑定事件监听器
+    container.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    container.addEventListener('wheel', onWheel, { passive: false });
+    document.addEventListener('keyup', onDocumentKeyUp);
+    window.addEventListener('resize', onWindowResize);
+    
+    // 关闭按钮事件
+    modal.querySelector('#zml-plane-close-btn').onclick = () => {
+        closeModal(modal);
+        cleanup();
+    };
+    
+    // 重置按钮事件
+    modal.querySelector('#zml-plane-reset-btn').onclick = resetView;
+    
+    // 初始鼠标样式
+    container.style.cursor = 'grab';
+    
+    // 初始化场景
+    init();
 }
 

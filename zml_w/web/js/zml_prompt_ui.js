@@ -311,6 +311,9 @@ function createPromptModal(node) {
     const confirmBtn = $el("button", { textContent: "确定", className: "zml-prompt-ui-btn zml-prompt-ui-btn-primary confirm-btn", onclick: closeUI });
     const header = $el("div", { className: "zml-prompt-ui-header" }, [headerTitle, $el("div", {className: "zml-prompt-ui-header-controls"}, [themeSelector, resetThemeBtn, refreshBtn, confirmBtn])]);
     
+    // 定义translationMap作为Map对象，用于存储英文提示词到中文翻译的映射
+    const translationMap = new Map();
+    
     const tagDisplay = $el("div", { className: "zml-prompt-ui-tag-display" });
     const viewBtn = $el("button", { textContent: "查看", className: "zml-prompt-ui-btn zml-prompt-ui-btn-secondary", onclick: () => { showSelectedTagsDialog(currentPrompts, translationMap); }});
     const tagDisplayWrapper = $el("div", { className: "zml-prompt-ui-tag-display-wrapper" }, [ tagDisplay, viewBtn ]);
@@ -320,7 +323,344 @@ function createPromptModal(node) {
     const editModeBtn = $el("button", { textContent: "编辑模式", className: "zml-prompt-ui-btn zml-prompt-ui-btn-secondary zml-prompt-ui-btn-edit" });
     const copyBtn = $el("button", { textContent: "一键复制", className: "zml-prompt-ui-btn zml-prompt-ui-btn-primary" });
     const clearBtn = $el("button", { textContent: "一键清空", className: "zml-prompt-ui-btn zml-prompt-ui-btn-danger" });
-    const controls = $el("div", { className: "zml-prompt-ui-main-controls" }, [$el("span", { textContent: "上方为已选提示词，下方为可选提示词", className: "zml-prompt-ui-main-controls-comment" }), $el("div", { style: { display: "flex", gap: "8px" }}, [undoBtn, importBtn, editModeBtn, copyBtn, clearBtn])]);
+    // 搜索框和搜索按钮
+    const searchInput = $el("input", {
+        id: "zml-search-input",
+        type: "text", 
+        placeholder: "搜索提示词...",
+        style: {
+            padding: "6px 12px",
+            backgroundColor: "var(--zml-input-bg-color)",
+            border: "1px solid var(--zml-border-color)",
+            borderRadius: "var(--zml-border-radius)",
+            color: "var(--zml-text-color)",
+            fontSize: "14px",
+            boxSizing: "border-box",
+            minWidth: "180px"
+        }
+    });
+    const searchBtn = $el("button", {
+        id: "zml-search-btn",
+        textContent: "搜索", 
+        className: "zml-prompt-ui-btn zml-prompt-ui-btn-primary",
+        style: {
+            marginLeft: "8px",
+            height: "32px"
+        }
+    });
+
+    // 搜索结果容器
+    const searchResultsContainer = $el("div", {
+        className: "zml-search-results-container",
+        style: {
+            display: "none",
+            position: "absolute",
+            top: "100%",
+            right: "0",
+            backgroundColor: "var(--zml-modal-bg-color)",
+            border: "1px solid var(--zml-border-color)",
+            borderRadius: "var(--zml-border-radius)",
+            maxHeight: "300px",
+            overflowY: "auto",
+            zIndex: 1000, // 提高z-index确保在最上层显示
+            minWidth: "300px",
+            boxShadow: "0 5px 15px rgba(0,0,0,0.3)",
+            margin: "5px 0 0 0"
+        }
+    });
+
+    // 实现搜索功能
+    function performSearch(query) {
+        console.log("开始搜索，currentData:", currentData ? currentData.length : "null");
+        if (!query || !currentData || !Array.isArray(currentData)) {
+            console.log("搜索条件不满足");
+            return [];
+        }
+        
+        const results = [];
+        query = query.toLowerCase().trim();
+        console.log("搜索关键词:", query);
+        
+        // 遍历所有分类和分组搜索
+        for (let i = 0; i < currentData.length; i++) {
+            const category = currentData[i];
+            if (!category || !category.groups) continue;
+            
+            for (let j = 0; j < category.groups.length; j++) {
+                const group = category.groups[j];
+                if (!group || !group.tags) continue;
+                
+                for (const [prompt, name] of Object.entries(group.tags)) {
+                    // 搜索英文提示词或中文翻译，确保正确处理空值
+                    const promptStr = String(prompt || '').toLowerCase();
+                    const nameStr = String(name || '').toLowerCase();
+                    const queryStr = String(query).toLowerCase();
+                    
+                    console.log(`检查提示词: prompt=${promptStr}, name=${nameStr}, query=${queryStr}`);
+                    
+                    // 增强的搜索逻辑：同时检查英文提示词和中文名称
+                    if (promptStr.includes(queryStr) || nameStr.includes(queryStr)) {
+                        results.push({
+                            prompt: prompt,
+                            name: name,
+                            category: category.name || '未知分类',
+                            group: group.name || '未知分组'
+                        });
+                        console.log("找到匹配:", prompt, name);
+                    }
+                }
+            }
+        }
+        
+        console.log("搜索完成，结果数量:", results.length);
+        return results;
+    }
+
+    // 渲染搜索结果
+    function renderSearchResults(results) {
+        console.log("渲染搜索结果，数量:", results.length);
+        searchResultsContainer.innerHTML = "";
+        
+        // 强制显示搜索结果容器
+        searchResultsContainer.style.display = "block";
+        
+        if (results.length === 0) {
+            const noResultEl = $el("div", {
+                style: {
+                    padding: "12px",
+                    color: "var(--zml-text-color-secondary)",
+                    textAlign: "center"
+                },
+                textContent: "未找到相关提示词"
+            });
+            searchResultsContainer.appendChild(noResultEl);
+            console.log("显示无结果提示");
+        } else {
+            results.forEach(item => {
+                const resultItem = $el("div", {
+                    className: "zml-search-result-item",
+                    style: {
+                        padding: "10px 12px",
+                        borderBottom: "1px solid var(--zml-border-color)",
+                        cursor: "pointer",
+                        transition: "background-color 0.2s"
+                    }
+                });
+                
+                resultItem.appendChild($el("div", {
+                    style: {
+                        fontWeight: "bold",
+                        color: CHINESE_TEXT_COLOR,
+                        fontSize: "14px"
+                    },
+                    textContent: item.name
+                }));
+                
+                resultItem.appendChild($el("div", {
+                    style: {
+                        fontSize: "12px",
+                        color: "#bbb",
+                        marginTop: "2px"
+                    },
+                    textContent: item.prompt
+                }));
+                
+                resultItem.appendChild($el("div", {
+                    style: {
+                        fontSize: "11px",
+                        color: "var(--zml-text-color-secondary)",
+                        marginTop: "4px"
+                    },
+                    textContent: `${item.category} / ${item.group}`
+                }));
+                
+                // 鼠标悬停效果
+                resultItem.onmouseenter = function() {
+                    this.style.backgroundColor = "var(--zml-secondary-bg-color)";
+                };
+                
+                resultItem.onmouseleave = function() {
+                    this.style.backgroundColor = "";
+                };
+                
+                // 添加点击事件
+                resultItem.onclick = function() {
+                    console.log("点击搜索结果:", item.prompt);
+                    pushHistory();
+                    if (currentPrompts.has(item.prompt)) {
+                        currentPrompts.delete(item.prompt);
+                    } else {
+                        currentPrompts.set(item.prompt, 1.0);
+                        // 同步更新translationMap，确保标签显示中文
+                        translationMap.set(item.prompt, item.name);
+                    }
+                    updateNodePrompt();
+                    renderSelectedTags();
+                    searchResultsContainer.style.display = "none";
+                    savePromptsToBackend(currentData);
+                };
+                
+                searchResultsContainer.appendChild(resultItem);
+            });
+        }
+    }
+
+    // 搜索按钮点击事件
+    searchBtn.onclick = function() {
+        const query = searchInput.value;
+        console.log("搜索查询:", query);
+        if (query) {
+            const results = performSearch(query);
+            console.log("搜索结果数量:", results.length);
+            console.log("搜索结果:", results);
+            renderSearchResults(results);
+        }
+    };
+
+    // 回车搜索
+    searchInput.onkeypress = function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault(); // 阻止默认的回车行为
+            searchBtn.click();
+        }
+    };
+
+    // 点击其他区域关闭搜索结果
+    modal.addEventListener("click", function(e) {
+        if (!searchInput.contains(e.target) && !searchBtn.contains(e.target) && !searchResultsContainer.contains(e.target)) {
+            searchResultsContainer.style.display = "none";
+        }
+    });
+
+    // 主控件区域
+    const controlsWrapper = $el("div", {
+        className: "zml-prompt-ui-controls-wrapper",
+        style: {
+            display: "flex",
+            alignItems: "center",
+            width: "100%",
+            position: "relative"
+        }
+    });
+    
+    // 手动翻译按钮功能
+    function showToast(message, duration = 2000) {
+    // 创建消息元素
+    const toast = $el("div", {
+        className: "zml-prompt-ui-toast",
+        textContent: message,
+        style: {
+            position: "fixed",
+            top: "20px",
+            left: "20px",
+            backgroundColor: "rgba(0, 0, 0, 0.8)",
+            color: "white",
+            padding: "12px 20px",
+            borderRadius: "4px",
+            zIndex: 9999,
+            fontSize: "14px",
+            opacity: "0",
+            transition: "opacity 0.3s ease"
+        }
+    });
+    
+    // 添加到文档
+    document.body.appendChild(toast);
+    
+    // 显示消息
+    setTimeout(() => {
+        toast.style.opacity = "1";
+    }, 10);
+    
+    // 自动消失
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, duration);
+}
+
+function translateSelectedTags() {
+        console.log("开始手动翻译标签...");
+        let translatedCount = 0;
+        
+        // 遍历当前已选标签
+        currentPrompts.forEach((weight, prompt) => {
+            // 只翻译还没有中文名称的提示词
+            if (!translationMap.get(prompt)) {
+                console.log(`查找提示词翻译: ${prompt}`);
+                
+                // 遍历所有分类和分组查找翻译
+                let found = false;
+                for (let i = 0; i < currentData.length && !found; i++) {
+                    const category = currentData[i];
+                    if (!category || !category.groups) continue;
+                    
+                    for (let j = 0; j < category.groups.length && !found; j++) {
+                        const group = category.groups[j];
+                        if (!group || !group.tags) continue;
+                        
+                        // 查找匹配的提示词
+                        if (group.tags.hasOwnProperty(prompt)) {
+                            const name = group.tags[prompt];
+                            translationMap.set(prompt, name);
+                            translatedCount++;
+                            console.log(`找到翻译: ${prompt} -> ${name}`);
+                            found = true;
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 更新标签显示
+        if (translatedCount > 0) {
+            renderSelectedTags();
+            console.log(`成功翻译了 ${translatedCount} 个标签！`);
+            showToast(`成功翻译了 ${translatedCount} 个标签！`);
+        } else {
+            console.log("所有标签都已有中文翻译，无需再次翻译。");
+            showToast("所有标签都已有中文翻译，无需再次翻译。");
+        }
+    }
+    
+    // 创建搜索容器（移到最左侧）
+    const searchContainer = $el("div", { 
+        style: { 
+            display: "flex", 
+            alignItems: "center",
+            position: "relative",
+            marginRight: "16px", // 增加与右侧按钮的间距
+            zIndex: 1001
+        } 
+    }, [searchInput, searchBtn, searchResultsContainer]);
+    
+    // 将搜索容器添加到最左侧
+    controlsWrapper.appendChild(searchContainer);
+    
+    // 创建右侧的按钮区域
+    const rightControls = $el("div", { 
+        style: { 
+            display: "flex", 
+            alignItems: "center",
+            position: "relative",
+            flexGrow: 1,
+            justifyContent: "flex-end"
+        } 
+    });
+    
+    // 翻译按钮
+    const translateBtn = $el("button", {
+        textContent: "翻译",
+        className: "zml-prompt-ui-btn zml-prompt-ui-btn-primary",
+        title: "为未翻译的标签查找中文名称",
+        onclick: translateSelectedTags
+    });
+    
+    rightControls.appendChild($el("div", { style: { display: "flex", gap: "8px"}}, [translateBtn, undoBtn, importBtn, editModeBtn, copyBtn, clearBtn]));
+    controlsWrapper.appendChild(rightControls);    
+    const controls = $el("div", { className: "zml-prompt-ui-main-controls" }, [controlsWrapper]);
     const promptDisplayArea = $el("div", { className: "zml-prompt-ui-display-area" }, [tagDisplayWrapper, controls]);
     
     const mainTabs = $el("div", { className: "zml-prompt-ui-nav-tabs" });
@@ -345,7 +685,10 @@ function createPromptModal(node) {
         historyStack.push(Array.from(currentPrompts.entries()));
         if (historyStack.length > 20) historyStack.shift();
     };
-    const getPromptString = () => Array.from(currentPrompts.entries()).map(([p, w]) => w === 1.0 ? p : `(${p}:${w.toFixed(1)})`).join(', ');
+    const getPromptString = () => {
+        const promptStr = Array.from(currentPrompts.entries()).map(([p, w]) => w === 1.0 ? p : `(${p}:${w.toFixed(1)})`).join(', ');
+        return promptStr ? promptStr + ', ' : '';
+    };
     const updateNodePrompt = () => { currentPromptWidget.value = getPromptString(); app.graph.setDirtyCanvas(true); };
     const renderAllButtons = () => { if (!currentData) return; renderMainTabs(currentData); renderSelectedTags(); };
     const renderSelectedTags = () => { /* ... 此函数未改变 ... */
@@ -482,7 +825,48 @@ function createPromptModal(node) {
         document.body.append(backdrop, dialog); backdrop.onclick = closeDialog;
     }
     
-    api.fetchApi(`${PROMPT_API_PREFIX}/get_prompts`).then(r => r.json()).then(d => { if (d.error) { tagArea.textContent = `加载失败: ${d.error}`; return; } currentData = d; renderAllButtons(); }).catch(e => { tagArea.textContent = `加载失败: ${e}`; console.error(e); });
+    api.fetchApi(`${PROMPT_API_PREFIX}/get_prompts`).then(r => r.json()).then(d => { if (d.error) { tagArea.textContent = `加载失败: ${d.error}`; return; } currentData = d; renderAllButtons(); 
+        // 实现自动翻译功能：打开UI时自动翻译一次，然后每隔1秒自动翻译一次，一共三次
+        let translateCount = 0;
+        const autoTranslate = () => {
+            if (translateCount >= 3) return;
+            
+            let translatedCount = 0;
+            // 遍历当前选中的所有提示词
+            currentPrompts.forEach((_, prompt) => {
+                // 如果提示词还没有中文翻译
+                if (!translationMap.has(prompt)) {
+                    // 在currentData中查找对应的中文翻译
+                    for (const category of currentData) {
+                        for (const group of category.groups) {
+                            if (group.tags && group.tags[prompt]) {
+                                // 找到翻译后更新translationMap
+                                translationMap.set(prompt, group.tags[prompt]);
+                                translatedCount++;
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 如果本次翻译了新的内容，重新渲染标签
+            if (translatedCount > 0) {
+                renderSelectedTags();
+                console.log(`自动翻译完成，本次翻译了 ${translatedCount} 个标签`);
+                // 移除自动翻译的消息提示
+            }
+            
+            translateCount++;
+            // 如果还需要继续翻译，设置1秒后再次执行
+            if (translateCount < 3) {
+                setTimeout(autoTranslate, 1000);
+            }
+        };
+        
+        // 开始第一次自动翻译
+        autoTranslate();
+    }).catch(e => { tagArea.textContent = `加载失败: ${e}`; console.error(e); });
 }
 
 app.registerExtension({

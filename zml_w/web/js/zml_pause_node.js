@@ -413,6 +413,100 @@ app.registerExtension({
                             transform: scale(0.95) !important;
                             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
                         }
+                        /* 全部按钮样式 */
+                        .zml-single-image-button {
+                            padding: 4px 12px;
+                            background: linear-gradient(45deg, #ff9800, #ffb74d);
+                            color: white;
+                            border: 2px solid #ff9800;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 12px;
+                            font-weight: bold;
+                            transition: all 0.2s ease;
+                            height: 32px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            z-index: 20;
+                        }
+                        .zml-single-image-button:hover {
+                            transform: scale(1.05);
+                            background: linear-gradient(45deg, #f57c00, #ffa726);
+                            box-shadow: 0 2px 8px rgba(255, 152, 0, 0.4);
+                        }
+                        .zml-single-image-button:active {
+                            transform: scale(0.95) !important;
+                            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+                        }
+                        /* 全部显示模式样式 */
+                        .zml-single-image-container {
+                            display: none;
+                            position: relative;
+                            margin-top: 12px;
+                            width: 100%;
+                            height: 300px;
+                            background-color: #1a1a1a;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            box-sizing: border-box;
+                            z-index: 10;
+                        }
+                        .zml-single-image-container.active {
+                            display: block;
+                        }
+                        .zml-main-image {
+                            width: 100%;
+                            height: 100%;
+                            object-fit: contain;
+                            border: none;
+                        }
+                        /* 通道序号显示样式 */
+                        .zml-channel-number {
+                            position: absolute;
+                            top: 8px;
+                            left: 8px;
+                            background-color: rgba(0, 0, 0, 0.8);
+                            color: white;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            font-weight: bold;
+                            z-index: 20;
+                        }
+                        /* 确保全部容器在按钮下方 */
+                        .zml-image-grid {
+                            margin-top: 8px;
+                        }
+                        .zml-nav-button {
+                            position: absolute;
+                            top: 50%;
+                            transform: translateY(-50%);
+                            width: 40px;
+                            height: 40px;
+                            background-color: rgba(0, 0, 0, 0.7);
+                            color: white;
+                            border: none;
+                            border-radius: 50%;
+                            font-size: 20px;
+                            font-weight: bold;
+                            cursor: pointer;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: all 0.2s ease;
+                            z-index: 10;
+                        }
+                        .zml-nav-button:hover {
+                            background-color: rgba(0, 0, 0, 0.9);
+                            transform: translateY(-50%) scale(1.1);
+                        }
+                        .zml-nav-button.prev {
+                            left: 10px;
+                        }
+                        .zml-nav-button.next {
+                            right: 10px;
+                        }
                     `;
                     document.head.appendChild(styleSheet);
                 }
@@ -528,6 +622,206 @@ app.registerExtension({
                     buttonsContainer.appendChild(channelButton);
                 }
                 
+                // 添加单图按钮
+                const singleImageButton = document.createElement("button");
+                singleImageButton.textContent = "全部";
+                singleImageButton.className = "zml-single-image-button";
+                singleImageButton.style.cssText = `
+                    padding: 4px 12px;
+                    background: linear-gradient(45deg, #28a745, #4caf50);
+                    color: white;
+                    border: 2px solid #28a745;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    font-weight: bold;
+                    transition: all 0.2s ease;
+                    height: 32px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                `;
+                
+                singleImageButton.onmouseover = () => {
+                    singleImageButton.style.transform = "scale(1.05)";
+                    singleImageButton.style.background = "linear-gradient(45deg, #218838, #388e3c)";
+                    singleImageButton.style.boxShadow = "0 2px 8px rgba(40, 167, 69, 0.4)";
+                };
+                
+                singleImageButton.onmouseout = () => {
+                    singleImageButton.style.transform = "scale(1)";
+                    singleImageButton.style.background = "linear-gradient(45deg, #28a745, #4caf50)";
+                    singleImageButton.style.boxShadow = "none";
+                    // 如果按钮未处于激活状态，恢复原始颜色
+                    if (!isSingleImageMode) {
+                        singleImageButton.style.background = "linear-gradient(45deg, #28a745, #4caf50)";
+                        singleImageButton.style.borderColor = "#28a745";
+                    }
+                };
+                
+                // 添加全部显示容器
+                const singleImageContainer = document.createElement("div");
+                singleImageContainer.className = "zml-single-image-container";
+                
+                // 创建主图元素
+                const mainImage = document.createElement("img");
+                mainImage.className = "zml-main-image";
+                singleImageContainer.appendChild(mainImage);
+                
+                // 创建左切换按钮
+                const prevButton = document.createElement("button");
+                prevButton.textContent = "‹";
+                prevButton.className = "zml-nav-button prev";
+                singleImageContainer.appendChild(prevButton);
+                
+                // 创建右切换按钮
+                const nextButton = document.createElement("button");
+                nextButton.textContent = "›";
+                nextButton.className = "zml-nav-button next";
+                singleImageContainer.appendChild(nextButton);
+                
+                let currentImageIndex = 0;
+                let allImages = [];
+                
+                let isSingleImageMode = false;
+                let channelNumberElement = null;
+                
+                // 创建通道序号元素
+                function createChannelNumberElement() {
+                    channelNumberElement = document.createElement('div');
+                    channelNumberElement.className = 'zml-channel-number';
+                    channelNumberElement.style.display = 'none';
+                    singleImageContainer.appendChild(channelNumberElement);
+                }
+                
+                // 更新通道序号显示
+                function updateChannelNumber() {
+                    if (!channelNumberElement) {
+                        createChannelNumberElement();
+                    }
+                    
+                    if (currentImageIndex >= 0 && currentImageIndex < allImages.length) {
+                        const currentGridItem = allImages[currentImageIndex].closest('.zml-grid-image-item');
+                        if (currentGridItem && currentGridItem.classList.contains('selected')) {
+                            // 只有当图像被选中时才显示通道号，并且仅使用图像自身的通道信息
+                            const channel = currentGridItem.dataset.channel;
+                            if (channel) {
+                                channelNumberElement.textContent = `通道 ${channel}`;
+                                channelNumberElement.style.display = 'block';
+                            } else {
+                                channelNumberElement.style.display = 'none';
+                            }
+                        } else {
+                            channelNumberElement.style.display = 'none';
+                        }
+                    } else {
+                        channelNumberElement.style.display = 'none';
+                    }
+                }
+                
+                // 创建通道序号元素
+                createChannelNumberElement();
+                
+                singleImageButton.onclick = () => {
+                    // 切换全部模式
+                    isSingleImageMode = !isSingleImageMode;
+                    singleImageContainer.classList.toggle("active");
+                    
+                    // 更新按钮文字
+                    singleImageButton.textContent = isSingleImageMode ? "单图" : "全部";
+                    
+                    // 添加按下反馈
+                    singleImageButton.style.background = isSingleImageMode 
+                        ? "linear-gradient(45deg, #1e7e34, #388e3c)" 
+                        : "linear-gradient(45deg, #28a745, #4caf50)";
+                    singleImageButton.style.borderColor = isSingleImageMode ? "#1e7e34" : "#28a745";
+                    
+                    // 显示或隐藏图像网格
+                    if (imageGrid) {
+                        imageGrid.style.display = isSingleImageMode ? "none" : "grid";
+                    }
+                    
+                    // 如果开启全部模式，显示第一张图
+                    if (isSingleImageMode) {
+                        // 获取所有图像
+                        allImages = Array.from(document.querySelectorAll('.zml-grid-image'));
+                        if (allImages.length > 0) {
+                            currentImageIndex = 0;
+                            mainImage.src = allImages[currentImageIndex].src;
+                            
+                            // 检查当前图像是否被选中
+                            updateImageSelectionState();
+                            
+                            // 更新通道序号显示
+                            updateChannelNumber();
+                        }
+                    }
+                };
+                
+                // 更新图像选择状态
+                function updateImageSelectionState() {
+                    if (isSingleImageMode && allImages.length > 0) {
+                        const currentGridItem = allImages[currentImageIndex].closest('.zml-grid-image-item');
+                        if (currentGridItem) {
+                            // 添加选中状态的视觉反馈
+                            mainImage.style.border = currentGridItem.classList.contains('selected') ? '3px solid #4a90e2' : 'none';
+                            // 更新通道序号显示
+                            updateChannelNumber();
+                        }
+                    }
+                }
+                
+                // 点击主图切换选择状态
+                mainImage.onclick = () => {
+                    if (isSingleImageMode && allImages.length > 0) {
+                        const currentGridItem = allImages[currentImageIndex].closest('.zml-grid-image-item');
+                        if (currentGridItem) {
+                            // 切换选中状态
+                            currentGridItem.classList.toggle('selected');
+                            
+                            // 同步通道信息（修复关键点：移到updateImageSelectionState之前）
+                            const activeChannel = imageGrid.dataset.activeChannel || '1';
+                            currentGridItem.dataset.channel = activeChannel;
+                            
+                            // 更新或添加通道标记
+                            let mark = currentGridItem.querySelector('.zml-image-mark');
+                            if (!mark) {
+                                mark = document.createElement('div');
+                                mark.className = 'zml-image-mark';
+                                currentGridItem.appendChild(mark);
+                            }
+                            mark.textContent = activeChannel;
+                            
+                            // 更新选中状态的视觉反馈
+                            updateImageSelectionState();
+                        }
+                    }
+                }
+                
+                // 左切换按钮点击事件
+                prevButton.onclick = () => {
+                    if (allImages.length === 0) return;
+                    currentImageIndex = (currentImageIndex - 1 + allImages.length) % allImages.length;
+                    mainImage.src = allImages[currentImageIndex].src;
+                    // 更新选择状态的视觉反馈
+                    updateImageSelectionState();
+                    // 更新通道序号显示
+                    updateChannelNumber();
+                };
+                
+                // 右切换按钮点击事件
+                nextButton.onclick = () => {
+                    if (allImages.length === 0) return;
+                    currentImageIndex = (currentImageIndex + 1) % allImages.length;
+                    mainImage.src = allImages[currentImageIndex].src;
+                    // 更新选择状态的视觉反馈
+                    updateImageSelectionState();
+                    // 更新通道序号显示
+                    updateChannelNumber();
+                };
+                
+                buttonsContainer.appendChild(singleImageButton);
+                
                 // 添加输出按钮
                 const outputButton = document.createElement("button");
                 outputButton.textContent = "输出";
@@ -567,21 +861,25 @@ app.registerExtension({
                         
                         // 按通道分组图像
                         const imagesByChannel = {};
-                        selectedImages.forEach(img => {
-                            const channel = img.dataset.channel || '1'; // 默认通道1
-                            if (!imagesByChannel[channel]) {
-                                imagesByChannel[channel] = [];
-                            }
-                            imagesByChannel[channel].push(parseInt(img.dataset.index));
-                        });
                         
-                        // 将所有通道的选择信息合并到一个请求中发送
+                        // 如果有选中的图像，按通道分组
+                        if (selectedImages.length > 0) {
+                            selectedImages.forEach(img => {
+                                const channel = img.dataset.channel || '1'; // 默认通道1
+                                if (!imagesByChannel[channel]) {
+                                    imagesByChannel[channel] = [];
+                                }
+                                imagesByChannel[channel].push(parseInt(img.dataset.index));
+                            });
+                        }
+                        
+                        // 无论是否有选中图像，都发送请求以继续流程
                         await api.fetchApi("/zml/unpause", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 node_id: this.id, 
-                                // 发送所有通道的图像映射，而不是单个通道
+                                // 发送所有通道的图像映射，空对象表示没有选择任何图像
                                 channels_images_map: imagesByChannel
                             }),
                         });
@@ -607,8 +905,11 @@ app.registerExtension({
                 
                 buttonsContainer.appendChild(outputButton);
                 
-                // 添加按钮容器到主容器
+                // 先将按钮容器添加到主容器（确保按钮在顶部）
                 mainContainer.appendChild(buttonsContainer);
+                
+                // 再将全部容器添加到主容器（全部在按钮下方）
+                mainContainer.appendChild(singleImageContainer);
                 
                 // 创建加载指示器
                 const loadingIndicator = document.createElement("div");
@@ -705,14 +1006,32 @@ app.registerExtension({
                                             mark.textContent = activeChannel;
                                             imageItem.appendChild(mark);
                                         }
+                                        
+                                        // 更新左上角通道号显示
+                                        updateChannelNumber();
                                     };
                                     
                                     imageItem.appendChild(image);
                                     imageGrid.appendChild(imageItem);
                                 });
                                 
-                                // 显示网格，隐藏加载指示器
-                                imageGrid.style.display = "grid";
+                                // 显示网格或单图，隐藏加载指示器
+                                // 只有在非单图模式下才显示网格
+                                imageGrid.style.display = isSingleImageMode ? "none" : "grid";
+                                
+                                // 如果处于单图模式，更新单图显示
+                                if (isSingleImageMode) {
+                                    allImages = Array.from(document.querySelectorAll('.zml-grid-image'));
+                                    if (allImages.length > 0) {
+                                        currentImageIndex = 0;
+                                        mainImage.src = allImages[currentImageIndex].src;
+                                        // 检查当前图像是否被选中
+                                        updateImageSelectionState();
+                                        // 更新通道序号显示
+                                        updateChannelNumber();
+                                    }
+                                }
+                                
                                 loadingIndicator.style.display = "none";
                             })
                             .catch(error => {
