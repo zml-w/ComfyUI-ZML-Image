@@ -6,8 +6,8 @@ const TARGET_LORA_LOADERS = ["ZmlLoraLoader", "ZmlLoraLoaderModelOnly", "ZmlLora
 const ZML_API_PREFIX = "/zml/lora";
 const IMAGE_WIDTH = 384;
 const IMAGE_HEIGHT = 384;
-// 定义强力LORA加载器推荐的最小宽度
-const POWER_LORA_LOADER_MIN_WIDTH = 460;
+// 定义强力LORA加载器推荐的最小宽度（增加宽度以容纳编辑按钮和删除按钮）
+const POWER_LORA_LOADER_MIN_WIDTH = 520;
 
 // 定义强力LORA加载器推荐的最小高度
 const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 300; // 根据实际测试调整，确保底部按钮不被裁切
@@ -123,6 +123,45 @@ function adjustBrightness(hex, percent, saturationBoost = 0) {
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+// 新增：从 log 文件读取 preferred weight 的辅助函数
+async function loadLoraPreferredWeight(loraPath) {
+    try {
+        // 发送请求到后端获取log文件内容
+        const jsonResponse = await api.fetchApi(`${ZML_API_PREFIX}/get_lora_file`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                "lora_filename": loraPath,
+                "file_type": "log"
+            })
+        });
+        const jsonResult = await jsonResponse.json();
+        if (jsonResult.status === "success" && jsonResult.content.trim()) {
+            try {
+                const jsonData = JSON.parse(jsonResult.content);
+                // 查找 preferred weight 字段（支持多种可能的字段名）
+                const preferredWeight = jsonData["preferred weight"] || 
+                                      jsonData["preferredWeight"] || 
+                                      jsonData["preferred_weight"] ||
+                                      jsonData["weight"];
+                
+                if (preferredWeight !== undefined && !isNaN(parseFloat(preferredWeight))) {
+                    const weightValue = parseFloat(preferredWeight);
+                    // 确保权重值在合理范围内 (0.01 到 10)
+                    if (weightValue >= 0.01 && weightValue <= 10) {
+                        return weightValue;
+                    }
+                }
+            } catch (parseError) {
+                console.warn(`解析LoRA的log文件失败: ${loraPath}`, parseError);
+            }
+        }
+    } catch (error) {
+        console.warn(`无法读取LoRA的log文件: ${loraPath}`, error);
+    }
+    return null; // 返回 null 表示没有找到有效的权重值
+}
+
 
 app.registerExtension({
 	name: "zml.LoraLoader.Final.v9",
@@ -132,7 +171,7 @@ app.registerExtension({
 		// 1. 注入CSS样式
 		$el("style", {
 			textContent: `
-				.zml-lora-image-preview { position: absolute; left: 0; top: 0; width: ${IMAGE_WIDTH}px; height: ${IMAGE_HEIGHT}px; object-fit: contain; object-position: top left; z-index: 20000; pointer-events: none; }
+				.zml-lora-image-preview { position: absolute; left: 0; top: 0; width: ${IMAGE_WIDTH}px; height: ${IMAGE_HEIGHT}px; object-fit: contain; object-position: top left; z-index: 9999; pointer-events: none; }
 				.zml-lora-image-preview.left { object-position: top right; }
 				.zml-lora-folder { opacity: 0.7; } .zml-lora-folder-arrow { display: inline-block; width: 15px; } .zml-lora-folder:hover { background-color: rgba(255, 255, 255, 0.1); }
 				.litecontextmenu:has(input:not(:placeholder-shown)) .zml-lora-folder-contents { display: block !important; }
@@ -432,6 +471,27 @@ app.registerExtension({
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                }
+                /* 新增：LoRA 条目编辑按钮的样式 */
+                .zml-lora-entry-edit { /* 对应 LoRA 条目右侧的编辑按钮 */
+                    padding: 0;
+                    border: 1px solid #666;
+                    border-radius: 2px;
+                    background: #2196F3;
+                    color: white;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                }
+                .zml-lora-entry-edit:hover:not(:disabled) {
+                    background: #1976D2;
+                    border-color: #777;
+                }
+                .zml-lora-entry-edit:active:not(:disabled) {
+                    background: #1565C0;
+                    transform: translateY(1px);
                 }
                 /* “全部”LoRA按钮样式，复用文件夹 item 的基础视觉 */
                 .zml-batch-lora-all-loras-btn {
@@ -945,6 +1005,7 @@ app.registerExtension({
             // --- 新增：LoRA内容编辑弹窗的变量和函数 ---
             let zmlLoraContentEditModalOverlay = null;
             let zmlLoraContentEditTxtTextarea = null;
+            let zmlLoraContentEditJsonTextarea = null;
             let zmlLoraContentEditLogTextarea = null;
             let zmlLoraContentEditModalTitle = null;
             let zmlLoraContentEditCurrentLoraPath = null;
@@ -1060,6 +1121,20 @@ app.registerExtension({
                     `
                 });
 
+                // 创建json文件标签
+                const jsonTab = zmlCreateEl("button", {
+                    textContent: "官网介绍文档 (json)",
+                    style: `
+                        padding: 8px 16px;
+                        background-color: #31353a;
+                        color: #aaa;
+                        border: none;
+                        border-top-left-radius: 4px;
+                        border-top-right-radius: 4px;
+                        cursor: pointer;
+                    `
+                });
+
                 // 创建log文件标签
                 const logTab = zmlCreateEl("button", {
                     textContent: "介绍文件 (log)",
@@ -1075,6 +1150,7 @@ app.registerExtension({
                 });
 
                 tabContainer.appendChild(txtTab);
+                tabContainer.appendChild(jsonTab);
                 tabContainer.appendChild(logTab);
 
                 // 创建txt文本编辑区域
@@ -1094,6 +1170,27 @@ app.registerExtension({
                         box-sizing: border-box;
                         outline: none;
                         transition: border-color 0.2s, box-shadow 0.2s;
+                    `
+                });
+
+                // 创建json文本编辑区域 (默认隐藏)
+                zmlLoraContentEditJsonTextarea = zmlCreateEl("textarea", {
+                    className: "zml-st3-modal-textarea",
+                    style: `
+                        width: 100%;
+                        height: 400px;
+                        resize: vertical;
+                        background-color: #1a1a1a;
+                        border: 1px solid #4a4a4a;
+                        color: #f0f0f0;
+                        padding: 12px;
+                        font-family: 'Segoe UI Mono', 'Consolas', monospace;
+                        font-size: 14px;
+                        border-radius: 4px;
+                        box-sizing: border-box;
+                        outline: none;
+                        transition: border-color 0.2s, box-shadow 0.2s;
+                        display: none;
                     `
                 });
 
@@ -1128,6 +1225,15 @@ app.registerExtension({
                     e.target.style.boxShadow = 'none';
                 };
 
+                zmlLoraContentEditJsonTextarea.onfocus = (e) => {
+                    e.target.style.borderColor = '#5d99f2';
+                    e.target.style.boxShadow = '0 0 8px rgba(93, 153, 242, 0.4)';
+                };
+                zmlLoraContentEditJsonTextarea.onblur = (e) => {
+                    e.target.style.borderColor = '#4a4a4a';
+                    e.target.style.boxShadow = 'none';
+                };
+
                 zmlLoraContentEditLogTextarea.onfocus = (e) => {
                     e.target.style.borderColor = '#5d99f2';
                     e.target.style.boxShadow = '0 0 8px rgba(93, 153, 242, 0.4)';
@@ -1140,20 +1246,40 @@ app.registerExtension({
                 // 标签切换功能
                 txtTab.onclick = () => {
                     zmlLoraContentEditTxtTextarea.style.display = 'block';
+                    zmlLoraContentEditJsonTextarea.style.display = 'none';
                     zmlLoraContentEditLogTextarea.style.display = 'none';
                     txtTab.style.backgroundColor = '#4a515a';
                     txtTab.style.color = 'white';
+                    jsonTab.style.backgroundColor = '#31353a';
+                    jsonTab.style.color = '#aaa';
                     logTab.style.backgroundColor = '#31353a';
                     logTab.style.color = '#aaa';
                     txtComment.style.display = 'block';
                     zmlLoraContentEditTxtTextarea.focus();
                 };
 
+                jsonTab.onclick = () => {
+                    zmlLoraContentEditTxtTextarea.style.display = 'none';
+                    zmlLoraContentEditJsonTextarea.style.display = 'block';
+                    zmlLoraContentEditLogTextarea.style.display = 'none';
+                    txtTab.style.backgroundColor = '#31353a';
+                    txtTab.style.color = '#aaa';
+                    jsonTab.style.backgroundColor = '#4a515a';
+                    jsonTab.style.color = 'white';
+                    logTab.style.backgroundColor = '#31353a';
+                    logTab.style.color = '#aaa';
+                    txtComment.style.display = 'none';
+                    zmlLoraContentEditJsonTextarea.focus();
+                };
+
                 logTab.onclick = () => {
                     zmlLoraContentEditTxtTextarea.style.display = 'none';
                     zmlLoraContentEditLogTextarea.style.display = 'block';
+                    zmlLoraContentEditJsonTextarea.style.display = 'none';
                     txtTab.style.backgroundColor = '#31353a';
                     txtTab.style.color = '#aaa';
+                    jsonTab.style.backgroundColor = '#31353a';
+                    jsonTab.style.color = '#aaa';
                     logTab.style.backgroundColor = '#4a515a';
                     logTab.style.color = 'white';
                     txtComment.style.display = 'none';
@@ -1232,7 +1358,7 @@ app.registerExtension({
                 // 将按钮容器添加到按钮组
                 buttonGroup.append(buttonContainer);
                 
-                modalContainer.append(titleContainer, tabContainer, zmlLoraContentEditTxtTextarea, zmlLoraContentEditLogTextarea, txtComment, buttonGroup);
+                modalContainer.append(titleContainer, tabContainer, zmlLoraContentEditTxtTextarea, zmlLoraContentEditJsonTextarea, zmlLoraContentEditLogTextarea, txtComment, buttonGroup);
                 zmlLoraContentEditModalOverlay.appendChild(modalContainer);
                 document.body.appendChild(zmlLoraContentEditModalOverlay);
 
@@ -1252,6 +1378,18 @@ app.registerExtension({
                             });
                             const txtResult = await txtResponse.json();
 
+                            // 保存json文件
+                            const jsonResponse = await api.fetchApi(`${ZML_API_PREFIX}/save_lora_file`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    "lora_filename": zmlLoraContentEditCurrentLoraPath,
+                                    "file_type": "json",
+                                    "content": zmlLoraContentEditJsonTextarea.value
+                                })
+                            });
+                            const jsonResult = await jsonResponse.json();
+
                             // 保存log文件
                             const logResponse = await api.fetchApi(`${ZML_API_PREFIX}/save_lora_file`, {
                                 method: "POST",
@@ -1264,10 +1402,10 @@ app.registerExtension({
                             });
                             const logResult = await logResponse.json();
 
-                            if (txtResult.status === "success" && logResult.status === "success") {
+                            if (txtResult.status === "success" && jsonResult.status === "success" && logResult.status === "success") {
                                 alert(`LoRA '${zmlLoraContentEditCurrentLoraName}' 的内容保存成功！`);
                             } else {
-                                alert(`保存失败：\n${txtResult.message || ''}\n${logResult.message || ''}`);
+                                alert(`保存失败：\n${txtResult.message || ''}\n${logResult.message || ''}\n${jsonResult.message || ''}`);
                             }
                         } catch (error) {
                             console.error("Error saving lora content:", error);
@@ -1346,6 +1484,18 @@ app.registerExtension({
                     const txtResult = await txtResponse.json();
                     zmlLoraContentEditTxtTextarea.value = txtResult.content || "";
 
+                    // 加载json文件内容
+                    const jsonResponse = await api.fetchApi(`${ZML_API_PREFIX}/get_lora_file`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            "lora_filename": loraPath,
+                            "file_type": "json"
+                        })
+                    });
+                    const jsonResult = await jsonResponse.json();
+                    zmlLoraContentEditJsonTextarea.value = jsonResult.content || "";
+
                     // 加载log文件内容
                     const logResponse = await api.fetchApi(`${ZML_API_PREFIX}/get_lora_file`, {
                         method: "POST",
@@ -1364,6 +1514,20 @@ app.registerExtension({
                 }
 
                 zmlLoraContentEditModalOverlay.style.display = 'flex';
+                
+                // 设置初始状态：显示txt标签，隐藏其他标签
+                zmlLoraContentEditTxtTextarea.style.display = 'block';
+                zmlLoraContentEditJsonTextarea.style.display = 'none';
+                zmlLoraContentEditLogTextarea.style.display = 'none';
+                
+                // 设置标签按钮的初始状态
+                txtTab.style.backgroundColor = '#4a515a';
+                txtTab.style.color = 'white';
+                jsonTab.style.backgroundColor = '#31353a';
+                jsonTab.style.color = '#aaa';
+                logTab.style.backgroundColor = '#31353a';
+                logTab.style.color = '#aaa';
+                
                 zmlLoraContentEditTxtTextarea.focus();
             }
 
@@ -2932,7 +3096,7 @@ app.registerExtension({
                     const fetchMetadataBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
                         className: "zml-batch-lora-fetch-from-civitai-btn",
                         textContent: "☰", // Hamburger icon
-                        title: isNoPreviewAndFetch ? `从Civitai获取 '${file.name}' 的预览图和元数据` : `编辑 '${file.name}' 的txt和log文件`,
+                        title: isNoPreviewAndFetch ? `从Civitai获取 '${file.name}' 的预览图和元数据` : `编辑 '${file.name}' 的txt和json文件`,
                     });
                     fetchMetadataBtn.onclick = async (e) => {
                         e.stopPropagation(); // 阻止事件冒泡，避免触发LoRA选择
@@ -3067,7 +3231,7 @@ app.registerExtension({
                             
                             editBtn.onclick = () => {
                                 closeDialog();
-                                // 打开编辑窗口编辑txt和log文件
+                                // 打开编辑窗口编辑txt和json文件
                                 showLoraContentEditModal(loraPath, file.name);
                             };
                             
@@ -3083,7 +3247,7 @@ app.registerExtension({
                             document.body.appendChild(overlay);
                             document.body.appendChild(confirmDialog);
                         } else {
-                            // 新功能：打开编辑窗口编辑txt和log文件
+                            // 新功能：打开编辑窗口编辑txt和json文件
                             showLoraContentEditModal(loraPath, file.name);
                         }
                     };
@@ -3433,7 +3597,7 @@ app.registerExtension({
                             parent_id: null,
                         };
 
-                        // 当"添加文本"模式开启时，尝试读取同名txt文件内容
+                        // 当"添加文本"模式开启时，尝试读取同名txt文件内容和json文件权重
                         if (zmlBatchLoraAddTextMode) {
                             try {
                                 // 获取LoRA文件名（不含扩展名）
@@ -3456,6 +3620,44 @@ app.registerExtension({
                                 }
                             } catch (error) {
                                 console.warn(`无法读取LoRA的txt文件: ${loraPath}`, error);
+                                // 继续处理，不中断整个流程
+                            }
+
+                            // 新增：尝试读取同名log文件获取preferred weight
+                            try {
+                                // 发送请求到后端获取log文件内容
+                                const jsonResponse = await api.fetchApi(`${ZML_API_PREFIX}/get_lora_file`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        "lora_filename": loraPath,
+                                        "file_type": "log"
+                                    })
+                                });
+                                const jsonResult = await jsonResponse.json();
+                                if (jsonResult.status === "success" && jsonResult.content.trim()) {
+                                    try {
+                                        const jsonData = JSON.parse(jsonResult.content);
+                                        // 查找 preferred weight 字段（支持多种可能的字段名）
+                                        const preferredWeight = jsonData["preferred weight"] || 
+                                                              jsonData["preferredWeight"] || 
+                                                              jsonData["preferred_weight"] ||
+                                                              jsonData["weight"];
+                                        
+                                        if (preferredWeight !== undefined && !isNaN(parseFloat(preferredWeight))) {
+                                            const weightValue = parseFloat(preferredWeight);
+                                            // 确保权重值在合理范围内 (0.01 到 10)
+                                            if (weightValue >= 0.01 && weightValue <= 10) {
+                                                newEntry.weight = weightValue;
+                                                console.log(`从log文件设置LoRA权重: ${loraPath} -> ${weightValue}`);
+                                            }
+                                        }
+                                    } catch (parseError) {
+                                        console.warn(`解析LoRA的log文件失败: ${loraPath}`, parseError);
+                                    }
+                                }
+                            } catch (error) {
+                                console.warn(`无法读取LoRA的log文件: ${loraPath}`, error);
                                 // 继续处理，不中断整个流程
                             }
                         }
@@ -4152,6 +4354,7 @@ app.registerExtension({
                          });
                          entryCard.dataset.id = entry.id;
                          entryCard.dataset.type = "lora";
+                         entryCard.dataset.loraPath = entry.lora_name; // 添加lora路径属性
 
                          const checkbox = zmlCreateEl("input", { type: "checkbox", checked: entry.enabled });// <-- 这里会调用到局部定义的 zmlCreateEl
                         checkbox.onchange = (e) => { entry.enabled = e.target.checked; this.renderLoraEntries(); this.triggerSlotChanged(); };
@@ -4243,41 +4446,200 @@ app.registerExtension({
                          };
 
 
-                         // === 移出文件夹按钮 (新增) ===
-                         if (this.viewMode === 'simple') {
-                             // 在精简模式下，不显示自定义名称和自定义文本输入框
-                             if (entry.parent_id) { // Only show if Lora is in a folder
-                                const moveOutBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
-                                    style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #4a6a4a; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;`,
-                                    title: "移出文件夹"
-                                }, "⬆️");
-                                moveOutBtn.onclick = () => {
-                                    entry.parent_id = null; // Set parent_id to null to make it top-level
-                                    this.renderLoraEntries();
-                                    this.triggerSlotChanged();
-                                };
-                                entryCard.append(checkbox, dragHandle, loraSelectorBtn, weightWidget, moveOutBtn);
+                         // 添加编辑按钮
+                         const editBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
+                            className: "zml-lora-entry-edit", // 添加新 class
+                            style: `width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;` // 简化的行内样式
+                         }, "✏️");
+                         editBtn.onclick = async (e) => {
+                             e.stopPropagation(); // 阻止事件冒泡
+                             
+                             if (entry.lora_name && entry.lora_name !== "None") {
+                                 const loraPath = entry.lora_name;
+                                 const loraName = loraPath.split(/[/\\]/).pop();
+                                 
+                                 // 动态检查预览图状态（在点击时检查，而不是按钮创建时）
+                                 const hasPreview = !!loraImages[loraPath];
+                                 
+                                 if (hasPreview) {
+                                     // 有预览图，直接打开编辑界面
+                                     showLoraContentEditModal(loraPath, loraName);
+                                 } else {
+                                     // 没有预览图，显示选择对话框
+                                     const confirmDialog = zmlCreateEl("div", {
+                                         style: `
+                                             position: fixed;
+                                             top: 50%;
+                                             left: 50%;
+                                             transform: translate(-50%, -50%);
+                                             background-color: #1a1a1a;
+                                             border: 1px solid #4a4a4a;
+                                             border-radius: 8px;
+                                             padding: 20px;
+                                             min-width: 350px;
+                                             z-index: 20202;
+                                             color: #f0f0f0;
+                                             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+                                         `
+                                     });
+                                     
+                                     const overlay = zmlCreateEl("div", {
+                                         style: `
+                                             position: fixed;
+                                             top: 0;
+                                             left: 0;
+                                             width: 100%;
+                                             height: 100%;
+                                             background-color: rgba(0, 0, 0, 0.1);
+                                             z-index: 20201;
+                                         `
+                                     });
+                                     
+                                     const dialogMessage = zmlCreateEl("p", {
+                                         style: `
+                                             margin: 0 0 20px 0;
+                                             color: #ccc;
+                                             line-height: 1.5;
+                                         `,
+                                         textContent: `LoRA '${loraName}' 没有预览图。您想要从Civitai获取信息，还是直接编辑文件？`
+                                     });
+                                     
+                                     const buttonsContainer = zmlCreateEl("div", {
+                                         style: `
+                                             display: flex;
+                                             gap: 12px;
+                                             justify-content: flex-end;
+                                         `
+                                     });
+                                     
+                                     const fetchBtn = zmlCreateEl("button", {
+                                         style: `
+                                             padding: 8px 16px;
+                                             background-color: #4CAF50;
+                                             color: white;
+                                             border: none;
+                                             border-radius: 4px;
+                                             cursor: pointer;
+                                             font-size: 14px;
+                                         `,
+                                         textContent: "爬取信息"
+                                     });
+                                     
+                                     const editBtn = zmlCreateEl("button", {
+                                         style: `
+                                             padding: 8px 16px;
+                                             background-color: #2196F3;
+                                             color: white;
+                                             border: none;
+                                             border-radius: 4px;
+                                             cursor: pointer;
+                                             font-size: 14px;
+                                         `,
+                                         textContent: "编辑文件"
+                                     });
+                                     
+                                     const cancelBtn = zmlCreateEl("button", {
+                                         style: `
+                                             padding: 8px 16px;
+                                             background-color: #666;
+                                             color: white;
+                                             border: none;
+                                             border-radius: 4px;
+                                             cursor: pointer;
+                                             font-size: 14px;
+                                         `,
+                                         textContent: "取消"
+                                     });
+                                     
+                                     const closeDialog = () => {
+                                         document.body.removeChild(confirmDialog);
+                                         document.body.removeChild(overlay);
+                                     };
+                                     
+                                     overlay.onclick = function(e) {
+                                         e.stopPropagation();
+                                     };
+                                     
+                                     fetchBtn.onclick = async () => {
+                                         // 点击爬取信息按钮后立即关闭对话框
+                                         closeDialog();
+                                         
+                                         // 找到对应的编辑按钮并设置为加载状态
+                                         console.log(`[ZML Debug] 查找编辑按钮，loraPath: ${loraPath}`);
+                                         
+                                         // 尝试多种方法找到编辑按钮
+                                         // 方法1：直接通过遍历所有卡片找到匹配的
+                                         let targetEditBtn = null;
+                                         const allCards = document.querySelectorAll('.zml-pll-entry-card');
+                                         console.log(`[ZML Debug] 所有LoRA卡片数量:`, allCards.length);
+                                         
+                                         for (let card of allCards) {
+                                             const cardLoraPath = card.dataset.loraPath || card.getAttribute('data-lora-path');
+                                             console.log(`[ZML Debug] 检查卡片路径: ${cardLoraPath} vs ${loraPath}`);
+                                             if (cardLoraPath === loraPath) {
+                                                 targetEditBtn = card.querySelector('.zml-lora-entry-edit');
+                                                 console.log(`[ZML Debug] 找到匹配的卡片，编辑按钮:`, targetEditBtn);
+                                                 break;
+                                             }
+                                         }
+                                         
+                                         console.log(`[ZML Debug] 最终找到的编辑按钮:`, targetEditBtn);
+                                         if (targetEditBtn) {
+                                             targetEditBtn.textContent = '...';
+                                             targetEditBtn.disabled = true;
+                                         }
+                                         
+                                         try {
+                                             const response = await api.fetchApi(`${ZML_API_PREFIX}/fetch_civitai_metadata`, {
+                                                 method: "POST",
+                                                 headers: { "Content-Type": "application/json" },
+                                                 body: JSON.stringify({ "lora_filename": loraPath }), // Send the relative lora filename
+                                             });
+                                             const result = await response.json();
+
+                                             if (result.status === "success") {
+                                                 alert(`LoRA '${loraName}' 信息获取成功！\n${result.message}`);
+                                                 // 重新加载图片列表以显示新预览图
+                                                 await loadImageList(); 
+                                                 // 重新渲染当前内容，更新UI
+                                                 this.renderLoraEntries(); 
+                                                 // 调试：输出更新后的loraImages状态
+                                                 console.log(`[ZML] 爬取成功后，${loraPath} 的预览图状态:`, !!loraImages[loraPath]);
+                                             } else {
+                                                 alert(`LoRA '${loraName}' 信息获取失败！\n${result.message}`);
+                                             }
+                                         } catch (error) {
+                                             console.error("Error fetching Civitai metadata:", error);
+                                             alert(`LoRA '${loraName}' 信息获取时发生网络错误或服务器错误。请检查控制台。`);
+                                         } finally {
+                                             // 恢复编辑按钮状态
+                                             if (targetEditBtn) {
+                                                 targetEditBtn.textContent = '✏️';
+                                                 targetEditBtn.disabled = false;
+                                             }
+                                         }
+                                     };
+                                     
+                                     editBtn.onclick = () => {
+                                         closeDialog();
+                                         showLoraContentEditModal(loraPath, loraName);
+                                     };
+                                     
+                                     cancelBtn.onclick = closeDialog;
+                                     
+                                     buttonsContainer.appendChild(fetchBtn);
+                                     buttonsContainer.appendChild(editBtn);
+                                     buttonsContainer.appendChild(cancelBtn);
+                                     confirmDialog.appendChild(dialogMessage);
+                                     confirmDialog.appendChild(buttonsContainer);
+                                     
+                                     document.body.appendChild(overlay);
+                                     document.body.appendChild(confirmDialog);
+                                 }
                              } else {
-                                 entryCard.append(checkbox, dragHandle, loraSelectorBtn, weightWidget);
+                                 alert("请先选择一个LoRA文件");
                              }
-                         } else {
-                             // 常规模式下，显示所有元素
-                             if (entry.parent_id) { // Only show if Lora is in a folder
-                                const moveOutBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
-                                    style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #4a6a4a; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;`,
-                                    title: "移出文件夹"
-                                }, "⬆️");
-                                moveOutBtn.onclick = () => {
-                                    entry.parent_id = null; // Set parent_id to null to make it top-level
-                                    this.renderLoraEntries();
-                                    this.triggerSlotChanged();
-                                };
-                                entryCard.append(checkbox, dragHandle, displayNameInput, loraSelectorBtn, weightWidget, customTextInput, moveOutBtn);
-                             } else {
-                                 entryCard.append(checkbox, dragHandle, displayNameInput, loraSelectorBtn, weightWidget, customTextInput);
-                             }
-                         }
-                         // ===========================
+                         };
 
                          const deleteBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
                             className: "zml-lora-entry-delete", // 添加新 class
@@ -4291,7 +4653,42 @@ app.registerExtension({
                                  this.triggerSlotChanged();
                              }
                          };
-                         entryCard.appendChild(deleteBtn);
+
+                         // === 移出文件夹按钮 (新增) ===
+                         if (this.viewMode === 'simple') {
+                             // 在精简模式下，不显示自定义名称和自定义文本输入框
+                             if (entry.parent_id) { // Only show if Lora is in a folder
+                                const moveOutBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
+                                    style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #4a6a4a; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;`,
+                                    title: "移出文件夹"
+                                }, "⬆️");
+                                moveOutBtn.onclick = () => {
+                                    entry.parent_id = null; // Set parent_id to null to make it top-level
+                                    this.renderLoraEntries();
+                                    this.triggerSlotChanged();
+                                };
+                                entryCard.append(checkbox, dragHandle, loraSelectorBtn, weightWidget, moveOutBtn, editBtn, deleteBtn);
+                             } else {
+                                 entryCard.append(checkbox, dragHandle, loraSelectorBtn, weightWidget, editBtn, deleteBtn);
+                             }
+                         } else {
+                             // 常规模式下，显示所有元素
+                             if (entry.parent_id) { // Only show if Lora is in a folder
+                                const moveOutBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
+                                    style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #4a6a4a; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;`,
+                                    title: "移出文件夹"
+                                }, "⬆️");
+                                moveOutBtn.onclick = () => {
+                                    entry.parent_id = null; // Set parent_id to null to make it top-level
+                                    this.renderLoraEntries();
+                                    this.triggerSlotChanged();
+                                };
+                                entryCard.append(checkbox, dragHandle, displayNameInput, loraSelectorBtn, weightWidget, customTextInput, moveOutBtn, editBtn, deleteBtn);
+                             } else {
+                                 entryCard.append(checkbox, dragHandle, displayNameInput, loraSelectorBtn, weightWidget, customTextInput, editBtn, deleteBtn);
+                             }
+                         }
+                         // ===========================
                          
                          this.addDragDropHandlers(entryCard, entry);
                          return entryCard;
@@ -4662,7 +5059,6 @@ app.registerExtension({
             };
 
             nodeType.prototype.createLoraTreeMenu = function(button, entry, onSelect) {
-                // 创建菜单容器
                 const menu = zmlCreateEl("div", { className: "zml-lora-tree-menu" });
                 const closeMenu = () => { menu.remove(); document.removeEventListener("click", clickOutside, true); activeLoraMenu = null; };
 
@@ -4671,141 +5067,87 @@ app.registerExtension({
                 const showImage = ext?.showImage;
                 const hideImage = ext?.hideImage;
 
-                // 设置菜单样式为flex布局
-                menu.style.display = "flex";
-                menu.style.flexDirection = "column";
-                menu.style.minWidth = "480px";
-                menu.style.maxWidth = "1000px";
-                menu.style.minHeight = "300px";
-                menu.style.maxHeight = "700px";
-                menu.style.backgroundColor = "#1e1e1e";
-                menu.style.border = "1px solid #444";
-                menu.style.borderRadius = "4px";
-                menu.style.boxShadow = "0 4px 20px rgba(0, 0, 0, 0.5)";
-                menu.style.zIndex = "10000";
-
-                // 添加搜索框（在顶部）
+                // 添加搜索框
                 const searchInput = zmlCreateEl("input", {
                     className: "zml-lora-search-input",
                     placeholder: "搜索模型...",
-                    type: "text"
+                    type: "text",
+                    style: "width: 100%; box-sizing: border-box; padding: 8px 12px; margin-bottom: 8px; background-color: #2b2b2b; border: 1px solid #444; color: #ccc; border-radius: 4px; font-size: 13px;"
                 });
-                searchInput.style.width = "100%";
-                searchInput.style.boxSizing = "border-box";
-                searchInput.style.padding = "8px 12px";
-                searchInput.style.margin = "0";
-                searchInput.style.backgroundColor = "#2b2b2b";
-                searchInput.style.border = "none";
-                searchInput.style.borderBottom = "1px solid #444";
-                searchInput.style.color = "#ccc";
-                searchInput.style.fontSize = "14px";
                 menu.appendChild(searchInput);
 
-                // 创建内容区域容器（使用flex布局实现左右分栏）
-                const contentContainer = zmlCreateEl("div", { style: "display: flex; flex: 1; overflow: hidden;" });
-                menu.appendChild(contentContainer);
+                // 创建主要内容容器（左右分栏布局）
+                const contentContainer = zmlCreateEl("div", { 
+                    className: "zml-lora-menu-content",
+                    style: "display: flex; height: 400px; border: 1px solid #444; border-radius: 4px; overflow: hidden;"
+                });
 
-                // 创建左侧文件夹树容器
+                // 左侧文件夹树容器
                 const folderTreeContainer = zmlCreateEl("div", { 
-                    className: "zml-lora-folder-tree", 
-                    style: "width: 120px; border-right: 1px solid #444; overflow-y: auto; padding: 8px;"
+                    className: "zml-lora-folder-tree",
+                    style: "width: 200px; background-color: #2a2a2a; border-right: 1px solid #444; overflow-y: auto; padding: 8px;"
                 });
-                folderTreeContainer.style.backgroundColor = "#1a1a1a";
-                
-                // 创建右侧文件列表容器
+
+                // 右侧文件列表容器
                 const fileListContainer = zmlCreateEl("div", { 
-                    className: "zml-lora-file-list", 
-                    style: "flex: 1; overflow-x: auto; overflow-y: auto; padding: 8px; min-width: 350px; max-width: none; width: 600px; white-space: nowrap;"
+                    className: "zml-lora-file-list",
+                    style: "flex: 1; background-color: #333; overflow-y: auto; padding: 8px;"
                 });
-                
+
                 contentContainer.appendChild(folderTreeContainer);
                 contentContainer.appendChild(fileListContainer);
-                
-                // 创建搜索结果容器（覆盖整个内容区域）
+                menu.appendChild(contentContainer);
+
+                // 创建搜索结果容器
                 const searchResults = zmlCreateEl("div", { 
                     className: "zml-lora-menu-search-results", 
-                    style: "display: none; position: absolute; top: 40px; left: 0; right: 0; bottom: 0; background: #1e1e1e; padding: 8px; overflow-y: auto;"
+                    style: "display: none; max-height: 400px; overflow-y: auto; border: 1px solid #444; border-radius: 4px; padding: 8px; background-color: #333;"
                 });
                 menu.appendChild(searchResults);
 
-                // 构建文件夹树
+                // 构建文件夹树的递归函数
                 const buildFolderTree = (parent, treeLevel, currentPath = '') => {
                     Object.keys(treeLevel.folders).sort().forEach(folderName => {
+                        const folderPath = currentPath + folderName;
                         const folderEl = zmlCreateEl("div", { 
                             className: "zml-lora-folder", 
-                            innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}`,
-                            style: "padding: 3px 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer;"
+                            innerHTML: `<span class="zml-lora-folder-arrow">▶</span> 📁 ${folderName}`,
+                            style: "padding: 4px 8px; margin-bottom: 2px; border-radius: 3px; cursor: pointer; font-weight: bold; color: #8ab4f8; user-select: none;"
                         });
                         
-                        // 文件夹点击事件 - 显示内容
-                        folderEl.onclick = (e) => {
-                            e.stopPropagation();
-                            
-                            // 更新所有文件夹的样式
-                            const allFolders = folderTreeContainer.querySelectorAll('.zml-lora-folder');
-                            allFolders.forEach(f => {
-                                f.style.backgroundColor = '';
-                                f.style.fontWeight = '';
-                            });
-                            
-                            // 高亮当前文件夹
-                            folderEl.style.backgroundColor = '#333';
-                            folderEl.style.fontWeight = 'bold';
-                            
-                            // 查找并显示文件夹内容
-                            const findFolderContent = (treeLevel, pathParts, currentIndex = 0) => {
-                                if (currentIndex >= pathParts.length) {
-                                    return treeLevel;
-                                }
-                                const name = pathParts[currentIndex];
-                                if (treeLevel.folders && treeLevel.folders[name]) {
-                                    return findFolderContent(treeLevel.folders[name], pathParts, currentIndex + 1);
-                                }
-                                return null;
-                            };
-                            
-                            const pathParts = currentPath ? currentPath.split('/').filter(Boolean) : [];
-                            pathParts.push(folderName);
-                            const folderContent = findFolderContent(this.loraTree, pathParts);
-                            
-                            // 显示文件夹内容
-                            if (folderContent) {
-                                showFolderContent(folderContent);
-                            }
-                            
-                            // 展开/收起子文件夹
-                            const contentEl = folderEl.nextElementSibling;
-                            if (contentEl && contentEl.className.includes('zml-lora-folder-content')) {
-                                const isHidden = contentEl.style.display === "none" || contentEl.style.display === "";
-                                contentEl.style.display = isHidden ? "block" : "none";
-                                folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶";
-                            }
-                        };
-                        
-                        parent.appendChild(folderEl);
-                        
-                        // 创建子文件夹内容容器
                         const contentEl = zmlCreateEl("div", { 
                             className: "zml-lora-folder-content", 
                             style: "display: none; margin-left: 15px;"
                         });
-                        parent.appendChild(contentEl);
                         
-                        // 递归构建子文件夹树
-                        buildFolderTree(contentEl, treeLevel.folders[folderName], currentPath + folderName + '/');
+                        folderEl.onclick = (e) => {
+                            e.stopPropagation();
+                            const isHidden = contentEl.style.display === "none" || contentEl.style.display === "";
+                            contentEl.style.display = isHidden ? "block" : "none";
+                            folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶";
+                            
+                            // 显示该文件夹的内容
+                            showFolderContent(treeLevel.folders[folderName]);
+                        };
+                        
+                        folderEl.onmouseenter = () => { folderEl.style.backgroundColor = '#2a2a2a'; };
+                        folderEl.onmouseleave = () => { folderEl.style.backgroundColor = ''; };
+                        
+                        buildFolderTree(contentEl, treeLevel.folders[folderName], folderPath + '/');
+                        parent.appendChild(folderEl);
+                        parent.appendChild(contentEl);
                     });
                 };
-                
-                // 显示文件夹内容
-                const showFolderContent = (folderContent) => {
-                    // 清空文件列表
+
+                // 显示根目录内容
+                const showRootContent = () => {
                     fileListContainer.innerHTML = '';
                     
                     // 添加None选项
                     const noneEl = zmlCreateEl("div", { 
                         className: "zml-lora-file", 
                         textContent: "None",
-                        style: "padding: 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer; border: 1px solid transparent; font-size: 13.5px;"
+                        style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
                     });
                     noneEl.onclick = () => { 
                         entry.lora_name = "None"; 
@@ -4818,20 +5160,128 @@ app.registerExtension({
                     fileListContainer.appendChild(noneEl);
                     
                     // 添加分隔线
-                    const separator = zmlCreateEl("div", { style: "height: 1px; background-color: #444; margin: 3px 0;" });
+                    const separator = zmlCreateEl("div", { style: "height: 1px; background-color: #444; margin: 5px 0;" });
                     fileListContainer.appendChild(separator);
                     
-                    // 显示文件列表
-                    if (folderContent.files && folderContent.files.length > 0) {
-                        folderContent.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
+                    // 显示根目录文件
+                    if (this.loraTree.files.length > 0) {
+                        this.loraTree.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
                             const fileEl = zmlCreateEl("div", { 
                                 className: "zml-lora-file", 
                                 textContent: file.name,
-                                style: "padding: 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer; border: 1px solid transparent; font-size: 13.5px;"
+                                style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
                             });
                             
-                            fileEl.onclick = () => { 
+                            fileEl.onclick = async () => { 
                                 entry.lora_name = file.fullpath; 
+                                
+                                // 尝试从 log 文件读取 preferred weight
+                                const preferredWeight = await loadLoraPreferredWeight(file.fullpath);
+                                if (preferredWeight !== null) {
+                                    entry.weight = preferredWeight;
+                                    console.log(`从log文件设置LoRA权重: ${file.fullpath} -> ${preferredWeight}`);
+                                }
+                                
+                                // 选择LoRA后更新缓存和输出调试信息
+                                console.log(`[ZML] 选择了LoRA: ${file.fullpath}`);
+                                try {
+                                    console.log(`[ZML] 正在更新loraImages缓存...`);
+                                    await loadImageList(); // 重新加载图片缓存
+                                    console.log(`[ZML] loraImages缓存更新完成`);
+                                    
+                                    // 检查是否有预览图
+                                    const hasPreview = loraImages[file.fullpath];
+                                    console.log(`[ZML] LoRA预览图检测结果: ${file.fullpath} -> ${hasPreview ? '有预览图' : '无预览图'}`);
+                                    if (hasPreview) {
+                                        console.log(`[ZML] 预览图路径: ${loraImages[file.fullpath]}`);
+                                    }
+                                } catch (error) {
+                                    console.error(`[ZML] 更新loraImages缓存时出错:`, error);
+                                }
+                                
+                                onSelect(); 
+                                hideImage?.(); 
+                                closeMenu(); 
+                            };
+                            
+                            fileEl.onmouseenter = () => { fileEl.style.backgroundColor = '#2a2a2a'; fileEl.style.borderColor = '#555'; };
+                            fileEl.onmouseleave = () => { fileEl.style.backgroundColor = ''; fileEl.style.borderColor = 'transparent'; };
+                            
+                            if (loraImages[file.fullpath] && imageHost && showImage && hideImage) {
+                                fileEl.addEventListener("mouseover", () => {
+                                    const imagePath = loraImages[file.fullpath];
+                                    const fullViewPath = `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(imagePath)}?${+new Date()}`;
+                                    imageHost.src = fullViewPath;
+                                    showImage.call(ext, fileEl);
+                                });
+                                fileEl.addEventListener("mouseout", hideImage.bind(ext));
+                            }
+                            
+                            fileListContainer.appendChild(fileEl);
+                        });
+                    }
+                };
+
+                // 显示文件夹内容
+                const showFolderContent = (treeLevel) => {
+                    fileListContainer.innerHTML = '';
+                    
+                    // 添加None选项
+                    const noneEl = zmlCreateEl("div", { 
+                        className: "zml-lora-file", 
+                        textContent: "None",
+                        style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
+                    });
+                    noneEl.onclick = () => { 
+                        entry.lora_name = "None"; 
+                        onSelect(); 
+                        hideImage?.(); 
+                        closeMenu(); 
+                    };
+                    noneEl.onmouseenter = () => { noneEl.style.backgroundColor = '#2a2a2a'; noneEl.style.borderColor = '#555'; };
+                    noneEl.onmouseleave = () => { noneEl.style.backgroundColor = ''; noneEl.style.borderColor = 'transparent'; };
+                    fileListContainer.appendChild(noneEl);
+                    
+                    // 添加分隔线
+                    const separator = zmlCreateEl("div", { style: "height: 1px; background-color: #444; margin: 5px 0;" });
+                    fileListContainer.appendChild(separator);
+                    
+                    // 显示文件夹中的文件
+                    if (treeLevel.files.length > 0) {
+                        treeLevel.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
+                            const fileEl = zmlCreateEl("div", { 
+                                className: "zml-lora-file", 
+                                textContent: file.name,
+                                style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
+                            });
+                            
+                            fileEl.onclick = async () => { 
+                                entry.lora_name = file.fullpath; 
+                                
+                                // 尝试从 log 文件读取 preferred weight
+                                const preferredWeight = await loadLoraPreferredWeight(file.fullpath);
+                                if (preferredWeight !== null) {
+                                    entry.weight = preferredWeight;
+                                    console.log(`从log文件设置LoRA权重: ${file.fullpath} -> ${preferredWeight}`);
+                                }
+                                
+                                // 选择LoRA后更新缓存和输出调试信息
+                                console.log(`[ZML] 选择了LoRA: ${file.fullpath}`);
+                                try {
+                                    console.log(`[ZML] 正在更新loraImages缓存...`);
+                                    await loadImageList(); // 重新加载图片缓存
+                                    console.log(`[ZML] loraImages缓存更新完成`);
+                                    
+                                    // 检查是否有预览图
+                                    const hasPreview = loraImages[file.fullpath];
+                                    console.log(`[ZML] LoRA预览图检测结果: ${file.fullpath} -> ${hasPreview ? '有预览图' : '无预览图'}`);
+                                    if (hasPreview) {
+                                        console.log(`[ZML] 预览图路径: ${loraImages[file.fullpath]}`);
+                                    }
+                                } catch (error) {
+                                    console.error(`[ZML] 更新loraImages缓存时出错:`, error);
+                                }
+                                
                                 onSelect(); 
                                 hideImage?.(); 
                                 closeMenu(); 
@@ -4853,49 +5303,20 @@ app.registerExtension({
                             fileListContainer.appendChild(fileEl);
                         });
                     } else {
-                        // 空文件夹提示
+                        // 没有文件提示
                         const emptyText = zmlCreateEl("div", { 
-                            textContent: "此文件夹为空",
+                            textContent: "该文件夹中没有文件",
                             style: "padding: 10px; color: #888; text-align: center; font-style: italic;"
                         });
                         fileListContainer.appendChild(emptyText);
                     }
                 };
-                
-                // 显示根目录内容
-                const showRootContent = () => {
-                    // 更新所有文件夹的样式
-                    const allFolders = folderTreeContainer.querySelectorAll('.zml-lora-folder, .zml-lora-root-button, .zml-lora-all-button');
-                    allFolders.forEach(f => {
-                        f.style.backgroundColor = '';
-                        f.style.fontWeight = '';
-                    });
-                    
-                    // 显示根目录内容
-                    showFolderContent(this.loraTree);
-                };
-                
+
                 // 显示所有文件
                 const showAllFiles = () => {
-                    // 更新所有文件夹的样式
-                    const allFolders = folderTreeContainer.querySelectorAll('.zml-lora-folder, .zml-lora-root-button, .zml-lora-all-button');
-                    allFolders.forEach(f => {
-                        f.style.backgroundColor = '';
-                        f.style.fontWeight = '';
-                    });
-                    
-                    // 高亮全部按钮
-                    allButton.style.backgroundColor = '#333';
-                    allButton.style.fontWeight = 'bold';
-                    
-                    // 收集所有文件
+                    // 递归收集所有文件
                     const collectAllFiles = (treeLevel) => {
-                        let allFiles = [];
-                        
-                        // 收集当前级别文件
-                        if (treeLevel.files) {
-                            allFiles = [...allFiles, ...treeLevel.files];
-                        }
+                        let allFiles = [...treeLevel.files];
                         
                         // 递归收集子文件夹中的文件
                         if (treeLevel.folders) {
@@ -4941,8 +5362,33 @@ app.registerExtension({
                                 style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
                             });
                             
-                            fileEl.onclick = () => { 
+                            fileEl.onclick = async () => { 
                                 entry.lora_name = file.fullpath; 
+                                
+                                // 尝试从 log 文件读取 preferred weight
+                                const preferredWeight = await loadLoraPreferredWeight(file.fullpath);
+                                if (preferredWeight !== null) {
+                                    entry.weight = preferredWeight;
+                                    console.log(`从log文件设置LoRA权重: ${file.fullpath} -> ${preferredWeight}`);
+                                }
+                                
+                                // 选择LoRA后更新缓存和输出调试信息
+                                console.log(`[ZML] 选择了LoRA: ${file.fullpath}`);
+                                try {
+                                    console.log(`[ZML] 正在更新loraImages缓存...`);
+                                    await loadImageList(); // 重新加载图片缓存
+                                    console.log(`[ZML] loraImages缓存更新完成`);
+                                    
+                                    // 检查是否有预览图
+                                    const hasPreview = loraImages[file.fullpath];
+                                    console.log(`[ZML] LoRA预览图检测结果: ${file.fullpath} -> ${hasPreview ? '有预览图' : '无预览图'}`);
+                                    if (hasPreview) {
+                                        console.log(`[ZML] 预览图路径: ${loraImages[file.fullpath]}`);
+                                    }
+                                } catch (error) {
+                                    console.error(`[ZML] 更新loraImages缓存时出错:`, error);
+                                }
+                                
                                 onSelect(); 
                                 hideImage?.(); 
                                 closeMenu(); 
@@ -5073,8 +5519,16 @@ app.registerExtension({
                                     textContent: item.name,
                                     style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
                                 });
-                                fileEl.onclick = () => { 
+                                fileEl.onclick = async () => { 
                                     entry.lora_name = item.fullpath; 
+                                    
+                                    // 尝试从 log 文件读取 preferred weight
+                                    const preferredWeight = await loadLoraPreferredWeight(item.fullpath);
+                                    if (preferredWeight !== null) {
+                                        entry.weight = preferredWeight;
+                                        console.log(`从log文件设置LoRA权重: ${item.fullpath} -> ${preferredWeight}`);
+                                    }
+                                    
                                     onSelect(); 
                                     hideImage?.(); 
                                     closeMenu(); 
@@ -5143,8 +5597,16 @@ app.registerExtension({
                                                         textContent: file.name,
                                                         style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
                                                     });
-                                                    fileEl.onclick = () => { 
+                                                    fileEl.onclick = async () => { 
                                                         entry.lora_name = file.fullpath; 
+                                                        
+                                                        // 尝试从 log 文件读取 preferred weight
+                                                        const preferredWeight = await loadLoraPreferredWeight(file.fullpath);
+                                                        if (preferredWeight !== null) {
+                                                            entry.weight = preferredWeight;
+                                                            console.log(`从log文件设置LoRA权重: ${file.fullpath} -> ${preferredWeight}`);
+                                                        }
+                                                        
                                                         onSelect(); 
                                                         hideImage?.(); 
                                                         closeMenu(); 
@@ -5164,33 +5626,6 @@ app.registerExtension({
                                                     }
                                                     
                                                     contentEl.appendChild(fileEl);
-                                                });
-                                            }
-                                            
-                                            // 渲染子文件夹
-                                            if (folderContent.folders && Object.keys(folderContent.folders).length > 0) {
-                                                Object.keys(folderContent.folders).sort().forEach(subFolderName => {
-                                                    const subFolderEl = zmlCreateEl("div", { 
-                                                        className: "zml-lora-folder", 
-                                                        innerHTML: `<span class="zml-lora-folder-arrow">▶</span> 📁 ${subFolderName}`,
-                                                        style: "padding: 3px 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer; font-weight: bold; color: #8ab4f8;"
-                                                    });
-                                                    
-                                                    // 递归应用同样的逻辑到子文件夹
-                                                    const subContentEl = zmlCreateEl("div", { 
-                                                        className: "zml-lora-folder-content", 
-                                                        style: "display: none; margin-left: 15px;"
-                                                    });
-                                                    
-                                                    subFolderEl.onclick = (e) => {
-                                                        e.stopPropagation();
-                                                        const isSubHidden = subContentEl.style.display === "none" || subContentEl.style.display === "";
-                                                        subContentEl.style.display = isSubHidden ? "block" : "none";
-                                                        subFolderEl.querySelector('.zml-lora-folder-arrow').textContent = isSubHidden ? "▼" : "▶";
-                                                    };
-                                                    
-                                                    contentEl.appendChild(subFolderEl);
-                                                    contentEl.appendChild(subContentEl);
                                                 });
                                             }
                                         }
