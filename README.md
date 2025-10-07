@@ -176,8 +176,6 @@
 
 <div align="center">
 
-## 🎉 **总结**
-
 > ✨ **综上便是修改版的内容** ✨
 
 ![Thank You](https://img.shields.io/badge/Thank_You-For_Using-pink?style=for-the-badge&logo=heart)
