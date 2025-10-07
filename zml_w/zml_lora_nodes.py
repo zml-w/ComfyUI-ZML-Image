@@ -99,6 +99,115 @@ def fetch_civitai_data_by_hash(hash_string):
         print(f"[ZML_Parser] 解析Civitai数据时出错: {e}")
     return None
 
+def extract_lora_weight_from_civitai_data(civitai_data, lora_filename):
+    """从Civitai数据中提取LoRA的推荐权重值
+    
+    使用窗口式脚本的成功逻辑：支持部分匹配
+    """
+    try:
+        if not civitai_data:
+            print(f"[ZML_Parser] civitai_data为空")
+            return None
+        
+        # 获取当前LoRA文件的基础名称（不含扩展名）
+        lora_basename = os.path.splitext(os.path.basename(lora_filename))[0].lower()
+        print(f"[ZML_Parser] 正在查找权重信息，LoRA基础名称: {lora_basename}")
+        
+        # 遍历所有图片的元数据
+        images = civitai_data.get('images', [])
+        print(f"[ZML_Parser] 找到 {len(images)} 张图片")
+        
+        for image_idx, image in enumerate(images):
+            meta = image.get('meta', {})
+            resources = meta.get('resources', [])
+            print(f"[ZML_Parser] 图片 {image_idx + 1} 有 {len(resources)} 个资源")
+            
+            # 在resources中查找匹配的LoRA
+            for resource_idx, resource in enumerate(resources):
+                resource_name = resource.get('name', '').lower()
+                resource_weight = resource.get('weight')
+                
+                print(f"[ZML_Parser] 资源 {resource_idx + 1}: name='{resource_name}', weight={resource_weight}")
+                
+                # 检查名称是否匹配（支持部分匹配）
+                if (resource_name and resource_weight is not None and 
+                    (lora_basename in resource_name or resource_name in lora_basename)):
+                    print(f"[ZML_Parser] ✓ 找到匹配的权重信息: {resource_name} -> {resource_weight}")
+                    try:
+                        return float(resource_weight)
+                    except (ValueError, TypeError):
+                        print(f"[ZML_Parser] 权重值转换失败: {resource_weight}")
+                        return None
+        
+        # 如果没有找到匹配的权重，返回None
+        print(f"[ZML_Parser] 未找到匹配的权重信息")
+        return None
+        
+    except Exception as e:
+        print(f"[ZML_Parser] 提取权重信息时出错: {e}")
+        return None
+
+def create_or_update_log_file(log_path, preferred_weight):
+    """创建或更新LoRA的.log文件，按照正确的JSON格式处理
+    
+    格式要求：
+    1. 首先验证.log文件是否有"preferred weight"字段
+    2. 如果有，则直接覆写该字段的值
+    3. 如果没有，则在文本最底行换行再写入"preferred weight"字段
+    4. 如果本地没有.log文件，创建标准JSON格式的.log文件
+    """
+    try:
+        if os.path.exists(log_path):
+            # 读取现有文件内容
+            with open(log_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            
+            # 检查是否已存在 "preferred weight" 字段（JSON格式）
+            weight_pattern = r'"preferred weight"\s*:\s*[\d.]+(?:\s*,)?'
+            
+            if re.search(weight_pattern, content, re.IGNORECASE):
+                # 替换现有的权重值，保持JSON格式
+                new_content = re.sub(
+                    weight_pattern, 
+                    f'"preferred weight": {preferred_weight}', 
+                    content, 
+                    flags=re.IGNORECASE
+                )
+                print(f"[ZML_Parser] 更新现有权重值: {preferred_weight}")
+            else:
+                # 在文件末尾添加权重字段
+                if content:
+                    # 如果文件有内容，在末尾换行添加
+                    new_content = content + '\n' + f'"preferred weight": {preferred_weight}'
+                else:
+                    # 如果文件为空，直接添加
+                    new_content = f'"preferred weight": {preferred_weight}'
+                print(f"[ZML_Parser] 添加新权重字段: {preferred_weight}")
+            
+            # 写入更新后的内容
+            with open(log_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+        else:
+            # 创建新的.log文件，按照标准JSON格式
+            json_content = {
+                "description": "",
+                "sd version": "",
+                "activation text": "",
+                "preferred weight": preferred_weight,
+                "negative text": "",
+                "notes": ""
+            }
+            
+            with open(log_path, 'w', encoding='utf-8') as f:
+                json.dump(json_content, f, ensure_ascii=False, indent=2)
+            print(f"[ZML_Parser] 创建新的.log文件，权重: {preferred_weight}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"[ZML_Parser] 创建/更新.log文件时出错: {e}")
+        return False
+
 def download_file(url, destination_path):
     """下载文件到指定路径，如果是视频则同时保存第一帧和视频本身"""
     import cv2
@@ -184,11 +293,11 @@ async def view_lora_preview(request):
     if not found_lora_full_path:
         return web.Response(status=404, text=f"相关LoRA文件未找到. (Requested path: {relative_path_within_type})")
 
-    # 根据找到的LoRA文件的绝对路径，构建其对应的zml预览图的绝对路径
+    # 根据找到的LoRA文件的绝对路径，构建其对应的预览图的绝对路径
     actual_lora_dir = os.path.dirname(found_lora_full_path)
     # 请求的预览图文件名，包含扩展名 (e.g., "image.png")
     preview_filename_with_ext = os.path.basename(relative_path_within_type) 
-    target_path = os.path.join(actual_lora_dir, "zml", preview_filename_with_ext) # 构建zml预览图的绝对路径
+    target_path = os.path.join(actual_lora_dir, preview_filename_with_ext) # 构建预览图的绝对路径
 
     if os.path.isfile(target_path):
         return web.FileResponse(target_path, headers={"Content-Disposition": f"filename=\"{os.path.basename(target_path)}\""})
@@ -220,14 +329,13 @@ async def save_preview(request):
          if not lora_root_dir:
              return web.Response(status=500, text="无法确定LoRA根目录来保存预览图。")
 
-    zml_dir = os.path.join(lora_root_dir, "zml")
     lora_path_no_ext = os.path.splitext(lora_relative_path)[0]
     source_ext = os.path.splitext(source_filepath)[1]
-    destination_path = os.path.join(zml_dir, f"{lora_path_no_ext}{source_ext}")
+    destination_path = os.path.join(lora_root_dir, f"{lora_path_no_ext}{source_ext}")
     os.makedirs(os.path.dirname(destination_path), exist_ok=True)
     shutil.copyfile(source_filepath, destination_path)
 
-    # 返回给前端的图片路径应是其在LoRA根目录下的相对路径，不包含“zml/”，因为/view API会处理
+    # 返回给前端的图片路径应是其在LoRA根目录下的相对路径
     # 例如：`subdir/mylora.png`
     lora_dir_relative_path = os.path.dirname(lora_relative_path)
     saved_image_basename = os.path.basename(destination_path) # e.g. "mylora.png"
@@ -254,14 +362,11 @@ async def get_images(request):
             continue
 
         lora_dir = os.path.dirname(lora_full_path)
-        zml_dir = os.path.join(lora_dir, "zml")
-        if not os.path.isdir(zml_dir):
-            continue
-            
+        
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_filename))[0]
-        # Look for existing preview images in zml subfolder (e.g., lora_dir/zml/mylora.png)
+        # Look for existing preview images in lora root directory (e.g., lora_dir/mylora.png)
         for ext in [".png", ".jpg", ".jpeg", ".webp"]:
-            preview_path_abs = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
+            preview_path_abs = os.path.join(lora_dir, f"{lora_basename_no_ext}{ext}")
             if os.path.isfile(preview_path_abs):
                 lora_dir_relative = os.path.dirname(lora_filename) # e.g. "subdir"
                 preview_basename = os.path.basename(preview_path_abs) # e.g. "mylora.png"
@@ -292,9 +397,13 @@ async def get_lora_file(request):
 
         lora_dir = os.path.dirname(lora_full_path)
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
-        zml_dir = os.path.join(lora_dir, "zml")
-        file_ext = ".txt" if file_type == "txt" else ".log"
-        file_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{file_ext}")
+        if file_type == "txt":
+            file_ext = ".txt"
+        elif file_type == "log":
+            file_ext = ".log"
+        else:
+            file_ext = ".json"
+        file_path = os.path.join(lora_dir, f"{lora_basename_no_ext}{file_ext}")
 
         if not os.path.exists(file_path):
             # 如果文件不存在，返回空内容
@@ -314,7 +423,7 @@ async def get_lora_file(request):
 async def save_lora_file(request):
     """
     保存指定LoRA文件的内容
-    期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors", "file_type": "txt|log", "content": "文件内容"}
+    期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors", "file_type": "txt|json|log", "content": "文件内容"}
     返回 JSON body: {"status": "success", "message": "保存成功"} 或 {"status": "error", "message": "错误信息"}
     """
     try:
@@ -332,11 +441,13 @@ async def save_lora_file(request):
 
         lora_dir = os.path.dirname(lora_full_path)
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
-        zml_dir = os.path.join(lora_dir, "zml")
-        os.makedirs(zml_dir, exist_ok=True)
-
-        file_ext = ".txt" if file_type == "txt" else ".log"
-        file_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{file_ext}")
+        if file_type == "txt":
+            file_ext = ".txt"
+        elif file_type == "log":
+            file_ext = ".log"
+        else:
+            file_ext = ".json"
+        file_path = os.path.join(lora_dir, f"{lora_basename_no_ext}{file_ext}")
 
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -368,8 +479,6 @@ async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内�
 
         lora_dir = os.path.dirname(lora_full_path)
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
-        zml_dir = os.path.join(lora_dir, "zml")
-        os.makedirs(zml_dir, exist_ok=True)
         
         lora_hash = calculate_sha256(lora_full_path)
         civitai_data = fetch_civitai_data_by_hash(lora_hash) # 调用辅助函数
@@ -387,9 +496,9 @@ async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内�
                 img_ext = os.path.splitext(urllib.parse.urlparse(img_url).path)[1]
                 if not img_ext or not img_ext.lower() in ['.png', '.jpg', '.jpeg', '.webp']:
                     img_ext = '.jpg' # Fallback to JPG
-                img_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{img_ext}")
+                img_dest_path = os.path.join(lora_dir, f"{lora_basename_no_ext}{img_ext}")
                 if download_file(img_url, img_dest_path):
-                    # 返回的路径应是其在LoRA根目录下的相对路径，不包含“zml/”
+                    # 返回的路径应是其在LoRA根目录下的相对路径
                     downloaded_image_path = os.path.join(os.path.dirname(lora_relative_filename), os.path.basename(img_dest_path)).replace("\\", "/")
                     message_parts.append("预览图已下载。")
                 else:
@@ -400,7 +509,7 @@ async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内�
             # --- 保存触发词为txt ---
             if civitai_data.get('trainedWords'):
                 words_content = ", ".join(civitai_data['trainedWords'])
-                txt_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.txt")
+                txt_dest_path = os.path.join(lora_dir, f"{lora_basename_no_ext}.txt")
                 try:
                     with open(txt_dest_path, 'w', encoding='utf-8') as f:
                         f.write(words_content)
@@ -411,7 +520,18 @@ async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内�
             else:
                 message_parts.append("Civitai上没有找到触发词。")
             
-            # --- 保存介绍为log ---
+            # --- 保存默认权重到.log文件 ---
+            preferred_weight = extract_lora_weight_from_civitai_data(civitai_data, lora_relative_filename)
+            if preferred_weight is not None:
+                log_dest_path = os.path.join(lora_dir, f"{lora_basename_no_ext}.log")
+                if create_or_update_log_file(log_dest_path, preferred_weight):
+                    message_parts.append(f"默认权重已保存: {preferred_weight}。")
+                else:
+                    message_parts.append("默认权重保存失败。")
+            else:
+                message_parts.append("Civitai上没有找到默认权重信息。")
+
+            # --- 保存介绍为json ---
             raw_model_desc = civitai_data.get('model', {}).get('description', '')
             raw_version_desc = civitai_data.get('description', '')
             model_desc = clean_html(raw_model_desc)
@@ -421,17 +541,17 @@ async def fetch_civitai_metadata_api(request): # 重命名函数以避免与内�
             version_id = civitai_data.get('id')
             civitai_link = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}" if model_id and version_id else "链接不可用"
 
-            log_content = (
+            json_content = (
                 f"--- 基础信息 ---\n"
                 f"基础模型: {base_model}\n"
                 f"C站链接: {civitai_link}\n\n"
                 f"--- 模型介绍 ---\n\n{model_desc if model_desc else '无模型介绍。'}\n\n"
                 f"--- 版本信息 ---\n\n{version_desc if version_desc else '无版本信息。'}\n"
             )
-            log_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.log")
+            json_dest_path = os.path.join(lora_dir, f"{lora_basename_no_ext}.json")
             try:
-                with open(log_dest_path, 'w', encoding='utf-8') as f:
-                    f.write(log_content)
+                with open(json_dest_path, 'w', encoding='utf-8') as f:
+                    f.write(json_content)
                 message_parts.append("介绍已保存。")
             except Exception as e:
                 print(f"[ZML_Parser] 保存介绍时出错: {e}")
@@ -473,7 +593,6 @@ async def delete_lora_file(request):
 
         lora_dir = os.path.dirname(lora_full_path)
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
-        zml_dir = os.path.join(lora_dir, "zml")
 
         # 记录要删除的文件
         files_to_delete = [lora_full_path]
@@ -487,25 +606,20 @@ async def delete_lora_file(request):
             except Exception as e:
                 return web.json_response({"status": "error", "message": f"无法删除主LoRA文件: {e}"}, status=500)
         
-        # 删除zml目录下的相关文件
-        if os.path.exists(zml_dir):
-            # 查找所有以lora_basename_no_ext开头的文件
-            pattern = os.path.join(zml_dir, f"{lora_basename_no_ext}.*")
-            zml_files = glob.glob(pattern)
-            
-            for zml_file in zml_files:
-                try:
-                    os.remove(zml_file)
-                    deleted_files.append(os.path.basename(zml_file))
-                except Exception as e:
-                    print(f"[ZML_Parser] 删除文件时出错 {zml_file}: {e}")
+        # 删除lora根目录下的相关文件
+        # 查找所有以lora_basename_no_ext开头的文件
+        pattern = os.path.join(lora_dir, f"{lora_basename_no_ext}.*")
+        related_files = glob.glob(pattern)
         
-        # 如果zml目录为空，则删除它
-        if os.path.exists(zml_dir) and not os.listdir(zml_dir):
+        for related_file in related_files:
+            # 跳过主LoRA文件（已经删除）
+            if related_file == lora_full_path:
+                continue
             try:
-                os.rmdir(zml_dir)
+                os.remove(related_file)
+                deleted_files.append(os.path.basename(related_file))
             except Exception as e:
-                print(f"[ZML_Parser] 删除空zml目录时出错: {e}")
+                print(f"[ZML_Parser] 删除文件时出错 {related_file}: {e}")
         
         return web.json_response({
             "status": "success", 
@@ -531,30 +645,28 @@ class ZmlLoraMetadataParser:
             "optional": {
                 "保存首张图像": ("BOOLEAN", {"default": False}),
                 "保存触发词为txt": ("BOOLEAN", {"default": False}),
-                "保存介绍为log": ("BOOLEAN", {"default": False}),
+                "保存介绍为json": ("BOOLEAN", {"default": False}),
             }
         }
     
     RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("图像", "txt", "log", "解析", "help")
+    RETURN_NAMES = ("图像", "txt", "json", "解析", "help")
     FUNCTION = "parse_and_save_metadata"
     CATEGORY = "图像/ZML_图像/lora加载器"
     COLOR = "#446699" # 一个更柔和的蓝色
     
-    def parse_and_save_metadata(self, lora_名称, 保存首张图像=False, 保存触发词为txt=False, 保存介绍为log=False):
+    def parse_and_save_metadata(self, lora_名称, 保存首张图像=False, 保存触发词为txt=False, 保存介绍为json=False):
         lora_full_path = folder_paths.get_full_path("loras", lora_名称)
         if not lora_full_path or not os.path.exists(lora_full_path):
             return (torch.zeros((1, 64, 64, 3), dtype=torch.float32), "", "", "错误: LoRA文件未找到", "")
 
         lora_dir = os.path.dirname(lora_full_path)
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_名称))[0]
-        zml_dir = os.path.join(lora_dir, "zml")
         
         parsed_info_str = f"LoRA: {lora_名称}\n"
         
-        if 保存首张图像 or 保存触发词为txt or 保存介绍为log:
+        if 保存首张图像 or 保存触发词为txt or 保存介绍为json:
             print(f"[ZML_Parser] 正在处理 {lora_名称}...")
-            os.makedirs(zml_dir, exist_ok=True)
             
             lora_hash = calculate_sha256(lora_full_path)
             parsed_info_str += f"SHA256: {lora_hash[:12]}...\n"
@@ -569,7 +681,7 @@ class ZmlLoraMetadataParser:
                     img_ext = os.path.splitext(urllib.parse.urlparse(img_url).path)[1]
                     if not img_ext in ['.png', '.jpg', '.jpeg', '.webp']:
                         img_ext = '.jpg'
-                    img_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{img_ext}")
+                    img_dest_path = os.path.join(lora_dir, f"{lora_basename_no_ext}{img_ext}")
                     if download_file(img_url, img_dest_path):
                         parsed_info_str += "预览图已下载。\n"
                     else:
@@ -577,12 +689,12 @@ class ZmlLoraMetadataParser:
                 
                 if 保存触发词为txt and civitai_data.get('trainedWords'):
                     words_content = ", ".join(civitai_data['trainedWords'])
-                    txt_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.txt")
+                    txt_dest_path = os.path.join(lora_dir, f"{lora_basename_no_ext}.txt")
                     with open(txt_dest_path, 'w', encoding='utf-8') as f:
                         f.write(words_content)
                     print(f"[ZML_Parser] 触发词已保存: {txt_dest_path}")
                 
-                if 保存介绍为log:
+                if 保存介绍为json:
                     raw_model_desc = civitai_data.get('model', {}).get('description', '')
                     raw_version_desc = civitai_data.get('description', '')
                     model_desc = clean_html(raw_model_desc)
@@ -592,17 +704,17 @@ class ZmlLoraMetadataParser:
                     version_id = civitai_data.get('id')
                     civitai_link = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}" if model_id and version_id else "链接不可用"
 
-                    log_content = (
+                    json_content = (
                         f"--- 基础信息 ---\n"
                         f"基础模型: {base_model}\n"
                         f"C站链接: {civitai_link}\n\n"
                         f"--- 模型介绍 ---\n\n{model_desc if model_desc else '无模型介绍。'}\n\n"
                         f"--- 版本信息 ---\n\n{version_desc if version_desc else '无版本信息。'}\n"
                     )
-                    log_dest_path = os.path.join(zml_dir, f"{lora_basename_no_ext}.log")
-                    with open(log_dest_path, 'w', encoding='utf-8') as f:
-                        f.write(log_content)
-                    print(f"[ZML_Parser] 介绍已保存: {log_dest_path}")
+                    json_dest_path = os.path.join(lora_dir, f"{lora_basename_no_ext}.json")
+                    with open(json_dest_path, 'w', encoding='utf-8') as f:
+                        f.write(json_content)
+                    print(f"[ZML_Parser] 介绍已保存: {json_dest_path}")
                 
                 parsed_info_str += "\n--- Civitai 信息 ---\n"
                 parsed_info_str += f"模型名称: {civitai_data.get('model', {}).get('name', 'N/A')}\n"
@@ -634,9 +746,9 @@ class ZmlLoraMetadataParser:
 
 
         preview_image_tensor = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-        txt_content, log_content = "", ""
+        txt_content, json_content = "", ""
         for ext in ['.png', '.jpg', '.jpeg', '.webp']:
-            preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
+            preview_path = os.path.join(lora_dir, f"{lora_basename_no_ext}{ext}")
             if os.path.isfile(preview_path):
                 try:
                     img = Image.open(preview_path).convert("RGB")
@@ -645,16 +757,16 @@ class ZmlLoraMetadataParser:
                     break
                 except Exception as e:
                     print(f"[ZML_Parser] 读取预览图时出错 {preview_path}: {e}")
-        txt_filepath = os.path.join(zml_dir, f"{lora_basename_no_ext}.txt")
+        txt_filepath = os.path.join(lora_dir, f"{lora_basename_no_ext}.txt")
         if os.path.isfile(txt_filepath):
             with open(txt_filepath, 'r', encoding='utf-8') as f:
                 txt_content = f.read()
-        log_filepath = os.path.join(zml_dir, f"{lora_basename_no_ext}.log")
-        if os.path.isfile(log_filepath):
-            with open(log_filepath, 'r', encoding='utf-8') as f:
-                log_content = f.read()
-        help_content = "此节点用于解析LoRA模型文件，并从Civitai.com获取关联的元数据。\n1. 选择一个LoRA模型。\n2. 勾选需要保存的项目（图像、触发词、介绍）。\n3. 运行节点。\n4. 节点会自动计算文件哈希，访问Civitai API，并将获取到的文件保存到LoRA所在目录的 'zml' 子文件夹中。"
-        return (preview_image_tensor, txt_content, log_content, parsed_info_str, help_content)
+        json_filepath = os.path.join(lora_dir, f"{lora_basename_no_ext}.json")
+        if os.path.isfile(json_filepath):
+            with open(json_filepath, 'r', encoding='utf-8') as f:
+                json_content = f.read()
+        help_content = "此节点用于解析LoRA模型文件，并从Civitai.com获取关联的元数据。\n1. 选择一个LoRA模型。\n2. 勾选需要保存的项目（图像、触发词、介绍）。\n3. 运行节点。\n4. 节点会自动计算文件哈希，访问Civitai API，并将获取到的文件保存到LoRA所在目录中。"
+        return (preview_image_tensor, txt_content, json_content, parsed_info_str, help_content)
 
 # --- ZML 原始 LoraLoaderModelOnly 节点 ---
 class ZmlLoraLoaderModelOnly:
@@ -859,11 +971,10 @@ class ZmlPowerLoraLoader:
                     found_image_tensor = None # 为每个 LoRA 重置
                     lora_basename_no_ext = os.path.splitext(os.path.basename(lora_name))[0]
                     lora_dir = os.path.dirname(lora_path)
-                    zml_dir = os.path.join(lora_dir, "zml")
                     
                     for ext in ['.png', '.jpg', '.jpeg', '.webp']:
                         # Corrected path construction for preview_path (absolute path)
-                        preview_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
+                        preview_path = os.path.join(lora_dir, f"{lora_basename_no_ext}{ext}")
                         if os.path.isfile(preview_path):
                             try:
                                 img = Image.open(preview_path).convert("RGB")
@@ -879,7 +990,7 @@ class ZmlPowerLoraLoader:
                         output_images.append(found_image_tensor)
                     
                     # 尝试收集 LoRA 触发词 (txt 文件)
-                    txt_filepath = os.path.join(zml_dir, f"{lora_basename_no_ext}.txt")
+                    txt_filepath = os.path.join(lora_dir, f"{lora_basename_no_ext}.txt")
                     if os.path.isfile(txt_filepath):
                         try:
                             with open(txt_filepath, 'r', encoding='utf-8') as f:
