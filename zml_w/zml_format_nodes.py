@@ -1193,7 +1193,27 @@ class ZML_SplitText:
         # 不再进行标点符号格式化，直接返回分割后的文本
         return (before_separator, after_separator,)
 
-# ============================== 追加提示词节点 ==============================
+# ============================== 选择文本V4节点 (单文本框版==============================
+class ZML_SelectTextV4:
+    """ZML 选择文本V4节点：提供一个多行文本输入框，直接返回输入的文本。"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "文本": ("STRING", {"multiline": True, "default": "", "placeholder": "输入文本"}),
+            },
+        }
+
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
+    FUNCTION = "get_text"
+
+    def get_text(self, 文本):
+        """直接返回输入的文本"""
+        return (文本,)
+
 class ZML_AppendTextByKeyword:
     """ZML 追加提示词节点"""
     
@@ -1294,6 +1314,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SelectText": ZML_SelectText,
     "ZML_SelectTextV2": ZML_SelectTextV2,
     "ZML_SelectTextV3": ZML_SelectTextV3,
+    "ZML_SelectTextV4": ZML_SelectTextV4,
     "ZML_SplitText": ZML_SplitText,
     "ZML_AppendTextByKeyword": ZML_AppendTextByKeyword,
 }
@@ -1310,6 +1331,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SelectText": "ZML_选择文本",
     "ZML_SelectTextV2": "ZML_选择文本V2",
     "ZML_SelectTextV3": "ZML_选择文本V3",
+    "ZML_SelectTextV4": "ZML_选择文本V4",
     "ZML_SplitText": "ZML_文本分离",
     "ZML_AppendTextByKeyword": "ZML_追加提示词",
 }

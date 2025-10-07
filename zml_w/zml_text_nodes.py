@@ -513,7 +513,7 @@ class ZML_ImageToHTML:
         
         # 增加HTML计数器
         total_count = self.increment_html_counter()
-        help_output = f"你好，很高兴你使用ZML节点，到目前为止，你通过此节点总共转格式了{total_count}次图像！\n如果你不想转换后的HTML文件里有标题的话，那可以选择纯图片输出，这样转化后的HTML文件里就只含有图片了。\n标题输入有字数限制，超过30个字符就不写入了。\n附加图像只有在禁用“纯图片输出”时才会启用，附加图像会展示在标题的左边，节点还会根据附加图像的比例来自动调整分辨率，如果你的附加图像是“400*200”，但是你选择的分辨率为“200*200”，那调整后的附加图像比例为“200*100”，所以好好选择附加图像的分辨率哦~\n并且此节点支持合并图像为GIF，你可以使用‘GIF文件路径’节点来加载GIF，然后再输入给此节点转化为HTML~\n好啦~祝你生活愉快~天天开心~"
+        help_output = f"你好，很高兴你使用ZML节点，到目前为止，你通过此节点总共转格式了{total_count}次图像！\n如果你不想转换后的HTML文件里有标题的话，那可以选择纯图片输出，这样转化后的HTML文件里只含有图片了。\n标题输入有字数限制，超过30个字符就不写入了。\n附加图像只有在禁用“纯图片输出”时才会启用，附加图像会展示在标题的左边，节点还会根据附加图像的比例来自动调整分辨率，如果你的附加图像是“400*200”，但是你选择的分辨率为“200*200”，那调整后的附加图像比例为“200*100”，所以好好选择附加图像的分辨率哦~\n并且此节点支持合并图像为GIF，你可以使用‘GIF文件路径’节点来加载GIF，然后再输入给此节点转化为HTML~\n好啦~祝你生活愉快~天天开心~"
         
         # 如果没有主图像输入
         if 图像 is None or 图像.size(0) == 0:
@@ -790,8 +790,8 @@ class ZML_DualIntegerV3:
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "INT", "FLOAT", "BOOLEAN")
-    RETURN_NAMES = ("宽", "高", "整数", "浮点", "布尔")
+    RETURN_TYPES = ("INT", "INT", "BOOLEAN")
+    RETURN_NAMES = ("宽", "高", "布尔")
     FUNCTION = "process_comparison"
     CATEGORY = "image/ZML_图像/整数"
 
@@ -815,23 +815,17 @@ class ZML_DualIntegerV3:
         if abs(宽 - 高) <= 阈值:
             out_w = width_equal
             out_h = height_equal
-            out_int = 2
-            out_float = 2.0
             out_bool = True
         elif 宽 < 高:
             out_w = width_less
             out_h = height_less
-            out_int = 1
-            out_float = 1.0
             out_bool = True
         else: # 宽 > 高
             out_w = width_greater
             out_h = height_greater
-            out_int = 3
-            out_float = 3.0
             out_bool = True
             
-        return (out_w, out_h, out_int, out_float, out_bool)
+        return (out_w, out_h, out_bool)
 
 # ============================== 顺序加载整数节点 ==============================
 class ZML_SequentialIntegerLoader:
@@ -1385,6 +1379,91 @@ async def clear_resolution_presets_route(request):
         return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
 
 
+# ============================== 整数浮点互转节点 ==============================
+class ZML_IntegerFloatConverter:
+    """
+    ZML 整数浮点互转节点
+    将整数转换为浮点数，将浮点数转换为整数
+    两个接口都是可选的
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "整数": ("INT", {"forceInput": True}),
+                "浮点数": ("FLOAT", {"forceInput": True})
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/整数"
+    RETURN_TYPES = ("FLOAT", "INT")
+    RETURN_NAMES = ("浮点数", "整数")
+    FUNCTION = "convert"
+    
+    def convert(self, 整数=None, 浮点数=None):
+        """将整数转换为浮点数，将浮点数转换为整数"""
+        # 处理整数转浮点数
+        float_result = 0.0
+        if 整数 is not None:
+            float_result = float(整数)
+        # 如果没有整数输入但有浮点数输入，保持浮点数不变
+        elif 浮点数 is not None:
+            float_result = 浮点数
+        
+        # 处理浮点数转整数
+        int_result = 0
+        if 浮点数 is not None:
+            int_result = int(浮点数)
+        # 如果没有浮点数输入但有整数输入，保持整数不变
+        elif 整数 is not None:
+            int_result = 整数
+        
+        return (float_result, int_result)
+
+# ============================== 整数布尔互转节点 ==============================
+class ZML_IntegerBooleanConverter:
+    """
+    ZML 整数布尔互转节点
+    将整数转换为布尔值，将布尔值转换为整数
+    规则：偶数为True，奇数为False
+    两个接口都是可选的
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "整数": ("INT", {"forceInput": True}),
+                "布尔值": ("BOOLEAN", {"forceInput": True})
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/整数"
+    RETURN_TYPES = ("BOOLEAN", "INT")
+    RETURN_NAMES = ("布尔值", "整数")
+    FUNCTION = "convert"
+    
+    def convert(self, 整数=None, 布尔值=None):
+        """将整数转换为布尔值，将布尔值转换为整数"""
+        # 处理整数转布尔值（偶数为True，奇数为False）
+        bool_result = False
+        if 整数 is not None:
+            bool_result = (整数 % 2 == 0)
+        # 如果没有整数输入但有布尔值输入，保持布尔值不变
+        elif 布尔值 is not None:
+            bool_result = 布尔值
+        
+        # 处理布尔值转整数（True为0，False为1）
+        int_result = 0
+        if 布尔值 is not None:
+            int_result = 0 if 布尔值 else 1
+        # 如果没有布尔值输入但有整数输入，保持整数不变
+        elif 整数 is not None:
+            int_result = 整数
+        
+        return (bool_result, int_result)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextInput": ZML_TextInput,
@@ -1398,6 +1477,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_PresetResolution": ZML_PresetResolution,
     "ZML_SequentialIntegerLoader": ZML_SequentialIntegerLoader, 
     "ZML_IntegerStringConverter": ZML_IntegerStringConverter,
+    "ZML_IntegerFloatConverter": ZML_IntegerFloatConverter,
+    "ZML_IntegerBooleanConverter": ZML_IntegerBooleanConverter
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1406,10 +1487,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_PresetText": "ZML_预设文本",
     "ZML_ImageToHTML": "ZML_图片转HTML",
     "ZML_DualFloat": "ZML_双浮点",
-    "ZML_DualInteger": "ZML_双整数",             
+    "ZML_DualInteger": "ZML_双整数",              
     "ZML_DualIntegerV2": "ZML_双整数V2",
     "ZML_DualIntegerV3": "ZML_双整数V3（判断）",
     "ZML_PresetResolution": "ZML_预设分辨率",
     "ZML_SequentialIntegerLoader": "ZML_顺序加载整数", 
     "ZML_IntegerStringConverter": "ZML_整数字符串互转",
+    "ZML_IntegerFloatConverter": "ZML_整数浮点互转",
+    "ZML_IntegerBooleanConverter": "ZML_整数布尔互转"
 }
