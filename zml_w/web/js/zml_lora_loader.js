@@ -33,6 +33,8 @@ let loraImages = {};
 globalThis.zmlMp4Previews = {};
 // 新增：控制MP4预览模式的全局变量
 globalThis.zmlBatchLoraPreviewMp4Mode = false;
+// 新增：控制添加文本模式的全局变量（默认开启）
+globalThis.zmlBatchLoraAddTextMode = true;
 // 新增：每个LoRA独立的视频播放状态对象
 globalThis.zmlLoraVideoPlayStates = {};
 
@@ -130,7 +132,7 @@ app.registerExtension({
 		// 1. 注入CSS样式
 		$el("style", {
 			textContent: `
-				.zml-lora-image-preview { position: absolute; left: 0; top: 0; width: ${IMAGE_WIDTH}px; height: ${IMAGE_HEIGHT}px; object-fit: contain; object-position: top left; z-index: 9999; pointer-events: none; }
+				.zml-lora-image-preview { position: absolute; left: 0; top: 0; width: ${IMAGE_WIDTH}px; height: ${IMAGE_HEIGHT}px; object-fit: contain; object-position: top left; z-index: 20000; pointer-events: none; }
 				.zml-lora-image-preview.left { object-position: top right; }
 				.zml-lora-folder { opacity: 0.7; } .zml-lora-folder-arrow { display: inline-block; width: 15px; } .zml-lora-folder:hover { background-color: rgba(255, 255, 255, 0.1); }
 				.litecontextmenu:has(input:not(:placeholder-shown)) .zml-lora-folder-contents { display: block !important; }
@@ -1527,8 +1529,8 @@ app.registerExtension({
                         };
                         displayStyleControl.appendChild(squareBtn);
 
-                        // 创建视频预览控制容器，与展示样式有间隔
-                        const videoPreviewContainer = zmlCreateEl("div", {
+                        // 创建添加文本控制容器，与展示样式有间隔
+                        const addTextContainer = zmlCreateEl("div", {
                             style: `
                                 display: flex;
                                 align-items: center;
@@ -1536,21 +1538,21 @@ app.registerExtension({
                                 margin-left: 15px; /* 添加间隔 */
                             `
                         });
-                        displayStyleControl.appendChild(videoPreviewContainer);
+                        displayStyleControl.appendChild(addTextContainer);
 
-                        // 添加视频预览文本标签
-                        const videoPreviewLabel = zmlCreateEl("span", {
-                            textContent: "视频预览",
+                        // 添加文本标签
+                        const addTextLabel = zmlCreateEl("span", {
+                            textContent: "添加文本",
                             style: `
                                 color: #fff;
                                 font-size: 12px;
                                 white-space: nowrap;
                             `
                         });
-                        videoPreviewContainer.appendChild(videoPreviewLabel);
+                        addTextContainer.appendChild(addTextLabel);
 
-                        // 添加视频预览开关
-                        const zmlBatchLoraPreviewMp4Toggle = zmlCreateEl("label", {
+                        // 添加文本开关
+                        globalThis.zmlBatchLoraAddTextToggle = zmlCreateEl("label", {
                             className: "zml-toggle-switch",
                             style: `
                                 position: relative;
@@ -1570,8 +1572,8 @@ app.registerExtension({
                                 height: 0;
                             `
                         });
-                        toggleInput.checked = zmlBatchLoraPreviewMp4Mode;
-                        zmlBatchLoraPreviewMp4Toggle.appendChild(toggleInput);
+                        toggleInput.checked = zmlBatchLoraAddTextMode;
+                        zmlBatchLoraAddTextToggle.appendChild(toggleInput);
 
                         // 创建开关滑块
                         const toggleSlider = zmlCreateEl("span", {
@@ -1582,7 +1584,7 @@ app.registerExtension({
                                 left: 0;
                                 right: 0;
                                 bottom: 0;
-                                background-color: #666;
+                                background-color: ${zmlBatchLoraAddTextMode ? '#4CAF50' : '#666'};
                                 transition: .3s;
                                 border-radius: 20px;
                             `
@@ -1597,45 +1599,31 @@ app.registerExtension({
                                 background-color: white;
                                 transition: .3s;
                                 border-radius: 50%;
-                                transform: translateX(${zmlBatchLoraPreviewMp4Mode ? '16px' : '0'});
+                                transform: translateX(${zmlBatchLoraAddTextMode ? '16px' : '0'});
                             "></span>
                         `;
-                        zmlBatchLoraPreviewMp4Toggle.appendChild(toggleSlider);
-                        videoPreviewContainer.appendChild(zmlBatchLoraPreviewMp4Toggle);
+                        zmlBatchLoraAddTextToggle.appendChild(toggleSlider);
+                        addTextContainer.appendChild(zmlBatchLoraAddTextToggle);
 
                         // 统一处理开关的点击事件
-                        const toggleMp4Preview = function() {
-                            zmlBatchLoraPreviewMp4Mode = !zmlBatchLoraPreviewMp4Mode;
+                        const toggleAddText = function() {
+                            zmlBatchLoraAddTextMode = !zmlBatchLoraAddTextMode;
 
                             // 更新开关样式
-                            toggleInput.checked = zmlBatchLoraPreviewMp4Mode;
-                            toggleSlider.style.backgroundColor = zmlBatchLoraPreviewMp4Mode ? '#4CAF50' : '#666';
-                            toggleSlider.querySelector('span').style.transform = `translateX(${zmlBatchLoraPreviewMp4Mode ? '16px' : '0'})`;
+                            toggleInput.checked = zmlBatchLoraAddTextMode;
+                            toggleSlider.style.backgroundColor = zmlBatchLoraAddTextMode ? '#4CAF50' : '#666';
+                            toggleSlider.querySelector('span').style.transform = `translateX(${zmlBatchLoraAddTextMode ? '16px' : '0'})`;
                             
-                            // 同时更新所有LoRA的视频播放状态
-                            if (!globalThis.zmlLoraVideoPlayStates) {
-                                globalThis.zmlLoraVideoPlayStates = {};
-                            }
-                            
-                            // 根据开关状态设置所有有MP4预览的LoRA的播放状态
-                            if (globalThis.zmlMp4Previews) {
-                                for (const loraPath in globalThis.zmlMp4Previews) {
-                                    globalThis.zmlLoraVideoPlayStates[loraPath] = zmlBatchLoraPreviewMp4Mode;
-                                }
-                            }
-                            
-                            // 刷新网格
-                            refreshBatchLoraGrid();
                             // 添加CSS反馈效果到开关
-                            zmlBatchLoraPreviewMp4Toggle.style.transform = "scale(1.05)";
+                            zmlBatchLoraAddTextToggle.style.transform = "scale(1.05)";
                             setTimeout(() => {
-                                zmlBatchLoraPreviewMp4Toggle.style.transform = "scale(1)";
+                                zmlBatchLoraAddTextToggle.style.transform = "scale(1)";
                             }, 200);
                         };
 
                         // 重新绑定点击事件，确保生效
-                        zmlBatchLoraPreviewMp4Toggle.onclick = toggleMp4Preview;
-                        toggleInput.onchange = toggleMp4Preview;
+                        zmlBatchLoraAddTextToggle.onclick = toggleAddText;
+                        toggleInput.onchange = toggleAddText;
                 
                 // 更新样式按钮状态的函数
                 function updateStyleButtons(buttons) {
@@ -3431,7 +3419,9 @@ app.registerExtension({
                 }
 
                 if (finalLorasToAdd.length > 0) {
-                    finalLorasToAdd.forEach(loraPath => {
+                    // 处理每个要添加的 LoRA
+                    for (const loraPath of finalLorasToAdd) {
+                        // 创建新的条目
                         const newEntry = {
                             id: "lora" + Date.now() + Math.random().toString(36).substring(2, 8),
                             item_type: "lora",
@@ -3442,8 +3432,39 @@ app.registerExtension({
                             enabled: true,
                             parent_id: null,
                         };
+
+                        // 当"添加文本"模式开启时，尝试读取同名txt文件内容
+                        if (zmlBatchLoraAddTextMode) {
+                            try {
+                                // 获取LoRA文件名（不含扩展名）
+                                const loraNameWithoutExt = loraPath.split('/').pop().split('.').slice(0, -1).join('.');
+                                // 构建txt文件路径
+                                const txtFilePath = loraPath.replace(/\\.[^/.]+$/, '.txt');
+                                
+                                // 发送请求到后端获取txt文件内容
+                                const response = await api.fetchApi(`${ZML_API_PREFIX}/get_lora_file`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                        "lora_filename": loraPath,
+                                        "file_type": "txt"
+                                    })
+                                });
+                                const result = await response.json();
+                                if (result.status === "success" && result.content.trim()) {
+                                    newEntry.custom_text = result.content.trim();
+                                }
+                            } catch (error) {
+                                console.warn(`无法读取LoRA的txt文件: ${loraPath}`, error);
+                                // 继续处理，不中断整个流程
+                            }
+                        }
+
+                        // 添加到节点数据中
                         zmlBatchLoraCurrentNodeInstance.powerLoraLoader_data.entries.push(newEntry);
-                    });
+                    }
+                    
+                    // 触发节点更新
                     zmlBatchLoraCurrentNodeInstance.triggerSlotChanged();
                 } else if (lorasToAdd.length > 0) {
                      alert("所有选中的 LoRA 都已存在且你选择了跳过。");
@@ -3459,12 +3480,34 @@ app.registerExtension({
                 zmlBatchLoraCurrentNodeInstance = nodeInstance;
                 zmlBatchLoraCurrentPath = []; // 重置路径到根目录
                 zmlBatchLoraSelected.clear(); // 清空上次选择
+                
+                // 确保模态框完全显示后再更新开关状态
+                const updateToggleState = () => {
+                    // 尝试通过两种方式获取开关元素：全局变量和DOM查询
+                    let toggleEl = globalThis.zmlBatchLoraAddTextToggle;
+                    
+                    if (!toggleEl && zmlBatchLoraModalOverlay) {
+                        toggleEl = zmlBatchLoraModalOverlay.querySelector('.zml-toggle-switch');
+                    }
+                    
+                    if (toggleEl) {
+                        const toggleInput = toggleEl.querySelector('input[type="checkbox"]');
+                        const toggleSlider = toggleEl.querySelector('span');
+                        const innerSpan = toggleSlider?.querySelector('span');
+                        
+                        if (toggleInput) toggleInput.checked = zmlBatchLoraAddTextMode;
+                        if (toggleSlider) toggleSlider.style.backgroundColor = zmlBatchLoraAddTextMode ? '#4CAF50' : '#666';
+                        if (innerSpan) innerSpan.style.transform = `translateX(${zmlBatchLoraAddTextMode ? '16px' : '0'})`;
+                    }
+                };
 
                 // 首次打开或者图片列表为空时尝试重新加载图片列表
                 if (!loraImages || Object.keys(loraImages).length === 0) {
                     loadImageList().then(() => {
                         renderBatchLoraContent(); // 重新渲染内容
                         zmlBatchLoraModalOverlay.style.display = 'flex';
+                        // 模态框显示后更新开关状态
+                        setTimeout(updateToggleState, 100);
                     }).catch(e => {
                         console.error("Failed to load lora images for batch modal:", e);
                         alert("无法加载 LoRA 预览图，请检查后端服务日志。");
@@ -3473,6 +3516,8 @@ app.registerExtension({
                 } else {
                     renderBatchLoraContent(); // 渲染内容
                     zmlBatchLoraModalOverlay.style.display = 'flex';
+                    // 模态框显示后更新开关状态
+                    setTimeout(updateToggleState, 100);
                 }
             }
 
@@ -3483,6 +3528,8 @@ app.registerExtension({
                     zmlBatchLoraCurrentPath = [];
                     zmlBatchLoraSelected.clear();
                     updateSelectedCountDisplay(); // 清空后更新计数显示
+                    // 保留添加文本模式状态，不再重置
+                    
                     // 重置MP4预览模式
                     if (typeof zmlBatchLoraPreviewMp4Mode !== 'undefined') {
                         zmlBatchLoraPreviewMp4Mode = false;
@@ -4615,8 +4662,8 @@ app.registerExtension({
             };
 
             nodeType.prototype.createLoraTreeMenu = function(button, entry, onSelect) {
-                // This function remains largely the same
-                const menu = zmlCreateEl("div", { className: "zml-lora-tree-menu" }); // <-- 这里会调用到局部定义的 zmlCreateEl
+                // 创建菜单容器
+                const menu = zmlCreateEl("div", { className: "zml-lora-tree-menu" });
                 const closeMenu = () => { menu.remove(); document.removeEventListener("click", clickOutside, true); activeLoraMenu = null; };
 
                 const ext = app.extensions.find(e => e.name === "zml.LoraLoader.Final.v9");
@@ -4624,7 +4671,20 @@ app.registerExtension({
                 const showImage = ext?.showImage;
                 const hideImage = ext?.hideImage;
 
-                // 添加搜索框
+                // 设置菜单样式为flex布局
+                menu.style.display = "flex";
+                menu.style.flexDirection = "column";
+                menu.style.minWidth = "480px";
+                menu.style.maxWidth = "1000px";
+                menu.style.minHeight = "300px";
+                menu.style.maxHeight = "700px";
+                menu.style.backgroundColor = "#1e1e1e";
+                menu.style.border = "1px solid #444";
+                menu.style.borderRadius = "4px";
+                menu.style.boxShadow = "0 4px 20px rgba(0, 0, 0, 0.5)";
+                menu.style.zIndex = "10000";
+
+                // 添加搜索框（在顶部）
                 const searchInput = zmlCreateEl("input", {
                     className: "zml-lora-search-input",
                     placeholder: "搜索模型...",
@@ -4632,97 +4692,154 @@ app.registerExtension({
                 });
                 searchInput.style.width = "100%";
                 searchInput.style.boxSizing = "border-box";
-                searchInput.style.padding = "5px 10px";
-                searchInput.style.marginBottom = "5px";
+                searchInput.style.padding = "8px 12px";
+                searchInput.style.margin = "0";
                 searchInput.style.backgroundColor = "#2b2b2b";
-                searchInput.style.border = "1px solid #444";
+                searchInput.style.border = "none";
+                searchInput.style.borderBottom = "1px solid #444";
                 searchInput.style.color = "#ccc";
-                searchInput.style.borderRadius = "4px";
+                searchInput.style.fontSize = "14px";
                 menu.appendChild(searchInput);
 
-                const buildMenuLevel = (parent, treeLevel) => {
-                    treeLevel.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
-                        const fileEl = zmlCreateEl("div", { className: "zml-lora-file", textContent: file.name }); // <-- 这里会调用到局部定义的 zmlCreateEl
-                        fileEl.onclick = () => { entry.lora_name = file.fullpath; onSelect(); hideImage?.(); closeMenu(); };
+                // 创建内容区域容器（使用flex布局实现左右分栏）
+                const contentContainer = zmlCreateEl("div", { style: "display: flex; flex: 1; overflow: hidden;" });
+                menu.appendChild(contentContainer);
 
-                        if (loraImages[file.fullpath] && imageHost && showImage && hideImage) {
-                             fileEl.addEventListener("mouseover", () => {
-                                const imagePath = loraImages[file.fullpath];
-                                const fullViewPath = `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(imagePath)}?${+new Date()}`;
-                                imageHost.src = fullViewPath;
-                                showImage.call(ext, fileEl);
-                            });
-                            fileEl.addEventListener("mouseout", hideImage.bind(ext));
-                        }
-
-                        parent.appendChild(fileEl);
-                    });
-
-                    Object.keys(treeLevel.folders).sort().forEach(folderName => {
-                        const folderEl = zmlCreateEl("div", { className: "zml-lora-folder", innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}` }); // <-- 这里会调用到局部定义的 zmlCreateEl
-                        const contentEl = zmlCreateEl("div", { className: "zml-lora-folder-content" }); // <-- 这里会调用到局部定义的 zmlCreateEl
-                        // 修复：确保contentEl默认是隐藏的，并且第一次点击就能正确展开
-                        contentEl.style.display = "none";
-                        folderEl.addEventListener("click", (e) => {
-                            e.stopImmediatePropagation(); // 阻止所有其他事件监听器
-                            e.preventDefault(); // 阻止默认行为
-                            const isHidden = contentEl.style.display === "none" || contentEl.style.display === "";
-                            contentEl.style.display = isHidden ? "block" : "none";
-                            folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶";
-                        });
-                        buildMenuLevel(contentEl, treeLevel.folders[folderName]);
-                        parent.append(folderEl, contentEl);
-                    });
-                };
-
-                const noneEl = zmlCreateEl("div", { className: "zml-lora-file", textContent: "None" }); // <-- 这里会调用到局部定义的 zmlCreateEl
-                noneEl.onclick = () => { entry.lora_name = "None"; onSelect(); hideImage?.(); closeMenu(); };
-                menu.appendChild(noneEl);
+                // 创建左侧文件夹树容器
+                const folderTreeContainer = zmlCreateEl("div", { 
+                    className: "zml-lora-folder-tree", 
+                    style: "width: 120px; border-right: 1px solid #444; overflow-y: auto; padding: 8px;"
+                });
+                folderTreeContainer.style.backgroundColor = "#1a1a1a";
                 
-                // 创建原始内容容器
-                const originalContent = zmlCreateEl("div", { className: "zml-lora-menu-original-content" });
-                buildMenuLevel(originalContent, this.loraTree);
-                menu.appendChild(originalContent);
+                // 创建右侧文件列表容器
+                const fileListContainer = zmlCreateEl("div", { 
+                    className: "zml-lora-file-list", 
+                    style: "flex: 1; overflow-x: auto; overflow-y: auto; padding: 8px; min-width: 350px; max-width: none; width: 600px; white-space: nowrap;"
+                });
                 
-                // 创建搜索结果容器
-                const searchResults = zmlCreateEl("div", { className: "zml-lora-menu-search-results", style: "display: none" });
+                contentContainer.appendChild(folderTreeContainer);
+                contentContainer.appendChild(fileListContainer);
+                
+                // 创建搜索结果容器（覆盖整个内容区域）
+                const searchResults = zmlCreateEl("div", { 
+                    className: "zml-lora-menu-search-results", 
+                    style: "display: none; position: absolute; top: 40px; left: 0; right: 0; bottom: 0; background: #1e1e1e; padding: 8px; overflow-y: auto;"
+                });
                 menu.appendChild(searchResults);
 
-                // 搜索功能实现
-                searchInput.addEventListener("input", () => {
-                    const searchTerm = searchInput.value.toLowerCase().trim();
+                // 构建文件夹树
+                const buildFolderTree = (parent, treeLevel, currentPath = '') => {
+                    Object.keys(treeLevel.folders).sort().forEach(folderName => {
+                        const folderEl = zmlCreateEl("div", { 
+                            className: "zml-lora-folder", 
+                            innerHTML: `<span class="zml-lora-folder-arrow">▶</span> ${folderName}`,
+                            style: "padding: 3px 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer;"
+                        });
+                        
+                        // 文件夹点击事件 - 显示内容
+                        folderEl.onclick = (e) => {
+                            e.stopPropagation();
+                            
+                            // 更新所有文件夹的样式
+                            const allFolders = folderTreeContainer.querySelectorAll('.zml-lora-folder');
+                            allFolders.forEach(f => {
+                                f.style.backgroundColor = '';
+                                f.style.fontWeight = '';
+                            });
+                            
+                            // 高亮当前文件夹
+                            folderEl.style.backgroundColor = '#333';
+                            folderEl.style.fontWeight = 'bold';
+                            
+                            // 查找并显示文件夹内容
+                            const findFolderContent = (treeLevel, pathParts, currentIndex = 0) => {
+                                if (currentIndex >= pathParts.length) {
+                                    return treeLevel;
+                                }
+                                const name = pathParts[currentIndex];
+                                if (treeLevel.folders && treeLevel.folders[name]) {
+                                    return findFolderContent(treeLevel.folders[name], pathParts, currentIndex + 1);
+                                }
+                                return null;
+                            };
+                            
+                            const pathParts = currentPath ? currentPath.split('/').filter(Boolean) : [];
+                            pathParts.push(folderName);
+                            const folderContent = findFolderContent(this.loraTree, pathParts);
+                            
+                            // 显示文件夹内容
+                            if (folderContent) {
+                                showFolderContent(folderContent);
+                            }
+                            
+                            // 展开/收起子文件夹
+                            const contentEl = folderEl.nextElementSibling;
+                            if (contentEl && contentEl.className.includes('zml-lora-folder-content')) {
+                                const isHidden = contentEl.style.display === "none" || contentEl.style.display === "";
+                                contentEl.style.display = isHidden ? "block" : "none";
+                                folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶";
+                            }
+                        };
+                        
+                        parent.appendChild(folderEl);
+                        
+                        // 创建子文件夹内容容器
+                        const contentEl = zmlCreateEl("div", { 
+                            className: "zml-lora-folder-content", 
+                            style: "display: none; margin-left: 15px;"
+                        });
+                        parent.appendChild(contentEl);
+                        
+                        // 递归构建子文件夹树
+                        buildFolderTree(contentEl, treeLevel.folders[folderName], currentPath + folderName + '/');
+                    });
+                };
+                
+                // 显示文件夹内容
+                const showFolderContent = (folderContent) => {
+                    // 清空文件列表
+                    fileListContainer.innerHTML = '';
                     
-                    if (searchTerm === "") {
-                        // 搜索框为空，显示原始内容
-                        originalContent.style.display = "block";
-                        searchResults.style.display = "none";
-                        return;
-                    }
-
-                    // 清空搜索结果
-                    searchResults.innerHTML = "";
-
-                    // 搜索所有文件
-                    const allFiles = [];
-                    const collectFiles = (treeLevel) => {
-                        allFiles.push(...treeLevel.files);
-                        for (const folderName in treeLevel.folders) {
-                            collectFiles(treeLevel.folders[folderName]);
-                        }
+                    // 添加None选项
+                    const noneEl = zmlCreateEl("div", { 
+                        className: "zml-lora-file", 
+                        textContent: "None",
+                        style: "padding: 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer; border: 1px solid transparent; font-size: 13.5px;"
+                    });
+                    noneEl.onclick = () => { 
+                        entry.lora_name = "None"; 
+                        onSelect(); 
+                        hideImage?.(); 
+                        closeMenu(); 
                     };
-                    collectFiles(this.loraTree);
-
-                    // 过滤匹配的文件
-                    const matchedFiles = allFiles.filter(file => 
-                        file.name.toLowerCase().includes(searchTerm)
-                    );
-
-                    // 显示搜索结果
-                    if (matchedFiles.length > 0) {
-                        matchedFiles.sort((a, b) => a.name.localeCompare(b.name)).forEach(file => {
-                            const fileEl = zmlCreateEl("div", { className: "zml-lora-file", textContent: file.name });
-                            fileEl.onclick = () => { entry.lora_name = file.fullpath; onSelect(); hideImage?.(); closeMenu(); };
-
+                    noneEl.onmouseenter = () => { noneEl.style.backgroundColor = '#2a2a2a'; noneEl.style.borderColor = '#555'; };
+                    noneEl.onmouseleave = () => { noneEl.style.backgroundColor = ''; noneEl.style.borderColor = 'transparent'; };
+                    fileListContainer.appendChild(noneEl);
+                    
+                    // 添加分隔线
+                    const separator = zmlCreateEl("div", { style: "height: 1px; background-color: #444; margin: 3px 0;" });
+                    fileListContainer.appendChild(separator);
+                    
+                    // 显示文件列表
+                    if (folderContent.files && folderContent.files.length > 0) {
+                        folderContent.files.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
+                            const fileEl = zmlCreateEl("div", { 
+                                className: "zml-lora-file", 
+                                textContent: file.name,
+                                style: "padding: 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer; border: 1px solid transparent; font-size: 13.5px;"
+                            });
+                            
+                            fileEl.onclick = () => { 
+                                entry.lora_name = file.fullpath; 
+                                onSelect(); 
+                                hideImage?.(); 
+                                closeMenu(); 
+                            };
+                            
+                            fileEl.onmouseenter = () => { fileEl.style.backgroundColor = '#2a2a2a'; fileEl.style.borderColor = '#555'; };
+                            fileEl.onmouseleave = () => { fileEl.style.backgroundColor = ''; fileEl.style.borderColor = 'transparent'; };
+                            
                             if (loraImages[file.fullpath] && imageHost && showImage && hideImage) {
                                 fileEl.addEventListener("mouseover", () => {
                                     const imagePath = loraImages[file.fullpath];
@@ -4732,30 +4849,394 @@ app.registerExtension({
                                 });
                                 fileEl.addEventListener("mouseout", hideImage.bind(ext));
                             }
+                            
+                            fileListContainer.appendChild(fileEl);
+                        });
+                    } else {
+                        // 空文件夹提示
+                        const emptyText = zmlCreateEl("div", { 
+                            textContent: "此文件夹为空",
+                            style: "padding: 10px; color: #888; text-align: center; font-style: italic;"
+                        });
+                        fileListContainer.appendChild(emptyText);
+                    }
+                };
+                
+                // 显示根目录内容
+                const showRootContent = () => {
+                    // 更新所有文件夹的样式
+                    const allFolders = folderTreeContainer.querySelectorAll('.zml-lora-folder, .zml-lora-root-button, .zml-lora-all-button');
+                    allFolders.forEach(f => {
+                        f.style.backgroundColor = '';
+                        f.style.fontWeight = '';
+                    });
+                    
+                    // 显示根目录内容
+                    showFolderContent(this.loraTree);
+                };
+                
+                // 显示所有文件
+                const showAllFiles = () => {
+                    // 更新所有文件夹的样式
+                    const allFolders = folderTreeContainer.querySelectorAll('.zml-lora-folder, .zml-lora-root-button, .zml-lora-all-button');
+                    allFolders.forEach(f => {
+                        f.style.backgroundColor = '';
+                        f.style.fontWeight = '';
+                    });
+                    
+                    // 高亮全部按钮
+                    allButton.style.backgroundColor = '#333';
+                    allButton.style.fontWeight = 'bold';
+                    
+                    // 收集所有文件
+                    const collectAllFiles = (treeLevel) => {
+                        let allFiles = [];
+                        
+                        // 收集当前级别文件
+                        if (treeLevel.files) {
+                            allFiles = [...allFiles, ...treeLevel.files];
+                        }
+                        
+                        // 递归收集子文件夹中的文件
+                        if (treeLevel.folders) {
+                            Object.values(treeLevel.folders).forEach(folder => {
+                                allFiles = [...allFiles, ...collectAllFiles(folder)];
+                            });
+                        }
+                        
+                        return allFiles;
+                    };
+                    
+                    const allFiles = collectAllFiles(this.loraTree);
+                    
+                    // 清空文件列表
+                    fileListContainer.innerHTML = '';
+                    
+                    // 添加None选项
+                    const noneEl = zmlCreateEl("div", { 
+                        className: "zml-lora-file", 
+                        textContent: "None",
+                        style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
+                    });
+                    noneEl.onclick = () => { 
+                        entry.lora_name = "None"; 
+                        onSelect(); 
+                        hideImage?.(); 
+                        closeMenu(); 
+                    };
+                    noneEl.onmouseenter = () => { noneEl.style.backgroundColor = '#2a2a2a'; noneEl.style.borderColor = '#555'; };
+                    noneEl.onmouseleave = () => { noneEl.style.backgroundColor = ''; noneEl.style.borderColor = 'transparent'; };
+                    fileListContainer.appendChild(noneEl);
+                    
+                    // 添加分隔线
+                    const separator = zmlCreateEl("div", { style: "height: 1px; background-color: #444; margin: 5px 0;" });
+                    fileListContainer.appendChild(separator);
+                    
+                    // 显示所有文件列表
+                    if (allFiles.length > 0) {
+                        allFiles.sort((a,b) => a.name.localeCompare(b.name)).forEach(file => {
+                            const fileEl = zmlCreateEl("div", { 
+                                className: "zml-lora-file", 
+                                textContent: file.name,
+                                style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
+                            });
+                            
+                            fileEl.onclick = () => { 
+                                entry.lora_name = file.fullpath; 
+                                onSelect(); 
+                                hideImage?.(); 
+                                closeMenu(); 
+                            };
+                            
+                            fileEl.onmouseenter = () => { fileEl.style.backgroundColor = '#2a2a2a'; fileEl.style.borderColor = '#555'; };
+                            fileEl.onmouseleave = () => { fileEl.style.backgroundColor = ''; fileEl.style.borderColor = 'transparent'; };
+                            
+                            if (loraImages[file.fullpath] && imageHost && showImage && hideImage) {
+                                fileEl.addEventListener("mouseover", () => {
+                                    const imagePath = loraImages[file.fullpath];
+                                    const fullViewPath = `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(imagePath)}?${+new Date()}`;
+                                    imageHost.src = fullViewPath;
+                                    showImage.call(ext, fileEl);
+                                });
+                                fileEl.addEventListener("mouseout", hideImage.bind(ext));
+                            }
+                            
+                            fileListContainer.appendChild(fileEl);
+                        });
+                    } else {
+                        // 没有文件提示
+                        const emptyText = zmlCreateEl("div", { 
+                            textContent: "没有找到任何文件",
+                            style: "padding: 10px; color: #888; text-align: center; font-style: italic;"
+                        });
+                        fileListContainer.appendChild(emptyText);
+                    }
+                };
+                
+                // 添加全部按钮
+                const allButton = zmlCreateEl("div", { 
+                    className: "zml-lora-all-button", 
+                    textContent: "📁 全部",
+                    style: "padding: 5px; margin-bottom: 8px; border-radius: 3px; cursor: pointer;"
+                });
+                allButton.onclick = () => {
+                    showAllFiles();
+                    allButton.style.backgroundColor = '#333';
+                    allButton.style.fontWeight = 'bold';
+                    rootButton.style.backgroundColor = '';
+                    rootButton.style.fontWeight = '';
+                };
+                allButton.onmouseenter = () => { if (allButton.style.backgroundColor !== '#333') allButton.style.backgroundColor = '#2a2a2a'; };
+                allButton.onmouseleave = () => { if (allButton.style.backgroundColor !== '#333') allButton.style.backgroundColor = ''; };
+                folderTreeContainer.appendChild(allButton);
+                
+                // 添加根目录按钮
+                const rootButton = zmlCreateEl("div", { 
+                    className: "zml-lora-root-button", 
+                    textContent: "📁 根目录",
+                    style: "padding: 5px; margin-bottom: 8px; border-radius: 3px; cursor: pointer; font-weight: bold;"
+                });
+                rootButton.onclick = () => {
+                    showRootContent();
+                    rootButton.style.backgroundColor = '#333';
+                    if (allButton) allButton.style.backgroundColor = '';
+                };
+                rootButton.onmouseenter = () => { if (rootButton.style.backgroundColor !== '#333') rootButton.style.backgroundColor = '#2a2a2a'; };
+                rootButton.onmouseleave = () => { if (rootButton.style.backgroundColor !== '#333') rootButton.style.backgroundColor = ''; };
+                folderTreeContainer.appendChild(rootButton);
+                
+                // 构建文件夹树
+                buildFolderTree(folderTreeContainer, this.loraTree);
+                
+                // 默认显示根目录内容
+                showRootContent();
+                rootButton.style.backgroundColor = '#333';
 
-                            searchResults.appendChild(fileEl);
+                // 搜索功能实现
+                searchInput.addEventListener("input", () => {
+                    const searchTerm = searchInput.value.toLowerCase().trim();
+                    
+                    if (searchTerm === "") {
+                        // 搜索框为空，显示原始内容
+                        contentContainer.style.display = "flex";
+                        searchResults.style.display = "none";
+                        return;
+                    }
+
+                    // 清空搜索结果
+                    searchResults.innerHTML = "";
+
+                    // 搜索所有文件和文件夹
+                    const allItems = [];
+                    const collectItems = (treeLevel, currentPath = '') => {
+                        // 收集文件
+                        treeLevel.files.forEach(file => {
+                            allItems.push({
+                                type: 'file',
+                                name: file.name,
+                                fullpath: file.fullpath,
+                                path: currentPath
+                            });
+                        });
+                        
+                        // 收集文件夹
+                        for (const folderName in treeLevel.folders) {
+                            allItems.push({
+                                type: 'folder',
+                                name: folderName,
+                                fullpath: currentPath + folderName,
+                                path: currentPath
+                            });
+                            // 递归收集子文件夹和文件
+                            collectItems(treeLevel.folders[folderName], currentPath + folderName + '/');
+                        }
+                    };
+                    collectItems(this.loraTree);
+
+                    // 过滤匹配的项目
+                    const matchedItems = allItems.filter(item => 
+                        item.name.toLowerCase().includes(searchTerm)
+                    );
+
+                    // 显示搜索结果
+                    if (matchedItems.length > 0) {
+                        // 按类型排序：文件夹优先，然后按名称排序
+                        matchedItems.sort((a, b) => {
+                            if (a.type !== b.type) {
+                                return a.type === 'folder' ? -1 : 1;
+                            }
+                            return a.name.localeCompare(b.name);
+                        }).forEach(item => {
+                            if (item.type === 'file') {
+                                const fileEl = zmlCreateEl("div", { 
+                                    className: "zml-lora-file", 
+                                    textContent: item.name,
+                                    style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
+                                });
+                                fileEl.onclick = () => { 
+                                    entry.lora_name = item.fullpath; 
+                                    onSelect(); 
+                                    hideImage?.(); 
+                                    closeMenu(); 
+                                };
+                                
+                                fileEl.onmouseenter = () => { fileEl.style.backgroundColor = '#2a2a2a'; fileEl.style.borderColor = '#555'; };
+                                fileEl.onmouseleave = () => { fileEl.style.backgroundColor = ''; fileEl.style.borderColor = 'transparent'; };
+
+                                if (loraImages[item.fullpath] && imageHost && showImage && hideImage) {
+                                    fileEl.addEventListener("mouseover", () => {
+                                        const imagePath = loraImages[item.fullpath];
+                                        const fullViewPath = `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(imagePath)}?${+new Date()}`;
+                                        imageHost.src = fullViewPath;
+                                        showImage.call(ext, fileEl);
+                                    });
+                                    fileEl.addEventListener("mouseout", hideImage.bind(ext));
+                                }
+
+                                searchResults.appendChild(fileEl);
+                            } else {
+                                // 显示文件夹
+                                const folderEl = zmlCreateEl("div", { 
+                                    className: "zml-lora-folder", 
+                                    innerHTML: `<span class="zml-lora-folder-arrow">▶</span> 📁 ${item.name}`,
+                                    style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; font-weight: bold; color: #8ab4f8;"
+                                });
+                                
+                                // 创建文件夹内容容器
+                                const contentEl = zmlCreateEl("div", { 
+                                    className: "zml-lora-folder-content", 
+                                    style: "display: none; margin-left: 20px;"
+                                });
+                                
+                                // 实现文件夹展开/收起功能
+                                folderEl.onclick = (e) => {
+                                    e.stopPropagation();
+                                    const isHidden = contentEl.style.display === "none" || contentEl.style.display === "";
+                                    contentEl.style.display = isHidden ? "block" : "none";
+                                    folderEl.querySelector('.zml-lora-folder-arrow').textContent = isHidden ? "▼" : "▶";
+                                    
+                                    // 如果是第一次展开，加载文件夹内容
+                                    if (isHidden && contentEl.innerHTML === "") {
+                                        // 查找该文件夹的实际内容
+                                        const findFolderContent = (treeLevel, pathParts, currentIndex = 0) => {
+                                            if (currentIndex >= pathParts.length) {
+                                                return treeLevel;
+                                            }
+                                            const folderName = pathParts[currentIndex];
+                                            if (treeLevel.folders && treeLevel.folders[folderName]) {
+                                                return findFolderContent(treeLevel.folders[folderName], pathParts, currentIndex + 1);
+                                            }
+                                            return null;
+                                        };
+                                        
+                                        const pathParts = item.path ? item.path.split('/').filter(Boolean) : [];
+                                        pathParts.push(item.name); // 添加当前文件夹名称
+                                        const folderContent = findFolderContent(this.loraTree, pathParts);
+                                        
+                                        // 如果找到文件夹内容，渲染它
+                                        if (folderContent) {
+                                            // 渲染子文件
+                                            if (folderContent.files && folderContent.files.length > 0) {
+                                                folderContent.files.forEach(file => {
+                                                    const fileEl = zmlCreateEl("div", { 
+                                                        className: "zml-lora-file", 
+                                                        textContent: file.name,
+                                                        style: "padding: 5px; margin-bottom: 3px; border-radius: 3px; cursor: pointer; border: 1px solid transparent;"
+                                                    });
+                                                    fileEl.onclick = () => { 
+                                                        entry.lora_name = file.fullpath; 
+                                                        onSelect(); 
+                                                        hideImage?.(); 
+                                                        closeMenu(); 
+                                                    };
+                                                    
+                                                    fileEl.onmouseenter = () => { fileEl.style.backgroundColor = '#2a2a2a'; fileEl.style.borderColor = '#555'; };
+                                                    fileEl.onmouseleave = () => { fileEl.style.backgroundColor = ''; fileEl.style.borderColor = 'transparent'; };
+                                                    
+                                                    if (loraImages[file.fullpath] && imageHost && showImage && hideImage) {
+                                                        fileEl.addEventListener("mouseover", () => {
+                                                            const imagePath = loraImages[file.fullpath];
+                                                            const fullViewPath = `${ZML_API_PREFIX}/view/loras/${encodeRFC3986URIComponent(imagePath)}?${+new Date()}`;
+                                                            imageHost.src = fullViewPath;
+                                                            showImage.call(ext, fileEl);
+                                                        });
+                                                        fileEl.addEventListener("mouseout", hideImage.bind(ext));
+                                                    }
+                                                    
+                                                    contentEl.appendChild(fileEl);
+                                                });
+                                            }
+                                            
+                                            // 渲染子文件夹
+                                            if (folderContent.folders && Object.keys(folderContent.folders).length > 0) {
+                                                Object.keys(folderContent.folders).sort().forEach(subFolderName => {
+                                                    const subFolderEl = zmlCreateEl("div", { 
+                                                        className: "zml-lora-folder", 
+                                                        innerHTML: `<span class="zml-lora-folder-arrow">▶</span> 📁 ${subFolderName}`,
+                                                        style: "padding: 3px 5px; margin-bottom: 1px; border-radius: 3px; cursor: pointer; font-weight: bold; color: #8ab4f8;"
+                                                    });
+                                                    
+                                                    // 递归应用同样的逻辑到子文件夹
+                                                    const subContentEl = zmlCreateEl("div", { 
+                                                        className: "zml-lora-folder-content", 
+                                                        style: "display: none; margin-left: 15px;"
+                                                    });
+                                                    
+                                                    subFolderEl.onclick = (e) => {
+                                                        e.stopPropagation();
+                                                        const isSubHidden = subContentEl.style.display === "none" || subContentEl.style.display === "";
+                                                        subContentEl.style.display = isSubHidden ? "block" : "none";
+                                                        subFolderEl.querySelector('.zml-lora-folder-arrow').textContent = isSubHidden ? "▼" : "▶";
+                                                    };
+                                                    
+                                                    contentEl.appendChild(subFolderEl);
+                                                    contentEl.appendChild(subContentEl);
+                                                });
+                                            }
+                                        }
+                                    }
+                                };
+                                
+                                searchResults.appendChild(folderEl);
+                                searchResults.appendChild(contentEl);
+                            }
                         });
                     } else {
                         const noResults = zmlCreateEl("div", { 
                             className: "zml-lora-no-results", 
-                            textContent: "未找到匹配的模型"
+                            textContent: "未找到匹配的模型或文件夹"
                         });
-                        noResults.style.padding = "10px";
+                        noResults.style.padding = "20px";
                         noResults.style.color = "#888";
                         noResults.style.textAlign = "center";
                         searchResults.appendChild(noResults);
                     }
 
                     // 切换显示
-                    originalContent.style.display = "none";
+                    contentContainer.style.display = "none";
                     searchResults.style.display = "block";
                 });
 
                 const rect = button.getBoundingClientRect();
-                menu.style.left = `${rect.left}px`; menu.style.top = `${rect.bottom}px`;
-                menu.style.minWidth = `${rect.width}px`;
+                menu.style.left = `${rect.left}px`; 
+                menu.style.top = `${rect.bottom}px`;
+                
+                // 确保菜单不会超出视口
+                const menuRect = menu.getBoundingClientRect();
+                if (menuRect.right > window.innerWidth) {
+                    menu.style.left = `${Math.max(0, window.innerWidth - menuRect.width)}px`;
+                }
+                if (menuRect.bottom > window.innerHeight) {
+                    menu.style.top = `${Math.max(0, window.innerHeight - menuRect.height)}px`;
+                }
+                
                 document.body.appendChild(menu);
-                const clickOutside = (e) => { if (!menu.contains(e.target) && e.target !== button) { hideImage?.(); closeMenu(); } };
+                const clickOutside = (e) => { 
+                    if (!menu.contains(e.target) && e.target !== button) { 
+                        hideImage?.(); 
+                        closeMenu(); 
+                    } 
+                };
                 setTimeout(() => document.addEventListener("click", clickOutside, true), 0);
 
                 // 自动聚焦搜索框
