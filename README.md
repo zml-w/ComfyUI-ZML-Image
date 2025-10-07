@@ -483,6 +483,8 @@
 > ### 更新日期： **2025.10.08**
 
 > <img width="993" height="749" alt="D74C52B9786DDAEEBC107E59B95FD2BC" src="https://github.com/user-attachments/assets/b9966dbe-4f9e-4c11-b822-3464395620b2" />
+> <img width="1679" height="760" alt="231A83BA9E7E49669AB4EE8CF2169744" src="https://github.com/user-attachments/assets/734f7e71-8207-45df-be0e-e73601e32174" />
+
 
 > ### 更新日期： **2025.10.01**
 
