@@ -1118,9 +1118,15 @@ class ZML_SelectTextV3:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
     FUNCTION = "execute"
+    
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # 返回float("nan")使ComfyUI认为节点每次都发生了变化，从而每次执行时都重新计算随机结果
+        return float("nan")
 
     def execute(self, separator, selectTextV3_data, unique_id=None, extra_pnginfo=None):
         import json
+        import random
 
         try:
             data = json.loads(selectTextV3_data)
@@ -1131,11 +1137,31 @@ class ZML_SelectTextV3:
         
         final_parts = []
 
+        # 收集所有启用的文本条目
+        enabled_entries = []
         for entry in entries:
             if entry.get("enabled", False):
                 content = entry.get("content", "")
                 if content is not None and content != "":
-                    final_parts.append(content)
+                    enabled_entries.append(content)
+        
+        # 检查是否启用了随机选择
+        random_enabled = data.get("randomEnabled", False)
+        random_count = data.get("randomCount", 1)
+        
+        if random_enabled and enabled_entries:
+            # 确保randomCount是整数
+            try:
+                count = max(1, min(int(random_count), len(enabled_entries)))
+                # 随机选择指定数量的条目
+                selected_entries = random.sample(enabled_entries, count)
+                final_parts = selected_entries
+            except (ValueError, TypeError):
+                # 如果转换失败，使用所有启用的条目
+                final_parts = enabled_entries
+        else:
+            # 不启用随机时，使用所有启用的文本条目
+            final_parts = enabled_entries
         
         # 处理分隔符中的换行符
         processed_separator = separator.replace("\\n", "\n")

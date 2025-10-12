@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import server
 import folder_paths
@@ -831,8 +832,9 @@ class ZmlPowerLoraLoader:
                 lora_path = folder_paths.get_full_path("loras", lora_name)
                 
                 if not lora_path or not os.path.exists(lora_path): # 确保文件存在
-                    # print(f"ZML_PowerLoraLoader: 警告: LoRA文件 '{lora_name}' 未找到或不存在，跳过处理。", file=sys.stderr) # 打印到stderr
-                    continue
+                    error_msg = f"ZML_PowerLoraLoader: 错误: LoRA文件 '{lora_name}' 未找到或不存在，请检查文件路径是否正确，或重新选择一次LoRA来刷新索引路径。"
+                    print(error_msg, file=sys.stderr) 
+                    raise ValueError(error_msg) 
                 
                 try:
                     lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
@@ -958,8 +960,9 @@ class ZmlNameLoraLoader:
 
             lora_path = folder_paths.get_full_path("loras", lora_name)
             if not lora_path or not os.path.exists(lora_path): # 确保文件存在
-                print(f"ZML_名称加载lora: LoRA文件 '{lora_name}' 未找到或不存在，跳过。")
-                continue
+                error_msg = f"ZML_名称加载lora: 错误: LoRA文件 '{lora_name}' 未找到或不存在，请检查文件路径是否正确，或重新选择一次LoRA来刷新索引路径。"
+                print(error_msg, file=sys.stderr) # 打印到stderr
+                raise ValueError(error_msg) # 抛出异常以终止工作流
 
             try:
                 lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
@@ -1088,3 +1091,168 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZmlNameLoraLoader": "ZML_名称加载lora",
     "ZmlNunchakuNameLoraLoader": "ZML_名称加载lora(nunchaku)",
 }
+
+# 添加保存LoRA预设的API端点
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/save_lora_preset")
+async def save_lora_preset(request):
+    """
+    保存LoRA预设到指定的JSON文件
+    接收JSON格式：{"name": "预设名称", "loras": [{"name": "lora名称", "display_name": "显示名称", "weight": 权重, "custom_text": "自定义文本", "enabled": true/false}], "timestamp": "时间戳"}
+    """
+    try:
+        # 解析请求体
+        data = await request.json()
+        
+        # 确保必要的数据字段存在
+        if not data.get("name") or not data.get("loras"):
+            return web.json_response({"status": "error", "message": "缺少必要的预设名称或LoRA数据"}, status=400)
+        
+        # 构建预设保存目录
+        preset_dir = os.path.join(os.path.dirname(__file__), "txt", "Preset LoRA")
+        os.makedirs(preset_dir, exist_ok=True)
+        
+        # 构建预设文件路径
+        preset_file_path = os.path.join(preset_dir, "Preset LoRA.json")
+        
+        # 读取现有预设数据（如果存在）
+        existing_presets = {}
+        if os.path.exists(preset_file_path):
+            try:
+                with open(preset_file_path, "r", encoding="utf-8") as f:
+                    existing_presets = json.load(f)
+            except Exception as e:
+                print(f"读取现有预设文件时出错: {e}")
+                # 如果读取失败，使用空字典继续
+        
+        # 保存预设数据，使用文件夹名称作为键
+        preset_name = data["name"]
+        existing_presets[preset_name] = data["loras"]
+        
+        # 写入文件
+        with open(preset_file_path, "w", encoding="utf-8") as f:
+            json.dump(existing_presets, f, ensure_ascii=False, indent=4)
+        
+        return web.json_response({"status": "success", "message": f"预设 '{preset_name}' 保存成功"})
+        
+    except Exception as e:
+        print(f"保存LoRA预设时出错: {e}")
+        return web.json_response({"status": "error", "message": f"保存预设失败: {str(e)}"}, status=500)
+
+# 添加获取LoRA预设的API端点
+@server.PromptServer.instance.routes.get(ZML_API_PREFIX + "/get_lora_presets")
+async def get_lora_presets(request):
+    """
+    获取所有LoRA预设
+    """
+    try:
+        # 获取预设目录
+        preset_dir = os.path.join(os.path.dirname(__file__), "txt", "Preset LoRA")
+        
+        # 如果目录不存在，返回空列表
+        if not os.path.exists(preset_dir):
+            return web.json_response({
+                "status": "success",
+                "message": "预设目录不存在",
+                "presets": []
+            })
+        
+        # 读取预设文件
+        presets = []
+        preset_files = [f for f in os.listdir(preset_dir) if f.endswith('.json')]
+        
+        for file_name in preset_files:
+            try:
+                file_path = os.path.join(preset_dir, file_name)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    preset_data = json.load(f)
+                    
+                    # 检查预设数据格式
+                    if isinstance(preset_data, dict) and 'loras' not in preset_data:
+                        # 这是一个以文件夹名称为键的格式
+                        for folder_name, loras_list in preset_data.items():
+                            if isinstance(loras_list, list):
+                                presets.append({
+                                    'name': folder_name,
+                                    'timestamp': "",
+                                    'loras': loras_list
+                                })
+                    elif isinstance(preset_data, dict):
+                        # 这是一个标准预设格式
+                        presets.append(preset_data)
+                    else:
+                        print(f"预设文件 {file_name} 格式不正确")
+            except Exception as e:
+                print(f"读取预设文件 {file_name} 时出错: {e}")
+                continue
+        
+        # 确保预设具有必要的字段
+        for preset in presets:
+            if 'loras' not in preset:
+                preset['loras'] = []
+            if 'name' not in preset:
+                preset['name'] = "未命名预设"
+            if 'timestamp' not in preset:
+                preset['timestamp'] = ""
+        
+        # 去重，保留最新的版本
+        unique_presets = {}
+        for preset in presets:
+            name = preset.get('name', '未命名预设')
+            if name not in unique_presets:
+                unique_presets[name] = preset
+        
+        return web.json_response({
+            "status": "success",
+            "message": "成功获取预设列表",
+            "presets": list(unique_presets.values())
+        })
+    except Exception as e:
+        print(f"获取LoRA预设时出错: {e}")
+        return web.json_response({"status": "error", "message": f"获取预设失败: {str(e)}"}, status=500)
+    
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/delete_lora_preset")
+async def delete_lora_preset(request):
+    try:
+        # 解析请求体
+        data = await request.json()
+        
+        # 确保必要的数据字段存在
+        if not data.get("name"):
+            return web.json_response({"status": "error", "message": "缺少必要的预设名称"}, status=400)
+        
+        # 构建预设保存目录
+        preset_dir = os.path.join(os.path.dirname(__file__), "txt", "Preset LoRA")
+        preset_file_path = os.path.join(preset_dir, "Preset LoRA.json")
+        
+        # 检查预设文件是否存在
+        if not os.path.exists(preset_file_path):
+            return web.json_response({"status": "error", "message": "预设文件不存在"}, status=404)
+        
+        # 读取现有预设数据
+        existing_presets = {}
+        try:
+            with open(preset_file_path, "r", encoding="utf-8") as f:
+                existing_presets = json.load(f)
+        except Exception as e:
+            print(f"读取预设文件时出错: {e}")
+            return web.json_response({"status": "error", "message": f"读取预设文件失败: {str(e)}"}, status=500)
+        
+        # 删除指定预设
+        preset_name = data["name"]
+        if preset_name in existing_presets:
+            del existing_presets[preset_name]
+            
+            # 写回文件
+            with open(preset_file_path, "w", encoding="utf-8") as f:
+                json.dump(existing_presets, f, ensure_ascii=False, indent=4)
+            
+            return web.json_response({"status": "success", "message": f"预设 '{preset_name}' 删除成功"})
+        else:
+            return web.json_response({"status": "error", "message": f"预设 '{preset_name}' 不存在"}, status=404)
+            
+    except json.JSONDecodeError as e:
+        print(f"JSON解析错误: {e}")
+        return web.json_response({"status": "error", "message": "无效的JSON数据"}, status=400)
+    except Exception as e:
+        print(f"删除LoRA预设时出错: {e}")
+        return web.json_response({"status": "error", "message": f"删除预设失败: {str(e)}"}, status=500)
