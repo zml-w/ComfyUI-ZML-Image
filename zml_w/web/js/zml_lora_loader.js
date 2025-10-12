@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { $el } from "/scripts/ui.js"; // 确保这里引入的是 ComfyUI 的 $el
+import { $el } from "/scripts/ui.js";
 import { api } from "/scripts/api.js";
 
 const TARGET_LORA_LOADERS = ["ZmlLoraLoader", "ZmlLoraLoaderModelOnly", "ZmlLoraLoaderFive", "ZmlLoraMetadataParser"];
@@ -10,7 +10,7 @@ const IMAGE_HEIGHT = 384;
 const POWER_LORA_LOADER_MIN_WIDTH = 460;
 
 // 定义强力LORA加载器推荐的最小高度
-const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 300; // 根据实际测试调整，确保底部按钮不被裁切
+const POWER_LORA_LOADER_MIN_HEIGHT_EMPTY_LIST = 300;
 
 // 特殊路径标识符，用于表示“全部显示”模式
 const ALL_LORAS_VIEW_PATH_IDENTIFIER = '__ALL_LORAS_VIEW__';
@@ -3549,7 +3549,7 @@ app.registerExtension({
             let zmlColorChooseMenu = null;
             // zmlColorCallback 变量不再需要，因为我们直接触发颜色 input 的点击事件
 
-            function createColorChooseMenu(x, y, onSelectFolder, onSelectLoraEntry) {
+            function createColorChooseMenu(x, y, onSelectFolder, onSelectLoraEntry, onSelectEnabledState, onResetColors) {
                 if (zmlColorChooseMenu) zmlColorChooseMenu.remove(); // 移除旧菜单
 
                 zmlColorChooseMenu = zmlCreateEl("div", { // 使用 zmlCreateEl
@@ -3598,8 +3598,49 @@ app.registerExtension({
                 loraEntryColorOption.onmouseenter = (e) => e.target.style.backgroundColor = '#535353';
                 loraEntryColorOption.onmouseleave = (e) => e.target.style.backgroundColor = 'transparent';
                 loraEntryColorOption.onclick = () => { onSelectLoraEntry(); zmlColorChooseMenu.remove(); zmlColorChooseMenu = null; };
+                
+                // 开启状态颜色选项
+                const enabledStateColorOption = zmlCreateEl("div", { // 使用 zmlCreateEl
+                    textContent: "开启状态",
+                    className: "zml-color-choose-option",
+                    style: `
+                        padding: 5px 10px;
+                        cursor: pointer;
+                        border-radius: 2px;
+                        color: #ccc;
+                        transition: background-color 0.2s;
+                    `
+                });
+                enabledStateColorOption.onmouseenter = (e) => e.target.style.backgroundColor = '#535353';
+                enabledStateColorOption.onmouseleave = (e) => e.target.style.backgroundColor = 'transparent';
+                enabledStateColorOption.onclick = () => { onSelectEnabledState(); zmlColorChooseMenu.remove(); zmlColorChooseMenu = null; };
 
-                zmlColorChooseMenu.append(folderColorOption, loraEntryColorOption);
+                // 分割线
+                const separator = zmlCreateEl("div", {
+                    style: `
+                        height: 1px;
+                        background-color: #555;
+                        margin: 2px 0;
+                    `
+                });
+
+                // 恢复默认颜色选项（红色字体）
+                const resetColorsOption = zmlCreateEl("div", { // 使用 zmlCreateEl
+                    textContent: "恢复默认颜色",
+                    className: "zml-color-choose-option",
+                    style: `
+                        padding: 5px 10px;
+                        cursor: pointer;
+                        border-radius: 2px;
+                        color: #ff4444;
+                        transition: background-color 0.2s;
+                    `
+                });
+                resetColorsOption.onmouseenter = (e) => e.target.style.backgroundColor = '#535353';
+                resetColorsOption.onmouseleave = (e) => e.target.style.backgroundColor = 'transparent';
+                resetColorsOption.onclick = () => { onResetColors(); zmlColorChooseMenu.remove(); zmlColorChooseMenu = null; };
+
+                zmlColorChooseMenu.append(folderColorOption, loraEntryColorOption, enabledStateColorOption, separator, resetColorsOption);
                 document.body.appendChild(zmlColorChooseMenu);
 
                 const clickOutside = (e) => {
@@ -3987,9 +4028,15 @@ app.registerExtension({
                      topControls.appendChild(newFolderBtn);
                      // =======================
 
+                     // 初始化默认颜色值（如果不存在）
+                     this.folderColor = this.folderColor ?? "#30353c";
+                     this.loraEntryColor = this.loraEntryColor ?? "#3a3a3a";
+                     this.enabledStateColor = this.enabledStateColor ?? "#4CAF50"; // 开启状态默认绿色
+
                      // === 文件夹/LoRA 颜色按钮 (修改) ===
                      const folderColorInput = zmlCreateEl("input", { type: "color", value: this.folderColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden; position:absolute;" }); // 使用 zmlCreateEl
                      const loraEntryColorInput = zmlCreateEl("input", { type: "color", value: this.loraEntryColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden; position:absolute;" }); // 使用 zmlCreateEl
+                     const enabledStateColorInput = zmlCreateEl("input", { type: "color", value: this.enabledStateColor, style: "width:0; height:0; border:0; padding:0; visibility:hidden; position:absolute;" }); // 使用 zmlCreateEl
                     
                      folderColorInput.onchange = (e) => {
                          this.folderColor = e.target.value;
@@ -3998,6 +4045,11 @@ app.registerExtension({
                      };
                      loraEntryColorInput.onchange = (e) => {
                          this.loraEntryColor = e.target.value;
+                         this.renderLoraEntries(); // Re-render to apply new color
+                         this.triggerSlotChanged();
+                     };
+                     enabledStateColorInput.onchange = (e) => {
+                         this.enabledStateColor = e.target.value;
                          this.renderLoraEntries(); // Re-render to apply new color
                          this.triggerSlotChanged();
                      };
@@ -4011,18 +4063,34 @@ app.registerExtension({
                         const rect = e.target.getBoundingClientRect();
                         createColorChooseMenu(rect.left, rect.bottom + 5,
                             () => folderColorInput.click(),  // 选择文件夹颜色
-                            () => loraEntryColorInput.click() // 选择 LoRA 框颜色
+                            () => loraEntryColorInput.click(), // 选择 LoRA 框颜色
+                            () => enabledStateColorInput.click(), // 选择开启状态颜色
+                            () => { // 恢复默认颜色
+                                this.folderColor = "#30353c";
+                                this.loraEntryColor = "#3a3a3a";
+                                this.enabledStateColor = "#4CAF50";
+                                
+                                // 更新颜色输入框的值
+                                folderColorInput.value = this.folderColor;
+                                loraEntryColorInput.value = this.loraEntryColor;
+                                enabledStateColorInput.value = this.enabledStateColor;
+                                
+                                // 重新渲染和触发更新
+                                this.renderLoraEntries();
+                                this.triggerSlotChanged();
+                            }
                         );
                      };
                      topControls.appendChild(colorPickerBtn);    // Visible button
                      // 将隐藏的输入框移到容器末尾，不影响按钮间距
                      topControls.appendChild(folderColorInput); // Hidden input
                      topControls.appendChild(loraEntryColorInput); // Hidden input
+                     topControls.appendChild(enabledStateColorInput); // Hidden input
                      // =============================
 
 
                      const lockToggleButton = zmlCreateEl("button", { className: "zml-control-btn-pll", textContent: this.isLocked ? "🔒" : "🔓" });// <-- 这里会调用到局部定义的 zmlCreateEl
-                     lockToggleButton.title = "锁定/解锁 LoRA 排序";
+                     lockToggleButton.title = "锁定/解锁 LoRA 框";
                      lockToggleButton.style.cssText += `${this.isLocked ? 'background: #644;' : 'background: #333;'}`;
                      lockToggleButton.onmouseenter = (e) => e.target.style.background = this.isLocked ? '#754' : '#555'; // 悬停反馈
                      lockToggleButton.onmouseleave = (e) => e.target.style.background = this.isLocked ? '#644' : '#333'; // 离开反馈
@@ -4089,6 +4157,739 @@ app.registerExtension({
                          e.stopPropagation();
                      };
                      topControls.appendChild(sizeToggleButton);
+                      
+                     // === 预设按钮 ===
+                     const presetButton = zmlCreateEl("button", { className: "zml-control-btn-pll", textContent: "预设" });// <-- 这里会调用到局部定义的 zmlCreateEl
+                     presetButton.title = "打开预设面板";
+                     presetButton.style.position = 'relative';
+                     presetButton.style.minWidth = '55px'; // 增加宽度1.2倍
+                     presetButton.onmouseenter = (e) => e.target.style.background = '#555';
+                     presetButton.onmouseleave = (e) => e.target.style.background = '#444';                      
+                     // 预设面板 - 改为模态对话框
+                     let presetPanel = null;
+                     let overlay = null;
+                      
+                     // 预设面板内容加载函数
+                     const loadPresetPanel = () => {
+                         // 确保面板只创建一次
+                         if (presetPanel) {
+                             // 显示面板
+                             overlay.style.display = 'block';
+                             presetPanel.style.display = 'block';
+                             return;
+                         }
+                          
+                         // 创建背景遮罩
+                         overlay = zmlCreateEl("div", {
+                             style: `position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 999; display: block;`
+                         });
+                           
+                         // 创建预设面板 - 模态对话框形式
+                         presetPanel = zmlCreateEl("div", {
+                             style: `position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #333; border: 1px solid #555; border-radius: 4px; display: block; z-index: 1000; width: 400px; height: 500px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.5);`
+                         });
+                         
+                         // 加载保存的面板状态
+                         const loadSavedPanelState = () => {
+                             try {
+                                 const savedState = localStorage.getItem('zml_lora_preset_panel_state');
+                                 if (savedState) {
+                                     const state = JSON.parse(savedState);
+                                     
+                                     // 应用保存的尺寸
+                                     presetPanel.style.width = `${state.width}px`;
+                                     presetPanel.style.height = `${state.height}px`;
+                                     
+                                     // 如果保存了位置信息，应用它
+                                     if (state.left !== undefined && state.top !== undefined) {
+                                         presetPanel.style.transform = 'none';
+                                         presetPanel.style.left = `${state.left}px`;
+                                         presetPanel.style.top = `${state.top}px`;
+                                     }
+                                 }
+                             } catch (e) {
+                                 console.error('Failed to load saved panel state:', e);
+                             }
+                         };
+                         
+                         // 保存面板状态
+                         const savePanelState = () => {
+                             try {
+                                 const rect = presetPanel.getBoundingClientRect();
+                                 const state = {
+                                     width: rect.width,
+                                     height: rect.height,
+                                     left: presetPanel.style.transform === 'none' ? rect.left : undefined,
+                                     top: presetPanel.style.transform === 'none' ? rect.top : undefined
+                                 };
+                                 localStorage.setItem('zml_lora_preset_panel_state', JSON.stringify(state));
+                             } catch (e) {
+                                 console.error('Failed to save panel state:', e);
+                             }
+                         };
+                           
+                         // 添加缩放控制手柄
+                         const resizeHandle = zmlCreateEl("div", {
+                             style: `position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; background: #555; border-top: 1px solid #666; border-left: 1px solid #666; cursor: se-resize; z-index: 1;`
+                         });
+                         presetPanel.appendChild(resizeHandle);
+                         
+                         // 加载保存的面板状态
+                         loadSavedPanelState();
+                         
+                         // 预设面板头部
+                         const panelHeader = zmlCreateEl("div", {
+                             style: `padding: 10px 15px; background: #444; border-bottom: 1px solid #555; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none;`
+                         });
+                         
+                         // 拖拽功能实现
+                         let isDragging = false;
+                         let offsetX, offsetY;
+                         
+                         panelHeader.onmousedown = (e) => {
+                             if (e.target.tagName === 'BUTTON') return; // 如果点击的是按钮，不触发拖拽
+                             
+                             isDragging = true;
+                             
+                             // 获取鼠标相对于面板的位置
+                             const panelRect = presetPanel.getBoundingClientRect();
+                             offsetX = e.clientX - panelRect.left;
+                             offsetY = e.clientY - panelRect.top;
+                             
+                             // 移除transform属性，改用直接定位
+                             presetPanel.style.transform = 'none';
+                             presetPanel.style.left = panelRect.left + 'px';
+                             presetPanel.style.top = panelRect.top + 'px';
+                             
+                             // 为拖拽时的面板添加样式
+                             panelHeader.style.cursor = 'grabbing';
+                             presetPanel.style.zIndex = '1001';
+                         };
+                         
+                         // 使用addEventListener避免覆盖其他事件监听器
+                         const handleDragMove = (e) => {
+                             if (!isDragging) return;
+                             
+                             // 计算新位置
+                             let newLeft = e.clientX - offsetX;
+                             let newTop = e.clientY - offsetY;
+                             
+                             // 限制面板在视口内
+                             const viewportWidth = window.innerWidth;
+                             const viewportHeight = window.innerHeight;
+                             const panelWidth = presetPanel.offsetWidth;
+                             const panelHeight = presetPanel.offsetHeight;
+                             
+                             newLeft = Math.max(0, Math.min(viewportWidth - panelWidth, newLeft));
+                             newTop = Math.max(0, Math.min(viewportHeight - panelHeight, newTop));
+                             
+                             // 更新面板位置
+                             presetPanel.style.left = newLeft + 'px';
+                             presetPanel.style.top = newTop + 'px';
+                         };
+                         
+                         const handleDragEnd = () => {
+                             if (isDragging) {
+                                 isDragging = false;
+                                 panelHeader.style.cursor = 'move';
+                                 presetPanel.style.zIndex = '1000';
+                                 // 保存面板状态
+                                 savePanelState();
+                             }
+                         };
+                         
+                         document.addEventListener('mousemove', handleDragMove);
+                         document.addEventListener('mouseup', handleDragEnd);
+                         
+                         // 防止拖拽时文本选中
+                         panelHeader.onselectstart = () => false;
+                         
+                         // 拖拽时防止右键菜单
+                         panelHeader.oncontextmenu = (e) => e.preventDefault();
+                         
+                         // 缩放功能实现
+                         let isResizing = false;
+                         let startX, startY, startWidth, startHeight;
+                         
+                         // 最小尺寸限制
+                         const minWidth = 300;
+                         const minHeight = 400;
+                         
+                         resizeHandle.onmousedown = (e) => {
+                             e.stopPropagation(); // 防止触发拖拽
+                             isResizing = true;
+                             
+                             // 获取初始尺寸和位置
+                             const panelRect = presetPanel.getBoundingClientRect();
+                             startX = e.clientX;
+                             startY = e.clientY;
+                             startWidth = panelRect.width;
+                             startHeight = panelRect.height;
+                             
+                             // 为调整大小时的光标添加样式
+                             document.body.style.cursor = 'se-resize';
+                             presetPanel.style.zIndex = '1001';
+                         };
+                         
+                         // 分离调整大小的鼠标移动事件，避免与拖拽冲突
+                         document.addEventListener('mousemove', (e) => {
+                             if (!isResizing) return;
+                             
+                             // 计算新尺寸
+                             const deltaX = e.clientX - startX;
+                             const deltaY = e.clientY - startY;
+                             
+                             let newWidth = startWidth + deltaX;
+                             let newHeight = startHeight + deltaY;
+                             
+                             // 限制最小尺寸
+                             newWidth = Math.max(minWidth, newWidth);
+                             newHeight = Math.max(minHeight, newHeight);
+                             
+                             // 限制最大尺寸（视口的90%）
+                             const maxWidth = window.innerWidth * 0.9;
+                             const maxHeight = window.innerHeight * 0.9;
+                             
+                             newWidth = Math.min(maxWidth, newWidth);
+                             newHeight = Math.min(maxHeight, newHeight);
+                             
+                             // 更新面板尺寸
+                             presetPanel.style.width = newWidth + 'px';
+                             presetPanel.style.height = newHeight + 'px';
+                             
+                             // 如果面板使用transform居中定位，需要调整以适应新尺寸
+                             if (presetPanel.style.transform === 'translate(-50%, -50%)') {
+                                 // 保持居中
+                                 presetPanel.style.left = '50%';
+                                 presetPanel.style.top = '50%';
+                             }
+                         });
+                         
+                         document.addEventListener('mouseup', () => {
+                             if (isResizing) {
+                                 isResizing = false;
+                                 document.body.style.cursor = '';
+                                 presetPanel.style.zIndex = '1000';
+                                 // 保存面板状态
+                                 savePanelState();
+                             }
+                         });
+                          
+                         const panelTitle = zmlCreateEl("span", { textContent: "LoRA预设", style: "font-weight: bold; color: #fff; font-size: 16px;" });
+                         const closeButton = zmlCreateEl("button", { 
+                             textContent: "×", 
+                             style: "background: #555; border: 1px solid #666; color: #fff; border-radius: 3px; padding: 5px 10px; cursor: pointer; font-size: 16px; transition: all 0.2s ease;" 
+                         });
+                         
+                         closeButton.onmouseenter = () => {
+                             closeButton.style.background = '#666';
+                             closeButton.style.borderColor = '#777';
+                             closeButton.style.transform = 'scale(1.05)';
+                         };
+                         
+                         closeButton.onmouseleave = () => {
+                             closeButton.style.background = '#555';
+                             closeButton.style.borderColor = '#666';
+                             closeButton.style.transform = 'scale(1)';
+                         };
+                         
+                         closeButton.onmousedown = () => {
+                             closeButton.style.background = '#444';
+                             closeButton.style.transform = 'scale(0.98)';
+                         };
+                         
+                         closeButton.onmouseup = () => {
+                             closeButton.style.background = '#555';
+                             closeButton.style.transform = 'scale(1)';
+                         };
+                          
+                         closeButton.onclick = () => {
+                             closePresetPanel();
+                         };
+                          
+                         // 点击遮罩关闭面板
+                         overlay.onclick = () => {
+                             closePresetPanel();
+                         };
+                         
+                         // 阻止面板内部点击事件关闭面板
+                         presetPanel.onclick = (e) => {
+                             e.stopPropagation();
+                         };
+                         
+                         // 添加刷新按钮
+                         const refreshButton = zmlCreateEl("button", { 
+                             textContent: "刷新", 
+                             style: "background: #555; border: 1px solid #666; color: #fff; border-radius: 3px; padding: 5px 10px; margin-right: 10px; cursor: pointer; font-size: 14px; transition: all 0.2s ease;",
+                             title: "刷新预设列表"
+                         });
+                         
+                         refreshButton.onmouseenter = () => {
+                             refreshButton.style.background = '#666';
+                             refreshButton.style.borderColor = '#777';
+                             refreshButton.style.transform = 'scale(1.05)';
+                         };
+                         
+                         refreshButton.onmouseleave = () => {
+                             refreshButton.style.background = '#555';
+                             refreshButton.style.borderColor = '#666';
+                             refreshButton.style.transform = 'scale(1)';
+                         };
+                         
+                         refreshButton.onmousedown = () => {
+                             refreshButton.style.background = '#444';
+                             refreshButton.style.transform = 'scale(0.98)';
+                         };
+                         
+                         refreshButton.onmouseup = () => {
+                             refreshButton.style.background = '#555';
+                             refreshButton.style.transform = 'scale(1)';
+                         };
+                         
+                         refreshButton.onclick = () => {
+                             loadPresets();
+                         };
+                         
+                         // 创建右侧按钮容器
+                         const rightSection = zmlCreateEl("div", {
+                             style: "display: flex; align-items: center;"
+                         });
+                         
+                         // 将刷新按钮放在关闭按钮左侧
+                         rightSection.appendChild(refreshButton);
+                         rightSection.appendChild(closeButton);
+                         
+                         // 组装头部
+                         panelHeader.appendChild(panelTitle);
+                         panelHeader.appendChild(rightSection);
+                          
+                         // 预设内容区域
+                         const contentArea = zmlCreateEl("div", {
+                             style: `height: calc(100% - 50px); overflow-y: auto; padding: 10px;`
+                         });
+                         
+                         // 确保内容区域高度随面板动态调整
+                         const updateContentAreaHeight = () => {
+                             contentArea.style.height = `calc(100% - 50px)`;
+                         };
+                         
+                         // 监听面板尺寸变化时更新内容区域高度
+                         const resizeObserver = new ResizeObserver(updateContentAreaHeight);
+                         resizeObserver.observe(presetPanel);
+                          
+                         // 加载预设函数
+                         const loadPresets = () => {
+                             // 清空内容区域
+                             contentArea.innerHTML = '';
+                             
+                             // 显示加载状态
+                             const loadingEl = zmlCreateEl("div", { textContent: "加载预设中...", style: "text-align: center; color: #aaa; padding: 20px;" });
+                             contentArea.appendChild(loadingEl);
+                             
+                             // 尝试从API获取预设
+                             api.fetchApi("/zml/lora/get_lora_presets", {
+                                 method: "GET"
+                             })
+                             .then(response => response.json())
+                             .then(data => {
+                                 // 移除加载状态
+                                 contentArea.innerHTML = '';
+                                 
+                                 if (data.status === "success" && data.presets && data.presets.length > 0) {
+                                     // 以文件夹形式展示预设
+                                     data.presets.forEach(preset => {
+                                         createPresetFolder(preset);
+                                     });
+                                 } else {
+                                     const noPresetsEl = zmlCreateEl("div", { 
+                                         textContent: "暂无保存的预设", 
+                                         style: "text-align: center; color: #aaa; padding: 20px; font-style: italic;"
+                                     });
+                                     contentArea.appendChild(noPresetsEl);
+                                 }
+                             })
+                             .catch(error => {
+                                 console.error("加载预设失败:", error);
+                                 contentArea.innerHTML = '';
+                                 
+                                 // 尝试从localStorage获取备选预设
+                                 const localStoragePresets = [];
+                                 for (let i = 0; i < localStorage.length; i++) {
+                                     const key = localStorage.key(i);
+                                     if (key.startsWith("zml_lora_preset_")) {
+                                         try {
+                                             const presetData = JSON.parse(localStorage.getItem(key));
+                                             if (presetData && presetData.loras) {
+                                                 localStoragePresets.push(presetData);
+                                             }
+                                         } catch (e) {
+                                             console.error("解析localStorage预设失败:", e);
+                                         }
+                                     }
+                                 }
+                                 
+                                 if (localStoragePresets.length > 0) {
+                                     localStoragePresets.forEach(preset => {
+                                         createPresetFolder(preset);
+                                     });
+                                 } else {
+                                     const errorEl = zmlCreateEl("div", { 
+                                         textContent: "加载预设失败，暂无可用预设", 
+                                         style: "text-align: center; color: #ff6666; padding: 20px;"
+                                     });
+                                     contentArea.appendChild(errorEl);
+                                 }
+                             });
+                         };
+                          
+                         // 创建预设文件夹
+                         const createPresetFolder = (preset) => {
+                             const folder = zmlCreateEl("div", { style: "margin-bottom: 15px; border: 1px solid #555; border-radius: 4px; overflow: hidden;" });
+                             
+                             // 文件夹标题栏
+                             const folderHeader = zmlCreateEl("div", {
+                                 style: "background: #444; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s ease;"
+                             });
+                              
+                             folderHeader.onmouseenter = () => {
+                                 folderHeader.style.background = '#4a4a4a';
+                                 folderHeader.style.transform = 'translateY(-1px)';
+                             };
+                              
+                             folderHeader.onmouseleave = () => {
+                                 folderHeader.style.background = '#444';
+                                 folderHeader.style.transform = 'translateY(0)';
+                             };
+                             
+                             folderHeader.onmousedown = () => {
+                                 folderHeader.style.background = '#3a3a3a';
+                                 folderHeader.style.transform = 'translateY(0)';
+                             };
+                             
+                             folderHeader.onmouseup = () => {
+                                 folderHeader.style.background = '#4a4a4a';
+                             };
+                             
+                             const folderTitle = zmlCreateEl("div", { 
+                                 style: "display: flex; align-items: center; gap: 10px; font-weight: bold; color: #ddd;"
+                             });
+                             
+                             const folderIcon = zmlCreateEl("span", { textContent: "📁", style: "font-size: 16px;" });
+                             const presetName = zmlCreateEl("span", { textContent: preset.name || "未命名预设" });
+                             const presetInfo = zmlCreateEl("span", {
+                                 textContent: `(${preset.loras ? preset.loras.length : 0}个LoRA)`,
+                                 style: "font-size: 13px; color: #aaa; margin-left: 5px;"
+                             });
+                             
+                             folderTitle.appendChild(folderIcon);
+                             folderTitle.appendChild(presetName);
+                             folderTitle.appendChild(presetInfo);
+                             
+                             // 文件夹操作按钮
+                             const folderActions = zmlCreateEl("div", { style: "display: flex; gap: 8px;" });
+                             
+                             const sendButton = zmlCreateEl("button", {
+                                 textContent: "发送到节点",
+                                 style: "background: #2a4a2a; border: 1px solid #446644; color: #ccc; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 13px; transition: all 0.2s ease;"
+                             });
+                              
+                             sendButton.onmouseenter = () => {
+                                 sendButton.style.background = '#355a35';
+                                 sendButton.style.borderColor = '#557755';
+                                 sendButton.style.transform = 'scale(1.05)';
+                             };
+                              
+                             sendButton.onmouseleave = () => {
+                                 sendButton.style.background = '#2a4a2a';
+                                 sendButton.style.borderColor = '#446644';
+                                 sendButton.style.transform = 'scale(1)';
+                             };
+                             
+                             sendButton.onmousedown = () => {
+                                 sendButton.style.background = '#254525';
+                                 sendButton.style.transform = 'scale(0.98)';
+                             };
+                             
+                             sendButton.onmouseup = () => {
+                                 sendButton.style.background = '#2a4a2a';
+                                 sendButton.style.transform = 'scale(1)';
+                             };
+                             
+                             sendButton.onclick = (e) => {
+                                 e.stopPropagation();
+                                 // 添加确认对话框
+                                 if (confirm(`确定要添加预设 '${preset.name || "未命名预设"}' 吗？\n此操作将添加 ${preset.loras ? preset.loras.length : 0} 个LoRA到您的节点中。`)) {
+                                     applyPreset(preset);
+                                 }
+                             };
+                             
+                             folderActions.appendChild(sendButton);
+                             
+                             // 删除按钮
+                             const deleteButton = zmlCreateEl("button", {
+                                 textContent: "删除",
+                                 style: "background: #5a2a2a; border: 1px solid #664444; color: #ccc; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 13px; transition: all 0.2s ease;"
+                             });
+                              
+                             deleteButton.onmouseenter = () => {
+                                 deleteButton.style.background = '#6a3a3a';
+                                 deleteButton.style.borderColor = '#775555';
+                                 deleteButton.style.transform = 'scale(1.05)';
+                             };
+                              
+                             deleteButton.onmouseleave = () => {
+                                 deleteButton.style.background = '#5a2a2a';
+                                 deleteButton.style.borderColor = '#664444';
+                                 deleteButton.style.transform = 'scale(1)';
+                             };
+                             
+                             deleteButton.onmousedown = () => {
+                                 deleteButton.style.background = '#502525';
+                                 deleteButton.style.transform = 'scale(0.98)';
+                             };
+                             
+                             deleteButton.onmouseup = () => {
+                                 deleteButton.style.background = '#5a2a2a';
+                                 deleteButton.style.transform = 'scale(1)';
+                             };
+                             
+                             deleteButton.onclick = (e) => {
+                                 e.stopPropagation();
+                                 if (confirm(`确定要删除预设 '${preset.name || "未命名预设"}' 吗？此操作不可恢复。`)) {
+                                     deletePreset(preset.name);
+                                 }
+                             };
+                             
+                             folderActions.appendChild(deleteButton);
+                             folderHeader.appendChild(folderTitle);
+                             folderHeader.appendChild(folderActions);
+                             
+                             // 文件夹内容
+                             const folderContent = zmlCreateEl("div", {
+                                 style: "background: #3a3a3a; padding: 10px; display: none; max-height: 200px; overflow-y: auto;"
+                             });
+                             
+                             // 切换文件夹展开/折叠
+                             let isExpanded = false;
+                             folderHeader.onclick = () => {
+                                 isExpanded = !isExpanded;
+                                 folderContent.style.display = isExpanded ? 'block' : 'none';
+                                 
+                                 // 如果展开且内容为空，加载内容
+                                 if (isExpanded && folderContent.children.length === 0 && preset.loras) {
+                                     preset.loras.forEach((lora, index) => {
+                                         const loraItem = zmlCreateEl("div", { style: `padding: 8px; border-bottom: 1px solid #444; ${index === preset.loras.length - 1 ? 'border-bottom: none;' : ''}` });
+                                         
+                                         const loraName = zmlCreateEl("div", { 
+                                             textContent: lora.name || "未命名LoRA", 
+                                             style: "font-weight: bold; color: #ddd;"
+                                         });
+                                          
+                                         const loraInfo = zmlCreateEl("div", { 
+                                             textContent: `${lora.display_name ? '名称：' + lora.display_name + ' | ' : ''}权重: ${lora.weight || 1.0} | 启用: ${lora.enabled ? '是' : '否'}`, 
+                                             style: "font-size: 13px; color: #aaa; margin-top: 4px;"
+                                         });
+                                          
+                                         loraItem.appendChild(loraName);
+                                         loraItem.appendChild(loraInfo);
+                                          
+                                         if (lora.custom_text) {
+                                             const loraText = zmlCreateEl("div", { 
+                                                 textContent: `自定义文本: ${lora.custom_text}`, 
+                                                 style: "font-size: 13px; color: #aaa; margin-top: 4px;"
+                                             });
+                                             loraItem.appendChild(loraText);
+                                         }
+                                         folderContent.appendChild(loraItem);
+                                     });
+                                 }
+                             };
+                             
+                             folder.appendChild(folderHeader);
+                             folder.appendChild(folderContent);
+                             contentArea.appendChild(folder);
+                         };
+                          
+                         // 应用预设函数
+                         const applyPreset = (preset) => {
+                             if (!preset.loras || preset.loras.length === 0) {
+                                 alert("预设中没有LoRA配置！");
+                                 return;
+                             }
+                             
+                             // 简单的UUID生成函数
+                             const generateUUID = () => {
+                                 return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                                     const r = Math.random() * 16 | 0;
+                                     const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                                     return v.toString(16);
+                                 });
+                             };
+                              
+                             // 创建文件夹映射，用于快速查找文件夹ID
+                             const folderMap = new Map();
+                               
+                             // 获取当前已有文件夹并添加到映射中
+                             this.powerLoraLoader_data.entries.forEach(entry => {
+                                 if (entry.item_type === 'folder') {
+                                     folderMap.set(entry.name, entry.id);
+                                 }
+                             });
+                              
+                             // 处理预设中的文件夹（如果有）
+                             if (preset.folders && Array.isArray(preset.folders)) {
+                                 preset.folders.forEach(folderData => {
+                                     const folderId = folderData.id || generateUUID();
+                                     const newFolder = {
+                                    id: folderId,
+                                    item_type: 'folder',
+                                    parent_id: folderData.parent_id || null,
+                                    name: folderData.name || "未命名文件夹",
+                                    order: this.powerLoraLoader_data.entries.length
+                                };
+                                     
+                                    this.powerLoraLoader_data.entries.push(newFolder);
+                                     folderMap.set(folderData.name, folderId);
+                                 });
+                             }
+                              
+                             // 如果预设中没有文件夹信息，创建一个与预设同名的文件夹
+                             if (!preset.folders || preset.folders.length === 0) {
+                                 const presetFolderName = preset.name || "未命名预设";
+                                 const presetFolderId = generateUUID();
+                                  
+                                 const presetFolder = {
+                                     id: presetFolderId,
+                                     item_type: 'folder',
+                                     parent_id: null,
+                                     name: presetFolderName,
+                                     order: this.powerLoraLoader_data.entries.length
+                                 };
+                                      
+                                 this.powerLoraLoader_data.entries.push(presetFolder);
+                                 folderMap.set(presetFolderName, presetFolderId);
+                             }
+                              
+                             // 添加预设中的LoRA条目，并将其关联到对应的文件夹
+                             preset.loras.forEach((loraData, index) => {
+                                 // 确定LoRA应该放入哪个文件夹
+                                 let parentFolderId = null;
+                                  
+                                 if (loraData.folder_id) {
+                                     // 如果LoRA指定了文件夹ID，直接使用
+                                     parentFolderId = loraData.folder_id;
+                                 } else if (loraData.folder_name && folderMap.has(loraData.folder_name)) {
+                                     // 如果LoRA指定了文件夹名称且该文件夹存在
+                                     parentFolderId = folderMap.get(loraData.folder_name);
+                                 } else if (folderMap.size === 1) {
+                                     // 如果只有一个文件夹，默认使用它
+                                     parentFolderId = folderMap.values().next().value;
+                                 }
+                                  
+                                 const newLoraEntry = {
+                                     id: generateUUID(), // 使用本地函数而不是this.generateUUID
+                                     item_type: 'lora',
+                                     parent_id: parentFolderId,
+                                     lora_name: loraData.name || "",
+                                     display_name: loraData.display_name || "",
+                                     weight: loraData.weight || 1.0,
+                                     custom_text: loraData.custom_text || "",
+                                     enabled: loraData.enabled !== undefined ? loraData.enabled : true,
+                                     order: this.powerLoraLoader_data.entries.length
+                                 };
+                                  
+                                 this.powerLoraLoader_data.entries.push(newLoraEntry);
+                             });
+                             
+                             // 重新渲染
+                             this.renderLoraEntries();
+                             this.triggerSlotChanged();
+                             
+                             alert(`成功添加预设: ${preset.name || "未命名预设"}，包含${folderMap.size}个文件夹和${preset.loras.length}个LoRA`);
+                             closePresetPanel();
+                         };
+                          
+                         // 关闭面板函数
+                         const closePresetPanel = () => {
+                             if (overlay) {
+                                 overlay.style.display = 'none';
+                             }
+                             if (presetPanel) {
+                                 presetPanel.style.display = 'none';
+                             }
+                         };
+                          
+                         // 删除预设函数
+                         const deletePreset = (presetName) => {
+                             if (!presetName) {
+                                 alert("预设名称无效，无法删除！");
+                                 return;
+                             }
+                              
+                             // 显示加载状态
+                             const loadingIndicator = document.createElement('div');
+                             loadingIndicator.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 4px; z-index: 2000;';
+                             loadingIndicator.textContent = '删除预设中...';
+                             document.body.appendChild(loadingIndicator);
+                              
+                             // 调用删除API
+                             api.fetchApi("/zml/lora/delete_lora_preset", {
+                                 method: "POST",
+                                 headers: {
+                                     "Content-Type": "application/json"
+                                 },
+                                 body: JSON.stringify({ name: presetName })
+                             })
+                             .then(response => response.json())
+                             .then(data => {
+                                 document.body.removeChild(loadingIndicator);
+                                  
+                                 if (data.status === "success") {
+                                     alert(data.message);
+                                     // 重新加载预设列表
+                                     loadPresets();
+                                 } else {
+                                     alert(`删除失败: ${data.message || "未知错误"}`);
+                                 }
+                             })
+                             .catch(error => {
+                                 document.body.removeChild(loadingIndicator);
+                                 console.error("删除预设失败:", error);
+                                 alert(`删除预设时出错: ${error.message}`);
+                             });
+                         };
+                          
+                         // 添加面板头部和内容区域
+                         presetPanel.appendChild(panelHeader);
+                         presetPanel.appendChild(contentArea);
+                         
+                         // 添加到document body
+                         document.body.appendChild(overlay);
+                         document.body.appendChild(presetPanel);
+                         
+                         // 初始加载预设
+                         loadPresets();
+                         
+                         // 添加ESC键关闭面板
+                         const handleEscKey = (e) => {
+                             if (e.key === 'Escape' && presetPanel && presetPanel.style.display === 'block') {
+                                 closePresetPanel();
+                             }
+                         };
+                         
+                         document.addEventListener('keydown', handleEscKey);
+                         
+                         // 保存对handleEscKey的引用，以便后续移除监听器
+                         presetPanel._escKeyHandler = handleEscKey;
+                     };
+                     
+                     // 点击按钮打开预设面板
+                     presetButton.onclick = (e) => {
+                         e.stopPropagation();
+                         loadPresetPanel();
+                     };
+                     
+                     topControls.appendChild(presetButton);
 
                      const entriesList = zmlCreateEl("div", { className: "zml-pll-entries-list" });// <-- 这里会调用到局部定义的 zmlCreateEl
 
@@ -4148,30 +4949,103 @@ app.registerExtension({
                          const s = this.stylesPLL[this.viewMode] || this.stylesPLL.normal;
                          const entryCard = zmlCreateEl("div", { // <-- 这里会调用到局部定义的 zmlCreateEl
                              className: "zml-pll-entry-card",
-                             style: `display: flex; align-items: center; gap: 4px; padding: ${s.cardPadding}; background: ${entry.enabled ? this.loraEntryColor : adjustBrightness(this.loraEntryColor, -10, -15)}; border-radius: 2px;` // Adjust disabled color
+                             style: `display: flex; align-items: center; gap: 4px; padding: ${s.cardPadding}; background: ${this.loraEntryColor}; border-radius: 2px; ${entry.enabled && this.isLocked ? `border: 3px solid ${this.enabledStateColor};` : 'border: 1px solid transparent;'} cursor: pointer;` // 只在锁定模式且启用时显示边框
                          });
                          entryCard.dataset.id = entry.id;
                          entryCard.dataset.type = "lora";
+                          
+                         // 添加点击事件来切换启用/禁用状态
+                         entryCard.onclick = (e) => {
+                             // 如果点击的是输入框或按钮等交互元素，不触发切换
+                             if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.classList.contains('zml-pll-drag-handle') || e.target.parentElement?.classList.contains('zml-lora-entry-delete')) {
+                                 return;
+                             }
+                             entry.enabled = !entry.enabled;
+                             this.renderLoraEntries();
+                             this.triggerSlotChanged();
+                         };
 
                          const checkbox = zmlCreateEl("input", { type: "checkbox", checked: entry.enabled });// <-- 这里会调用到局部定义的 zmlCreateEl
-                        checkbox.onchange = (e) => { entry.enabled = e.target.checked; this.renderLoraEntries(); this.triggerSlotChanged(); };
+                        // 移除默认样式，使用自定义样式
+                        checkbox.style.appearance = 'none';
+                        checkbox.style.webkitAppearance = 'none';
+                        checkbox.style.mozAppearance = 'none';
+                        checkbox.style.width = '18px';
+                        checkbox.style.height = '18px';
+                        checkbox.style.cursor = 'pointer';
+                        checkbox.style.borderRadius = '3px';
+                        checkbox.style.display = 'flex';
+                        checkbox.style.alignItems = 'center';
+                        checkbox.style.justifyContent = 'center';
+                        checkbox.style.fontSize = '14px';
+                        checkbox.style.fontWeight = 'bold';
+                        
+                        // 更新复选框样式函数
+                        const updateCheckboxStyle = () => {
+                            checkbox.checked = entry.enabled;
+                            checkbox.style.backgroundColor = entry.enabled ? this.enabledStateColor : 'transparent';
+                            checkbox.style.border = `2px solid ${entry.enabled ? this.enabledStateColor : '#555'}`;
+                            checkbox.style.color = entry.enabled ? '#fff' : 'transparent';
+                            checkbox.textContent = entry.enabled ? '✓' : '';
+                        };
+                        
+                        // 初始设置样式
+                        updateCheckboxStyle();
+                        
+                        // 监听状态变化并更新样式
+                        checkbox.onchange = (e) => { 
+                            e.stopPropagation(); // 阻止事件冒泡
+                            entry.enabled = e.target.checked; 
+                            updateCheckboxStyle(); // 更新复选框样式
+                            this.renderLoraEntries(); 
+                            this.triggerSlotChanged(); 
+                        };
 
                          const dragHandle = zmlCreateEl("div", { className: "zml-pll-drag-handle", textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; display: flex; align-items: center; justify-content: center; width: 20px; color: ${this.isLocked ? '#666' : '#888'}; flex-shrink: 0; user-select: none; font-size: 14px;` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          dragHandle.draggable = !this.isLocked;
+                         dragHandle.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
 
-                         const displayNameInput = zmlCreateEl("input", { className: "zml-lora-display-name-input", type: "text", value: entry.display_name, placeholder: "输入名称...", title: "自定义此LoRA条目的显示名称", style: `width: ${this.loraNameWidth}px;` });// <-- 这里会调用到局部定义的 zmlCreateEl
-                         // --- 修改开始：oninput 不再触发 triggerSlotChanged，改为 onblur 触发 ---
-                         displayNameInput.oninput = (e) => {
-                             entry.display_name = e.target.value;
-                             // 不再在此处调用 this.triggerSlotChanged()
-                         };
-                         displayNameInput.onblur = () => {
-                             this.triggerSlotChanged(); // 在输入框失去焦点时触发更新
-                         };
-                         // --- 修改结束 ---
+                         const displayNameInput = zmlCreateEl("input", { 
+                             className: "zml-lora-display-name-input", 
+                             type: "text", 
+                             value: entry.display_name, 
+                             placeholder: "输入名称...", 
+                             title: "自定义此LoRA条目的显示名称", 
+                             style: `width: ${this.loraNameWidth}px; ${this.isLocked ? 'pointer-events: none; background: #333;' : ''}` // 锁定状态下禁用交互但保持正常亮度
+                         });// <-- 这里会调用到局部定义的 zmlCreateEl
+                         
+                         // 只在非锁定状态下添加事件处理
+                         if (!this.isLocked) {
+                             // --- 修改开始：oninput 不再触发 triggerSlotChanged，改为 onblur 触发 ---
+                             displayNameInput.oninput = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 entry.display_name = e.target.value;
+                                 // 不再在此处调用 this.triggerSlotChanged()
+                             };
+                             displayNameInput.onblur = () => {
+                                 this.triggerSlotChanged(); // 在输入框失去焦点时触发更新
+                             };
+                             // --- 修改结束 ---
+                         }
+                         displayNameInput.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
 
-                         const loraSelectorBtn = zmlCreateEl("button", { style: `flex-grow: 1; min-width: 100px; padding: ${s.inputPadding}; background: #222; border: 1px solid #555; border-radius: 2px; color: #ccc; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: ${s.inputHeight};`, textContent: entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop() });// <-- 这里会调用到局部定义的 zmlCreateEl
-                         loraSelectorBtn.onclick = () => { if (activeLoraMenu) activeLoraMenu.close(); activeLoraMenu = this.createLoraTreeMenu(loraSelectorBtn, entry, () => { loraSelectorBtn.textContent = entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop(); this.triggerSlotChanged(); }); };
+                         const loraSelectorBtn = zmlCreateEl("button", { 
+                             style: `flex-grow: 1; min-width: 100px; padding: ${s.inputPadding}; background: #222; border: 1px solid #555; border-radius: 2px; color: #ccc; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: ${s.inputHeight}; ${this.isLocked ? 'pointer-events: none;' : ''}` // 锁定状态下禁用交互但保持正常亮度
+                         }, entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop());// <-- 这里会调用到局部定义的 zmlCreateEl
+                         
+                         // 只在非锁定状态下添加点击事件
+                         if (!this.isLocked) {
+                             loraSelectorBtn.onclick = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 if (activeLoraMenu) activeLoraMenu.close(); 
+                                 activeLoraMenu = this.createLoraTreeMenu(loraSelectorBtn, entry, () => { 
+                                     loraSelectorBtn.textContent = entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop(); 
+                                     this.triggerSlotChanged(); 
+                                 }); 
+                             };
+                         } else {
+                             loraSelectorBtn.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
+                         }
 
                          const weightWidget = zmlCreateEl("div", { style: `display: flex; align-items: center; background: #222; border: 1px solid #555; border-radius: 2px; height: ${s.inputHeight};` });// <-- 这里会调用到局部定义的 zmlCreateEl
                          
@@ -4194,8 +5068,12 @@ app.registerExtension({
                             style: `width: 25px;` // 恢复默认宽度
                          });
                          
-                         weightInput.onfocus = (e) => e.target.select(); // 选中全部内容方便修改
+                         weightInput.onfocus = (e) => {
+                             e.stopPropagation(); // 阻止事件冒泡
+                             e.target.select(); // 选中全部内容方便修改
+                         };
                          weightInput.onblur = (e) => {
+                             e.stopPropagation(); // 阻止事件冒泡
                              let val = parseFloat(e.target.value);
                              if (isNaN(val)) {
                                  val = 1.0; // 非法输入恢复默认值1
@@ -4208,18 +5086,21 @@ app.registerExtension({
                              this.triggerSlotChanged();
                          };
                          weightInput.onkeydown = (e) => {
+                             e.stopPropagation(); // 阻止事件冒泡
                              if (e.key === "Enter") {
                                  e.target.blur(); // 按下回车键时失去焦点，触发校验
                              }
-                         }
+                         };
 
-                         decBtn.onclick = () => { 
+                         decBtn.onclick = (e) => { 
+                             e.stopPropagation(); // 阻止事件冒泡
                              entry.weight = parseFloat((entry.weight - 0.05).toFixed(2)); 
                              entry.weight = Math.max(-10, entry.weight);
                              weightInput.value = entry.weight.toFixed(2); 
                              this.triggerSlotChanged(); 
                          };
-                         incBtn.onclick = () => { 
+                         incBtn.onclick = (e) => { 
+                             e.stopPropagation(); // 阻止事件冒泡
                              entry.weight = parseFloat((entry.weight + 0.05).toFixed(2)); 
                              entry.weight = Math.min(10, entry.weight);
                              weightInput.value = entry.weight.toFixed(2); 
@@ -4232,15 +5113,22 @@ app.registerExtension({
                             className: "zml-lora-custom-text-input",
                             value: entry.custom_text || "",
                             placeholder: "输入文本",
-                            title: "点击编辑 LoRA 的自定义文本内容", // 更新提示文字
-                            readOnly: true, // 设置为只读
-                            style: `width: ${this.customTextWidth}px;`
+                            title: "点击编辑 LoRA 的自定义文本内容",
+                            readOnly: this.isLocked, // 在锁定状态下设置为只读
+                            style: `width: ${this.customTextWidth}px; ${this.isLocked ? 'pointer-events: none; background: #333;' : ''}` // 锁定状态下禁用交互但保持正常亮度
                          });
-                         // 监听点击事件，弹出编辑弹窗，传递当前节点实例
-                         const currentNodeInstance = this;
-                         customTextInput.onclick = () => {
-                            showPllEditContentModal(entry, currentNodeInstance);
-                         };
+                         
+                         // 只在非锁定状态下添加点击事件
+                         if (!this.isLocked) {
+                             // 监听点击事件，弹出编辑弹窗，传递当前节点实例
+                             const currentNodeInstance = this;
+                             customTextInput.onclick = (e) => {
+                                e.stopPropagation(); // 阻止事件冒泡
+                                showPllEditContentModal(entry, currentNodeInstance);
+                             };
+                         } else {
+                             customTextInput.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
+                         }
 
 
                          // === 移出文件夹按钮 (新增) ===
@@ -4281,16 +5169,23 @@ app.registerExtension({
 
                          const deleteBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
                             className: "zml-lora-entry-delete", // 添加新 class
-                            style: `width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;` // 简化的行内样式
+                            style: `width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0; ${this.isLocked ? 'pointer-events: none; color: #666;' : ''}` // 在锁定状态下禁用删除按钮但保持正常亮度
                          }, "X");
-                         deleteBtn.onclick = () => {
-                             const itemIndex = this.powerLoraLoader_data.entries.findIndex(it => it.id === entry.id);
-                             if (itemIndex > -1) {
-                                 this.powerLoraLoader_data.entries.splice(itemIndex, 1);
-                                 this.renderLoraEntries();
-                                 this.triggerSlotChanged();
-                             }
-                         };
+                         
+                         // 只在非锁定状态下添加点击事件
+                         if (!this.isLocked) {
+                             deleteBtn.onclick = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 const itemIndex = this.powerLoraLoader_data.entries.findIndex(it => it.id === entry.id);
+                                 if (itemIndex > -1) {
+                                     this.powerLoraLoader_data.entries.splice(itemIndex, 1);
+                                     this.renderLoraEntries();
+                                     this.triggerSlotChanged();
+                                 }
+                             };
+                         } else {
+                             deleteBtn.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
+                         }
                          entryCard.appendChild(deleteBtn);
                          
                          this.addDragDropHandlers(entryCard, entry);
@@ -4300,7 +5195,7 @@ app.registerExtension({
                      this.createFolderDOM = (entry) => { // Removed index parameter
                          const folderCard = zmlCreateEl("div", {  // <-- 这里会调用到局部定义的 zmlCreateEl
                             className: "zml-pll-folder-card",
-                            style: `background: ${this.folderColor}; border: 1px solid ${adjustBrightness(this.folderColor, -15)};` // Apply custom color
+                            style: `background: ${this.folderColor}; border: 1px solid ${this.folderColor};` // 保持边框与背景相同颜色
                          });
                          folderCard.dataset.id = entry.id;
                          folderCard.dataset.type = "folder";
@@ -4312,7 +5207,7 @@ app.registerExtension({
                          // 添加一键启用/禁用所有LoRA的左右滑动开关
                          const allLoraToggle = zmlCreateEl("label", { 
                              className: "zml-pll-folder-toggle-switch",
-                             style: `position: relative; display: inline-block; width: 40px; height: 20px; margin: 0 5px; cursor: ${this.isLocked ? 'not-allowed' : 'pointer'}; opacity: ${this.isLocked ? '0.6' : '1'};`
+                             style: `position: relative; display: inline-block; width: 40px; height: 20px; margin: 0 5px; cursor: ${this.isLocked ? 'not-allowed' : 'pointer'}; opacity: 1;` // 移除锁定状态下的透明度调整
                          });
                          
                          const toggleInput = zmlCreateEl("input", { 
@@ -4339,35 +5234,29 @@ app.registerExtension({
                          const allEnabled = folderLoras.length > 0 && folderLoras.every(lora => lora.enabled);
                          toggleInput.checked = allEnabled;
                          
-                         // 更新滑块样式
-                         function updateSliderStyle() {
+                         // 更新滑块样式 - 使用箭头函数以保持this上下文
+                         const updateSliderStyle = () => {
                              if (toggleInput.checked) {
-                                 toggleSlider.style.backgroundColor = "#4CAF50";
+                                 toggleSlider.style.backgroundColor = this.enabledStateColor; // 使用自定义的开启状态颜色
                                  toggleDot.style.transform = "translateX(20px)";
                              } else {
                                  toggleSlider.style.backgroundColor = "#333";
                                  toggleDot.style.transform = "translateX(0)";
                              }
-                         }
+                         };
                          
                          // 初始化滑块样式
                          updateSliderStyle();
                          
-                         // 绑定开关事件
+                         // 绑定开关事件 - 移除锁定检查，允许在锁定模式下操作文件夹开关
                          toggleInput.onchange = (e) => {
-                             if (this.isLocked) {
-                                 e.target.checked = !e.target.checked; // 锁定状态下不允许改变
-                                 updateSliderStyle();
-                                 return;
-                             }
-                             
                              const isEnabled = e.target.checked;
                              // 遍历文件夹内所有LoRA并设置启用/禁用状态
                              const folderLoras = this.powerLoraLoader_data.entries.filter(it => it.parent_id === entry.id && it.type !== 'folder');
                              folderLoras.forEach(lora => {
                                  lora.enabled = isEnabled;
                              });
-                             
+                              
                              updateSliderStyle();
                              this.renderLoraEntries();
                              this.triggerSlotChanged();
@@ -4379,6 +5268,74 @@ app.registerExtension({
                          });
                          
                          const nameInput = zmlCreateEl("input", { className: "zml-pll-folder-name-input", type: "text", value: entry.name });// <-- 这里会调用到局部定义的 zmlCreateEl
+                         
+                         // 添加保存预设按钮
+                         const savePresetBtn = zmlCreateEl("button", { 
+                             className: "zml-pll-folder-save-preset", 
+                             textContent: "💾",
+                             title: "保存文件夹内的LoRA预设",
+                             style: `margin: 0 5px; padding: 5px 8px; border: 1px solid #555; border-radius: 3px; background: #2a4a2a; color: #ccc; cursor: pointer; ${this.isLocked ? 'pointer-events: none; opacity: 0.5;' : ''}`
+                         });
+                         
+                         savePresetBtn.onclick = (e) => {
+                             e.stopPropagation(); // 阻止事件冒泡，防止触发文件夹折叠
+                             
+                             // 弹出确认对话框
+                             if (!confirm(`确定要保存"${entry.name}"文件夹中的所有LoRA到预设吗？`)) {
+                                 return;
+                             }
+                             
+                             // 获取文件夹内所有LoRA条目
+                             const folderLoras = this.powerLoraLoader_data.entries.filter(
+                                 it => it.parent_id === entry.id && it.item_type === 'lora'
+                             );
+                             
+                             if (folderLoras.length === 0) {
+                                 alert("文件夹内没有LoRA，无法保存预设！");
+                                 return;
+                             }
+                             
+                             // 准备保存的数据格式
+                             const presetData = {
+                                 name: entry.name,
+                                 timestamp: new Date().toISOString(),
+                                 loras: folderLoras.map(lora => ({
+                                     name: lora.lora_name,
+                                     display_name: lora.display_name,
+                                     weight: lora.weight,
+                                     custom_text: lora.custom_text || "",
+                                     enabled: lora.enabled
+                                 }))
+                             };
+                             
+                             try {
+                                 // 调用我们新创建的专用API端点
+                                 api.fetchApi("/zml/lora/save_lora_preset", {
+                                     method: "POST",
+                                     headers: { "Content-Type": "application/json" },
+                                     body: JSON.stringify(presetData)
+                                 })
+                                 .then(response => response.json())
+                                 .then(data => {
+                                     if (data.status === "success") {
+                                         alert(`成功保存预设到: ComfyUI-ZML-Image/zml_w/txt/Preset LoRA/Preset LoRA.json\n预设名称: ${entry.name}`);
+                                     } else {
+                                         console.error("API返回错误:", data.message);
+                                         alert(`保存预设失败: ${data.message || "未知错误"}`);
+                                     }
+                                 })
+                                 .catch(error => {
+                                     console.error("保存预设时出错:", error);
+                                     // 如果API调用失败，尝试保存到localStorage作为备选方案
+                                     localStorage.setItem(`zml_lora_preset_${entry.id}`, JSON.stringify(presetData));
+                                     alert(`API调用失败，已将预设保存到浏览器本地存储。预设名称: ${entry.name}`);
+                                 });
+                             } catch (e) {
+                                 console.error("保存预设时发生异常:", e);
+                                 alert(`保存预设失败: ${e.message || "未知错误"}`);
+                             }
+                         };
+                          
                          const deleteBtn = zmlCreateEl("button", { className: "zml-pll-folder-delete", textContent: "🗑️" });// <-- 这里会调用到局部定义的 zmlCreateEl
                          dragHandle.draggable = !this.isLocked;
 
@@ -4389,8 +5346,8 @@ app.registerExtension({
 
                          header.addEventListener("mousedown", (e) => {
                              e.stopImmediatePropagation(); // 阻止所有其他事件监听器
-                             // 先检查目标元素是否是输入框、删除按钮或拖动句柄
-                             if (e.target === nameInput || e.target === deleteBtn || e.target === dragHandle) {
+                             // 先检查目标元素是否是输入框、删除按钮、拖动句柄或保存预设按钮
+                             if (e.target === nameInput || e.target === deleteBtn || e.target === dragHandle || e.target === savePresetBtn) {
                                  return; // 不阻止这些元素的默认行为
                              }
                              e.preventDefault(); // 阻止默认的 mousedown 行为
@@ -4409,8 +5366,16 @@ app.registerExtension({
                              e.stopPropagation();
                              const children = this.powerLoraLoader_data.entries.filter(it => it.parent_id === entry.id);
                              if (children.length > 0) {
-                                 alert("文件夹内含有LoRA，无法删除！\n请先将LoRA移出文件夹或删除。");
-                                 return;
+                                 if (!confirm("文件夹内含有LoRA！\n确定要强制删除此文件夹及其所有内容吗？")) {
+                                     return;
+                                 }
+                                 // 强制删除时，同时删除所有子项
+                                 for (const child of children) {
+                                     const childIndex = this.powerLoraLoader_data.entries.findIndex(it => it.id === child.id);
+                                     if (childIndex > -1) {
+                                         this.powerLoraLoader_data.entries.splice(childIndex, 1);
+                                     }
+                                 }
                              }
                              const itemIndex = this.powerLoraLoader_data.entries.findIndex(it => it.id === entry.id);
                              if (itemIndex > -1) {
@@ -4420,7 +5385,7 @@ app.registerExtension({
                              }
                          };
 
-                         header.append(toggle, dragHandle, allLoraToggle, nameInput, deleteBtn);
+                         header.append(toggle, dragHandle, allLoraToggle, nameInput, savePresetBtn, deleteBtn);
                          folderCard.append(header, content);
                          this.addDragDropHandlers(folderCard, entry);
                          return folderCard;
@@ -5255,6 +6220,7 @@ app.registerExtension({
                 obj.customTextWidth = this.customTextWidth;
                 obj.folderColor = this.folderColor; // Save folder color
                 obj.loraEntryColor = this.loraEntryColor; // Save LoRA entry color
+                obj.enabledStateColor = this.enabledStateColor; // Save enabled state color
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
@@ -5288,6 +6254,7 @@ app.registerExtension({
                 this.customTextWidth = Math.max(10, Math.min(300, obj.customTextWidth ?? 80));
                 this.folderColor = obj.folderColor ?? "#30353c"; // Load folder color, or use default
                 this.loraEntryColor = obj.loraEntryColor ?? "#3a3a3a"; // Load LoRA entry color, or use default
+                this.enabledStateColor = obj.enabledStateColor ?? "#4CAF50"; // Load enabled state color, or use default
 
             };
         }
