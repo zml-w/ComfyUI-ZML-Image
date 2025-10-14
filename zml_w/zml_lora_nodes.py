@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import server
 import folder_paths
@@ -1107,8 +1108,9 @@ class ZmlPowerLoraLoader:
                 lora_path = folder_paths.get_full_path("loras", lora_name)
                 
                 if not lora_path or not os.path.exists(lora_path): # 确保文件存在
-                    # print(f"ZML_PowerLoraLoader: 警告: LoRA文件 '{lora_name}' 未找到或不存在，跳过处理。", file=sys.stderr) # 打印到stderr
-                    continue
+                    error_msg = f"ZML_PowerLoraLoader: 错误: LoRA文件 '{lora_name}' 未找到或不存在，请检查文件路径是否正确，或重新选择一次LoRA来刷新索引路径。"
+                    print(error_msg, file=sys.stderr) 
+                    raise ValueError(error_msg)
                 
                 try:
                     lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
@@ -1233,8 +1235,9 @@ class ZmlNameLoraLoader:
 
             lora_path = folder_paths.get_full_path("loras", lora_name)
             if not lora_path or not os.path.exists(lora_path): # 确保文件存在
-                print(f"ZML_名称加载lora: LoRA文件 '{lora_name}' 未找到或不存在，跳过。")
-                continue
+                error_msg = f"ZML_名称加载lora: 错误: LoRA文件 '{lora_name}' 未找到或不存在，请检查文件路径是否正确，或重新选择一次LoRA来刷新索引路径。"
+                print(error_msg, file=sys.stderr) # 打印到stderr
+                raise ValueError(error_msg) # 抛出异常以终止工作流
 
             try:
                 lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
