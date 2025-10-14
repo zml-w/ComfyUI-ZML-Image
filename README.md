@@ -54,7 +54,7 @@
 > - 爬取文件和保存文件时提供弹窗，让用户选择保存方式（同级目录或zml子目录）
 > - 文件读取优先级：zml子目录文件夹 > 同层级文件夹
 
-<img width="1451" height="1125" alt="Image" src="https://github.com/user-attachments/assets/42ab38e3-aa28-43ef-94c6-577f5e3570d3" />
+<img width="1443" height="724" alt="Image" src="https://github.com/user-attachments/assets/2d3428fb-8eef-44b5-81e7-60c5fd973d50" />
 
 ### 💾 **三. 编辑界面的保存逻辑优化**
 
