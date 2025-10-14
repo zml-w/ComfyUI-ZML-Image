@@ -1,4 +1,3 @@
-<img width="1451" height="1125" alt="屏幕截图 2025-10-14 141112" src="https://github.com/user-attachments/assets/152919e2-0340-4847-84a3-7a6aa1e4acda" /><div align="center">
 
 # 🎨 ComfyUI-ZML-Image 修改版 ✨
 
