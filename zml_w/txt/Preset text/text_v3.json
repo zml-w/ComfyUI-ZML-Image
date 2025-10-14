@@ -1,0 +1,39 @@
+{
+    "presets": [
+        {
+            "id": "folder_1759871930_6196",
+            "type": "folder",
+            "name": "新建文件夹",
+            "parent_id": null,
+            "is_collapsed": false
+        },
+        {
+            "id": "text_1759872517_513",
+            "type": "text",
+            "name": "1",
+            "parent_id": "folder_1759871930_6196",
+            "content": ""
+        },
+        {
+            "id": "text_1759872518_9565",
+            "type": "text",
+            "name": "2",
+            "parent_id": "folder_1759871930_6196",
+            "content": ""
+        },
+        {
+            "id": "text_1759873061_9261",
+            "type": "text",
+            "name": "4",
+            "parent_id": null,
+            "content": ""
+        },
+        {
+            "id": "text_1759873063_3634",
+            "type": "text",
+            "name": "5",
+            "parent_id": null,
+            "content": ""
+        }
+    ]
+}

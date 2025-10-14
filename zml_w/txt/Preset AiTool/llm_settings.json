@@ -1,0 +1,67 @@
+{
+  "api_channel": "openrouter",
+  "channel_models": {},
+  "channels_config": {
+    "openrouter": {
+      "api_url": "https://openrouter.ai/api/v1",
+      "api_key": ""
+    },
+    "gemini_api": {
+      "api_url": "https://generativelanguage.googleapis.com/v1beta",
+      "api_key": ""
+    },
+    "gemini_cli": {
+      "api_url": "gemini_cli_mode",
+      "api_key": ""
+    },
+    "deepseek": {
+      "api_url": "https://api.deepseek.com/v1",
+      "api_key": ""
+    },
+    "openai_compatible": {
+      "api_url": "",
+      "api_key": ""
+    }
+  },
+  "timeout": 30,
+  "prompt_template_id": "character_feature_replace",
+  "custom_prompt": "你是一个 Stable Diffusion 的 AI 助手。你的任务是替换提示中的特征，且保持sdxl可识别的tag格式。\n你的目标是提取\"新角色提示词\"中描述的特征（同时要保持\"新角色提示词\"的格式和英文的大小写），并有条理地将它们完全替换到\"原始提示词\"中，此外要删除\"原始提示词\"中的质量提示词（masterpiece, newest, absurdres, best quality, amazing quality, very aesthetic, ultra-detailed, highly detailed）。\n\"要替换的特征（指南）\"列表告诉你应该从\"新角色提示词\"中提取哪些类别的特征（例如发型、眼睛颜色、服装）。\n请只回复新的、修改后的提示，不要包含任何解释。\n\n原始提示词：\n{original_prompt}\n\n替换提示词：\n{substitute_prompt}\n\n要替换的特征（指南）：\n{target_features}\n\n新提示词：",
+  "prompt_templates": {
+    "character_feature_replace": {
+      "name_zh": "默认-人物特征替换",
+      "name_en": "Default-Character Feature Replace",
+      "content": "你是一个 Stable Diffusion 的 AI 助手。你的任务是替换提示中的特征，且保持sdxl可识别的tag格式。\n你的目标是提取\"替换提示词\"中描述的特征（同时要保持\"替换提示词\"的格式和英文的大小写），并有条理地将它们完全替换到\"原始提示词\"中，此外要删除\"原始提示词\"中的质量提示词（masterpiece, newest, absurdres, best quality, amazing quality, very aesthetic, ultra-detailed, highly detailed）。\n\"要替换的特征（指南）\"列表告诉你应该从\"替换提示词\"中提取哪些类别的特征（例如发型、眼睛颜色、服装）。\n请只回复新的、修改后的提示，不要包含任何解释。\n\n原始提示词：\n{original_prompt}\n\n替换提示词：\n{substitute_prompt}\n\n要替换的特征（指南）：\n{target_features}\n\n新提示词："
+    },
+    "custom_1760254710267": {
+      "name_zh": "你好",
+      "name_en": "你好",
+      "content": "阿\n {original_prompt}"
+    },
+    "custom_1760255322555": {
+      "name_zh": "你好",
+      "name_en": "你好",
+      "content": "{original_prompt}"
+    },
+    "custom_1760256553045": {
+      "name_zh": "你好",
+      "name_en": "你好",
+      "content": "包含 {original_prompt}"
+    }
+  },
+  "language": "zh",
+  "active_preset_name": "default",
+  "presets": [
+    {
+      "name": "default",
+      "features": [
+        "hair style",
+        "hair color",
+        "hair ornament",
+        "eye color",
+        "unique body parts",
+        "body shape",
+        "ear shape"
+      ]
+    }
+  ]
+}
