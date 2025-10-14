@@ -4,7 +4,7 @@
 
 [![点击下载批量lora信息获取工具](https://img.shields.io/badge/📥_点击下载修改版的批量lora信息获取工具-密码:626b-red?style=for-the-badge&logo=download)](https://wwtp.lanzoul.com/inEhW37wczlg)
 [![点击加入QQ群](https://img.shields.io/badge/💬_点击加入QQ群（或自行复制右边的QQ群号）-1023857787-purple?style=for-the-badge&logo=tencentqq)](https://qun.qq.com/universal-share/share?ac=1&authKey=48%2B820tht986LLxEgsrCR7kgt%2FWCAdb94IG1qLGco0WI58EMH7qqustONhDkeIPa&busi_data=eyJncm91cENvZGUiOiIxMDIzODU3Nzg3IiwidG9rZW4iOiJtRFZaWmNTUnZ4ZVZ5aVJzUnA0ZzhuMHkvYWZzano4V1pDcElpQnBWSEtjcTRGZXZZVU9BWU8za0lkZjhlVE04IiwidWluIjoiOTQ5MTU4OTYwIn0%3D&data=Q4bYwdIojrjyBbGWcNhmTojWEt5gYr0tweoeVQRxWoXIZEbPFZkla-GYCRBK4ZCiV2TIHf9-PvWYCYgAg7GpAg&svctype=4&tempid=h5_group_info)
-![更新日期](https://img.shields.io/badge/最近更新日期-2025/10/7-orange?style=for-the-badge)
+![更新日期](https://img.shields.io/badge/最近更新日期-2025/10/14-orange?style=for-the-badge)
 
 ### 💫 **这是关于ComfyUI-ZML-Image的修改版，会实时和原版进行同步更新** 💫
 
@@ -18,7 +18,7 @@
 
 ## 📢 **更新公告**
 
-> 2025/10/13
+> 2025/10/14
 
 1.同步融合安大原版最新版所更新的所有功能
 
