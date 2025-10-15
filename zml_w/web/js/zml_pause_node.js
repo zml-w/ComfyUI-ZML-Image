@@ -320,7 +320,7 @@ app.registerExtension({
                 onNodeCreated?.apply(this, arguments);
                 
                 // 检查是否已经有预览图像容器，如果有则不重复添加
-                if (this.widgets.find(w => w.name === "预览")) {
+                if (this.widgets && this.widgets.find(w => w.name === "预览")) {
                     return;
                 }
                 
