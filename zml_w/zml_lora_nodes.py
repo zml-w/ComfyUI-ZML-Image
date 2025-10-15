@@ -539,7 +539,7 @@ class ZmlLoraMetadataParser:
     RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("图像", "txt", "log", "解析", "help")
     FUNCTION = "parse_and_save_metadata"
-    CATEGORY = "图像/ZML_图像/lora加载器"
+    CATEGORY = "image/ZML_图像/lora加载器"
     COLOR = "#446699" # 一个更柔和的蓝色
     
     def parse_and_save_metadata(self, lora_名称, 保存首张图像=False, 保存触发词为txt=False, 保存介绍为log=False):
@@ -677,7 +677,7 @@ class ZmlLoraLoaderModelOnly:
     RETURN_TYPES = ("MODEL",)
     RETURN_NAMES = ("输出_模型",)
     FUNCTION = "zml_load_lora_model_only"
-    CATEGORY = "图像/ZML_图像/lora加载器"
+    CATEGORY = "image/ZML_图像/lora加载器"
     COLOR = "#446699" # 一个更柔和的蓝色
 
 
@@ -714,7 +714,7 @@ class ZmlLoraLoaderFive:
     RETURN_TYPES = ("MODEL", "CLIP", "STRING")
     RETURN_NAMES = ("输出_模型", "输出_CLIP", "txt_内容")
     FUNCTION = "load_five_loras"
-    CATEGORY = "图像/ZML_图像/lora加载器"
+    CATEGORY = "image/ZML_图像/lora加载器"
     COLOR = "#446699" # 一个更柔和的蓝色
 
     def load_five_loras(self, 模型=None, CLIP=None, **kwargs):
@@ -789,7 +789,7 @@ class ZmlPowerLoraLoader:
     RETURN_TYPES = ("MODEL", "CLIP", "STRING", "IMAGE", "STRING", "STRING") # 增加 ZML_LORA_STACK_TYPE 类型
     RETURN_NAMES = ("MODEL", "CLIP", "lora名称列表", "预览_图", "触发词", "自定义文本") # 增加 "lora名称列表" 的名称
     FUNCTION = "load_loras"
-    CATEGORY = "图像/ZML_图像/lora加载器"
+    CATEGORY = "image/ZML_图像/lora加载器"
     COLOR = "#446699" # 一个更柔和的蓝色
 
 
@@ -930,7 +930,7 @@ class ZmlNameLoraLoader:
     RETURN_TYPES = ("MODEL", "CLIP")
     RETURN_NAMES = ("输出_模型", "输出_CLIP")
     FUNCTION = "load_named_loras"
-    CATEGORY = "图像/ZML_图像/lora加载器"
+    CATEGORY = "image/ZML_图像/lora加载器"
     COLOR = "#446699" # 一个更柔和的蓝色
     
     def load_named_loras(self, 模型, CLIP, LoRA名称列表):
@@ -995,7 +995,7 @@ class ZmlNunchakuNameLoraLoader:
     RETURN_TYPES = ("MODEL",)
     RETURN_NAMES = ("输出_模型",)
     FUNCTION = "load_nunchaku_loras_from_list"
-    CATEGORY = "图像/ZML_图像/lora加载器"
+    CATEGORY = "image/ZML_图像/lora加载器"
 
     def load_nunchaku_loras_from_list(self, model, LoRA名称列表):
         try:

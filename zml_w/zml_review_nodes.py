@@ -752,7 +752,6 @@ class ZML_PauseNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "占位符大小": (["1x1", "64x64"],),
                 "图像": ("IMAGE",),
             },
             "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
@@ -762,12 +761,20 @@ class ZML_PauseNode:
     RETURN_NAMES = ("图像_1", "图像_2", "图像_3",)
     FUNCTION = "pause_workflow"
     CATEGORY = "image/ZML_图像/工具"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
 
-    def pause_workflow(self, 占位符大小, 图像, prompt=None, unique_id=None):
-        size = 64 if 占位符大小 == "64x64" else 1
+    def pause_workflow(self, 图像, prompt=None, unique_id=None):
+        # 导入ExecutionBlocker用于阻止未使用的输出执行
+        try:
+            from comfy_execution.graph import ExecutionBlocker
+        except ImportError:
+            # 兼容性处理：如果导入失败，定义一个简单的替代品
+            class ExecutionBlocker:
+                def __init__(self, value):
+                    self.value = value
+        
         real_output = 图像
-        dummy_image = torch.zeros((1, size, size, 3), dtype=图像.dtype, device=图像.device)
-
+        
         # 实现图像预览功能
         if unique_id is not None:
             try:
@@ -852,7 +859,8 @@ class ZML_PauseNode:
                     pass
             time.sleep(0.1)
 
-        outputs = [dummy_image, dummy_image, dummy_image]
+        # 初始化所有输出为ExecutionBlocker
+        outputs = [ExecutionBlocker(None), ExecutionBlocker(None), ExecutionBlocker(None)]
 
         # 处理新的多通道格式
         if channels_images_map:
@@ -892,13 +900,12 @@ class ZML_PauseNode:
                 if selected_images:
                     active_output = torch.stack(selected_images)
                 else:
-                    active_output = dummy_image
+                    # 如果没有选中图像，保持为ExecutionBlocker
+                    pass
 
             # 根据选中的输出路径设置输出
             if 0 <= selected_path < len(outputs):
                 outputs[selected_path] = active_output
-            else:
-                outputs[0] = active_output
 
         # 返回结果
         output_tuple = tuple(outputs)

@@ -3,6 +3,9 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageOps
 import random
 import math
+import os
+import folder_paths
+from pathlib import Path
 
 #==========================图像过度动画==========================
 
@@ -334,6 +337,151 @@ class ZML_BooleanSwitch:
     def get_value(self, 启用):
         return (启用,)
 
+# ============================== 预览图像节点 ==============================
+class ZML_PreviewImage:
+    """ZML 预览图像节点 - 支持暂存多次图像的预览功能"""
+
+    # 类变量，用于在节点实例之间共享缓存
+    _image_cache = {}
+    _counter_cache = {}
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE", {}),
+                "暂存次数": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1, "display": "number", "tooltip": "设置需要累积的图像数量，达到此数量时才刷新展示"}),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    RETURN_TYPES = ()
+    RETURN_NAMES = ()
+    FUNCTION = "preview_image"
+    OUTPUT_NODE = True
+    CATEGORY = "image/ZML_图像/图像"
+
+    def preview_image(self, 图像, 暂存次数=1, unique_id=None):
+        """预览图像的主要函数，支持暂存多次图像"""
+        # 检查是否应该跳过预览
+        skip_preview = False
+        
+        if 图像 is None or 图像.size(0) == 0:
+            skip_preview = True
+        elif 图像.shape[1] == 1 and 图像.shape[2] == 1:
+            skip_preview = True
+        elif 图像.shape[1] == 64 and 图像.shape[2] == 64:
+            # 检查是否为纯黑图像
+            if torch.all(torch.abs(图像 - 0.0) < 1e-6):
+                skip_preview = True
+
+        if skip_preview:
+            # 如果需要跳过预览，但有缓存的图像，仍然返回缓存的图像
+            if unique_id and unique_id in self._image_cache:
+                return {"ui": {"images": self._image_cache[unique_id]}, "node_id": unique_id}
+            return {"node_id": unique_id} if unique_id is not None else {}
+
+        # 使用临时目录进行预览
+        temp_dir = folder_paths.get_temp_directory()
+        os.makedirs(temp_dir, exist_ok=True)
+        ui_type = "temp"
+
+        # 当前图像的路径列表
+        current_image_paths = []
+
+        for index, image_tensor in enumerate(图像):
+            # 生成预览文件名
+            timestamp = os.path.basename(temp_dir).replace("_", "")[:8]  # 使用临时目录名的一部分作为时间戳
+            if len(图像) > 1:
+                batch_filename = f"preview_{timestamp}_{index+1:03d}.png"
+            else:
+                batch_filename = f"preview_{timestamp}.png"
+
+            full_path = os.path.join(temp_dir, batch_filename)
+            
+            # 确保文件名唯一
+            counter = 1
+            base, ext = os.path.splitext(full_path)
+            final_image_path = full_path
+            while os.path.exists(final_image_path):
+                final_image_path = f"{base}_{counter}{ext}"
+                counter += 1
+
+            # 处理图像并保存到临时目录
+            try:
+                image_array = 255. * image_tensor.cpu().numpy()
+                pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
+                
+                # 保存图像（不添加元数据，仅用于预览）
+                pil_image.save(final_image_path, compress_level=1)  # 使用较低的压缩级别以加快预览速度
+                
+                # 准备用于UI预览的结果
+                try:
+                    file_basename = os.path.basename(final_image_path)
+                    file_dir = os.path.dirname(final_image_path)
+                    
+                    # 计算相对路径
+                    base_dir_for_relpath = folder_paths.get_temp_directory()
+                    
+                    # 确保路径是绝对的，以进行安全比较
+                    abs_file_dir = os.path.abspath(file_dir)
+                    abs_base_dir = os.path.abspath(base_dir_for_relpath)
+
+                    rel_dir = ""
+                    if abs_file_dir.startswith(abs_base_dir):
+                        rel_dir = os.path.relpath(abs_file_dir, abs_base_dir)
+
+                    # 标准化路径分隔符
+                    rel_dir = rel_dir.replace("\\", "/")
+                    if rel_dir == ".":
+                        rel_dir = ""
+                    
+                    # 添加到当前图像路径列表
+                    current_image_paths.append({
+                        "filename": file_basename,
+                        "subfolder": rel_dir,
+                        "type": ui_type
+                    })
+                except Exception:
+                    pass
+                    
+            except Exception:
+                pass
+
+        # 处理暂存逻辑
+        if unique_id:
+            # 初始化计数器和缓存（如果不存在）
+            if unique_id not in self._counter_cache:
+                self._counter_cache[unique_id] = 0
+            if unique_id not in self._image_cache:
+                self._image_cache[unique_id] = []
+            
+            # 增加计数器
+            self._counter_cache[unique_id] += 1
+            
+            # 添加当前图像到缓存
+            self._image_cache[unique_id].extend(current_image_paths)
+            
+            # 检查是否达到暂存次数
+            if self._counter_cache[unique_id] >= 暂存次数:
+                # 达到次数，返回所有缓存的图像并重置计数器
+                result_paths = self._image_cache[unique_id]
+                # 重置缓存和计数器
+                self._image_cache[unique_id] = []
+                self._counter_cache[unique_id] = 0
+            else:
+                # 未达到次数，返回所有缓存的图像（包括之前的和当前的）
+                result_paths = self._image_cache[unique_id]
+        else:
+            # 如果没有唯一ID，直接返回当前图像
+            result_paths = current_image_paths
+
+        # 为UI预览准备返回数据
+        ui_output = { "images": result_paths }
+        return {"ui": ui_output, "node_id": unique_id} if unique_id is not None else {"ui": ui_output}
+
 #==========================遮罩描边节点==========================
 
 class ZML_MaskStroke:
@@ -455,6 +603,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageEncryption": ZML_ImageEncryption,
     "ZML_BooleanSwitch": ZML_BooleanSwitch,
     "ZML_MaskStroke": ZML_MaskStroke,
+    "ZML_PreviewImage": ZML_PreviewImage,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -462,4 +611,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageEncryption": "ZML_图像加密",
     "ZML_BooleanSwitch": "ZML_布尔开关",
     "ZML_MaskStroke": "ZML_遮罩描边",
+    "ZML_PreviewImage": "ZML_预览图像",
 }

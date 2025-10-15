@@ -1408,6 +1408,7 @@ class ZML_ClassifyImage:
     """
     ZML_分类图像 节点：根据图片的元数据和特定文本块的存在与否进行分类。
     必须连接有效的 '图像路径' (STRING) 才能正确检测元数据。
+    使用ExecutionBlocker确保只有匹配的输出接口才会激活下游节点。
     """
     def __init__(self):
         pass
@@ -1417,7 +1418,7 @@ class ZML_ClassifyImage:
         return {
             "required": {
                 # image_path是必须的，用于读取元数据。
-                "图像路径": ("STRING", {"multiline": False, "default": ""}),
+                "图像路径": ("STRING", {"multiline": False, "default": "", "tooltip": "请将'从路径加载图像'节点的'图像路径'输出接入到这里"}),
                 # 图像 tensor 是要作为输出传递的图像数据。
                 "图像": ("IMAGE",), 
             }
@@ -1427,18 +1428,27 @@ class ZML_ClassifyImage:
     RETURN_NAMES = ("无数据", "元数据", "文本块",)
     FUNCTION = "classify"
     CATEGORY = "image/ZML_图像/工具" 
-    DISPLAY_NAME = "ZML_分类图像" 
+    DISPLAY_NAME = "ZML_分类图像"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
 
     def _create_placeholder_image(self, size=1) -> torch.Tensor:
         """Helper: 创建一个 1x1 像素的黑色占位符图像张量"""
         return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
 
     def classify(self, 图像路径: str, 图像: torch.Tensor):
-        placeholder_image = self._create_placeholder_image(size=1)
+        # 导入ExecutionBlocker用于阻止未使用的输出执行
+        try:
+            from comfy_execution.graph import ExecutionBlocker
+        except ImportError:
+            # 兼容性处理：如果导入失败，定义一个简单的替代品
+            class ExecutionBlocker:
+                def __init__(self, value):
+                    self.value = value
         
-        output_no_data = placeholder_image
-        output_metadata = placeholder_image
-        output_text_block = placeholder_image
+        # 初始化为阻止执行的状态
+        output_no_data = ExecutionBlocker(None)
+        output_metadata = ExecutionBlocker(None)
+        output_text_block = ExecutionBlocker(None)
 
         has_info = False
         has_text_block_content = False
@@ -1454,15 +1464,15 @@ class ZML_ClassifyImage:
                         has_text_block_content = DEFAULT_TEXT_BLOCK_KEY in img.info
             except Exception as e:
                 print(f"ZML_ClassifyImage: 读取图像元数据失败 '{图像路径}': {e}")
-                # 这里的 print 语句用于真正的加载错误
                 pass
 
+        # 根据分类结果，只激活对应的输出端口
         if not has_info:
-            output_no_data = 图像 
+            output_no_data = 图像  # 只有无数据输出激活
         elif has_text_block_content:
-            output_text_block = 图像 
+            output_text_block = 图像  # 只有文本块输出激活
         else:
-            output_metadata = 图像 
+            output_metadata = 图像  # 只有元数据输出激活
 
         return (output_no_data, output_metadata, output_text_block,)
 
