@@ -1774,11 +1774,10 @@ app.registerExtension({
                                         baseQueryParams.append("filename", file.filename);
                                         // 修复：确保使用正确的子文件夹路径，优先使用file.subfolder，如果不存在则使用空字符串
                                         baseQueryParams.append("subfolder", file.subfolder || "");
-                                        baseQueryParams.append("base_path", pathInput.value);
-                                        
-                                        // 修复：如果有custom_path，也需要添加到查询参数中
-                                        if (file.custom_path) {
-                                            baseQueryParams.append("custom_path", file.custom_path);
+                                        // 统一使用 custom_path，后端仅识别该参数；当 file.custom_path 缺失时回退到输入框路径
+                                        const effectiveCustomPath = (file.custom_path && String(file.custom_path).trim()) || String(pathInput.value || "").trim();
+                                        if (effectiveCustomPath) {
+                                            baseQueryParams.append("custom_path", effectiveCustomPath);
                                         }
                                         
                                         const getTextUrl = `${ZML_API_PREFIX}/get_single_text_block?${baseQueryParams.toString()}`;
