@@ -153,6 +153,16 @@ const ZML_PROMPT_UI_STYLES = `
 }
 .zml-prompt-ui-nav-btn:hover .zml-prompt-ui-edit-delete-btn { transform: scale(1); opacity: 1; }
 
+.zml-prompt-ui-edit-edit-btn {
+    position: absolute; top: -8px; right: -8px; background-color: var(--zml-yellow-color);
+    color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 14px; cursor: pointer; transform: scale(0.9);
+    opacity: 0.8; transition: all 0.2s;
+}
+.zml-prompt-ui-nav-btn:hover .zml-prompt-ui-edit-edit-btn,
+ .zml-prompt-ui-prompt-btn:hover .zml-prompt-ui-edit-edit-btn,
+ .zml-prompt-ui-group-header:hover .zml-prompt-ui-edit-edit-btn { transform: scale(1); opacity: 1; }
+
 .zml-prompt-ui-tag-area { flex-grow: 1; overflow-y: auto; padding-right: 10px; }
 .zml-prompt-ui-group-container { margin-bottom: 20px; padding: 15px; background-color: var(--zml-input-bg-color); border-radius: var(--zml-border-radius); }
 .zml-prompt-ui-group-header { margin-top: 0; margin-bottom: 15px; color: var(--zml-text-color); font-size: 1.2em; font-weight: 500; position: relative; display: flex; align-items: center; gap: 15px; }
@@ -208,11 +218,39 @@ const THEMES = {
 const DEFAULT_THEME = 'blue';
 
 let translationMap = new Map();
+// 翻译缓存：避免每次打开UI重复翻译
+const TRANSLATION_CACHE_KEY = 'ZML_PROMPT_TRANSLATIONS_V1';
+function loadTranslationCache() {
+    try {
+        const raw = localStorage.getItem(TRANSLATION_CACHE_KEY);
+        if (!raw) return;
+        const obj = JSON.parse(raw);
+        if (obj && typeof obj === 'object') {
+            for (const k in obj) {
+                const v = obj[k];
+                if (typeof v === 'string' && v) translationMap.set(k, v);
+            }
+        }
+
+    } catch (e) {
+        console.warn('加载翻译缓存失败:', e);
+    }
+}
+function saveTranslationCache() {
+    try {
+        const obj = {};
+        translationMap.forEach((v, k) => { obj[k] = v; });
+        localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify(obj));
+    } catch (e) {
+        console.warn('保存翻译缓存失败:', e);
+    }
+}
 let historyStack = [];
 let currentData = null;
 let activeCategoryIndex = 0;
 let activeGroupIndex = 0;
 let isEditMode = false;
+let editAction = 'delete';
 let stylesInjected = false;
 
 function injectStyles() {
@@ -228,7 +266,7 @@ function showInputDialog(title, inputs, onConfirm) { /* ... 此函数未改变 .
     const dialogTitle = $el("h3", { textContent: title, className: "zml-prompt-ui-dialog-title" });
     dialog.appendChild(dialogTitle);
     const inputElements = {};
-    inputs.forEach(input => { dialog.append($el("label", { textContent: input.label }), inputElements[input.id] = $el("input", { type: "text", placeholder: input.placeholder })); });
+    inputs.forEach(input => { dialog.append($el("label", { textContent: input.label }), inputElements[input.id] = $el("input", { type: "text", placeholder: input.placeholder, value: input.value || "" })); });
     const closeDialog = () => { backdrop.remove(); dialog.remove(); };
     const confirmBtn = $el("button", { textContent: "确认", className: "zml-prompt-ui-btn zml-prompt-ui-btn-primary", onclick: () => { const v = {}; for (const id in inputElements) { v[id] = inputElements[id].value; } onConfirm(v); closeDialog(); }});
     const cancelBtn = $el("button", { textContent: "取消", className: "zml-prompt-ui-btn zml-prompt-ui-btn-secondary", onclick: closeDialog });
@@ -281,7 +319,7 @@ function showSelectedTagsDialog(currentPrompts, translationMap) { /* ... 此函�
 }
 
 async function savePromptsToBackend(data) { /* ... 此函数未改变 ... */ 
-    try { await api.fetchApi(`${PROMPT_API_PREFIX}/save_prompts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); console.log("Prompts saved automatically."); } 
+    try { await api.fetchApi(`${PROMPT_API_PREFIX}/save_prompts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); } 
     catch (error) { console.error("Error saving prompts automatically:", error); }
 }
 
@@ -305,14 +343,37 @@ function createPromptModal(node) {
         themeBalls[key] = $el('div', { className: `zml-theme-ball ${key === currentTheme ? 'active' : ''}`, title: theme.name, style: { backgroundColor: theme.color }, onclick: () => applyTheme(key) });
         themeSelector.appendChild(themeBalls[key]);
     }
-    const resetThemeBtn = $el("button", { textContent: "恢复默认", className: "zml-prompt-ui-btn zml-prompt-ui-btn-secondary", onclick: () => applyTheme(DEFAULT_THEME) });
+    const clearCacheBtn = $el("button", { 
+        textContent: "清空翻译缓存", 
+        title: "清空本地翻译缓存。缓存的是存翻译过的提示词，将其存到缓存中用来在打开UI时进行快速的自动翻译，不是很建议清空。",
+        className: "zml-prompt-ui-btn zml-prompt-ui-btn-secondary", 
+        onclick: () => { 
+            const ok = confirm("缓存的是存翻译过的提示词，将其存到缓存中用来在打开UI时进行快速的自动翻译，你确定清空你本地的缓存记录吗？");
+            if (!ok) return;
+            try { 
+                localStorage.removeItem(TRANSLATION_CACHE_KEY);
+                translationMap.clear();
+                renderSelectedTags();
+                showToast("已清空翻译缓存");
+            } catch (e) { 
+                console.error("清空翻译缓存失败:", e);
+                showToast("清空翻译缓存失败");
+            }
+        } 
+    });
     const refreshBtn = $el("button", { textContent: "刷新", className: "zml-prompt-ui-btn zml-prompt-ui-btn-secondary", onclick: () => { closeUI(); createPromptModal(node); }});
-    const closeUI = () => { backdrop.remove(); modal.remove(); };
+    const closeUI = () => { 
+        document.removeEventListener('keydown', escKeyHandler);
+        backdrop.remove(); 
+        modal.remove(); 
+    };
+    const escKeyHandler = (e) => { if (e.key === 'Escape') closeUI(); };
+    document.addEventListener('keydown', escKeyHandler);
     const confirmBtn = $el("button", { textContent: "确定", className: "zml-prompt-ui-btn zml-prompt-ui-btn-primary confirm-btn", onclick: closeUI });
-    const header = $el("div", { className: "zml-prompt-ui-header" }, [headerTitle, $el("div", {className: "zml-prompt-ui-header-controls"}, [themeSelector, resetThemeBtn, refreshBtn, confirmBtn])]);
+    const header = $el("div", { className: "zml-prompt-ui-header" }, [headerTitle, $el("div", {className: "zml-prompt-ui-header-controls"}, [themeSelector, clearCacheBtn, refreshBtn, confirmBtn])]);
     
-    // 定义translationMap作为Map对象，用于存储英文提示词到中文翻译的映射
-    const translationMap = new Map();
+    // 使用本地缓存填充已知翻译，避免重复翻译
+    loadTranslationCache();
     
     const tagDisplay = $el("div", { className: "zml-prompt-ui-tag-display" });
     const viewBtn = $el("button", { textContent: "查看", className: "zml-prompt-ui-btn zml-prompt-ui-btn-secondary", onclick: () => { showSelectedTagsDialog(currentPrompts, translationMap); }});
@@ -370,7 +431,7 @@ function createPromptModal(node) {
     });
 
     // 实现搜索功能
-    function performSearch(query) {
+    async function performSearch(query) {
         console.log("开始搜索，currentData:", currentData ? currentData.length : "null");
         if (!query || !currentData || !Array.isArray(currentData)) {
             console.log("搜索条件不满足");
@@ -412,8 +473,69 @@ function createPromptModal(node) {
             }
         }
         
+        // 搜索Prompt word文件夹中的txt文件
+        try {
+            console.log("开始搜索txt文件");
+            const txtResults = await searchTxtFiles(query);
+            results.push(...txtResults);
+        } catch (error) {
+            console.error("搜索txt文件时出错:", error);
+        }
+        
         console.log("搜索完成，结果数量:", results.length);
         return results;
+    }
+    
+    // 搜索txt文件中的提示词
+    async function searchTxtFiles(query) {
+        const txtResults = [];
+        try {
+            // 调用API获取txt文件中的提示词
+            const response = await api.fetchApi(`${PROMPT_API_PREFIX}/search_txt_files`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ query: query })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.results && Array.isArray(data.results)) {
+                    data.results.forEach(item => {
+                        const rawLine = String(item.text ?? item.prompt ?? '').trim();
+                        let cn = String(item.name ?? '').trim();
+                        let en = String(item.prompt ?? '').trim();
+
+                        // 如果API未拆分，按首个逗号拆分：前为中文，后为英文
+                        if (!en || !cn) {
+                            const idx = rawLine.search(/[，,]/);
+                            if (idx >= 0) {
+                                const left = rawLine.slice(0, idx).trim();
+                                const right = rawLine.slice(idx + 1).trim();
+                                cn = cn || left;
+                                en = en || right;
+                            } else {
+                                // 无逗号时，英文与中文都回退为整行
+                                en = en || rawLine;
+                                cn = cn || rawLine;
+                            }
+                        }
+
+                        txtResults.push({
+                            prompt: en,
+                            name: cn,
+                            category: 'TXT文件',
+                            group: item.file_name || '未知文件'
+                        });
+                    });
+                }
+            }
+        } catch (error) {
+            console.error("搜索txt文件API调用失败:", error);
+            // 如果API调用失败，尝试使用备用方法（如果有）
+        }
+        return txtResults;
     }
 
     // 渲染搜索结果
@@ -506,14 +628,28 @@ function createPromptModal(node) {
     }
 
     // 搜索按钮点击事件
-    searchBtn.onclick = function() {
+    searchBtn.onclick = async function() {
         const query = searchInput.value;
         console.log("搜索查询:", query);
         if (query) {
-            const results = performSearch(query);
-            console.log("搜索结果数量:", results.length);
-            console.log("搜索结果:", results);
-            renderSearchResults(results);
+            // 显示加载状态
+            searchBtn.textContent = "搜索中...";
+            searchBtn.disabled = true;
+            
+            try {
+                const results = await performSearch(query);
+                console.log("搜索结果数量:", results.length);
+                console.log("搜索结果:", results);
+                renderSearchResults(results);
+            } catch (error) {
+                console.error("搜索过程中出错:", error);
+                searchResultsContainer.innerHTML = "<div style='padding: 12px; color: var(--zml-red-color); text-align: center;'>搜索过程中出现错误</div>";
+                searchResultsContainer.style.display = "block";
+            } finally {
+                // 恢复按钮状态
+                searchBtn.textContent = "搜索";
+                searchBtn.disabled = false;
+            }
         }
     };
 
@@ -581,47 +717,114 @@ function createPromptModal(node) {
     }, duration);
 }
 
-function translateSelectedTags() {
+async function translateSelectedTags() {
         console.log("开始手动翻译标签...");
         let translatedCount = 0;
-        
-        // 遍历当前已选标签
+
+        // 收集尚未有中文翻译的提示词
+        const missingPrompts = [];
         currentPrompts.forEach((weight, prompt) => {
-            // 只翻译还没有中文名称的提示词
             if (!translationMap.get(prompt)) {
-                console.log(`查找提示词翻译: ${prompt}`);
-                
-                // 遍历所有分类和分组查找翻译
-                let found = false;
+                missingPrompts.push(prompt);
+            }
+        });
+
+        // 第一阶段：优先在分类数据中查找翻译（与原逻辑一致）
+        for (const prompt of missingPrompts) {
+            let found = false;
+            if (Array.isArray(currentData)) {
                 for (let i = 0; i < currentData.length && !found; i++) {
                     const category = currentData[i];
                     if (!category || !category.groups) continue;
-                    
+
                     for (let j = 0; j < category.groups.length && !found; j++) {
                         const group = category.groups[j];
                         if (!group || !group.tags) continue;
-                        
-                        // 查找匹配的提示词
+
                         if (group.tags.hasOwnProperty(prompt)) {
                             const name = group.tags[prompt];
                             translationMap.set(prompt, name);
                             translatedCount++;
-                            console.log(`找到翻译: ${prompt} -> ${name}`);
+                            console.log(`分类数据翻译: ${prompt} -> ${name}`);
                             found = true;
                         }
                     }
                 }
             }
+        }
+
+        // 重新计算仍缺失翻译的提示词
+        const stillMissing = [];
+        currentPrompts.forEach((weight, prompt) => {
+            if (!translationMap.get(prompt)) {
+                stillMissing.push(prompt);
+            }
         });
+
+        // 第二阶段：在本地TXT文件中查找翻译（仅手动翻译保留）
+        for (const prompt of stillMissing) {
+            try {
+                const txtResults = await searchTxtFiles(prompt);
+                const target = txtResults.find(it => String(it.prompt || '').trim().toLowerCase() === String(prompt).trim().toLowerCase());
+                if (target && target.name) {
+                    translationMap.set(prompt, target.name);
+                    translatedCount++;
+                    console.log(`TXT翻译: ${prompt} -> ${target.name} (${target.group || '未知来源'})`);
+                    continue;
+                }
+                const fuzzy = txtResults.find(it => String(it.prompt || '').toLowerCase().includes(String(prompt).toLowerCase()) || String(prompt).toLowerCase().includes(String(it.prompt || '').toLowerCase()));
+                if (fuzzy && fuzzy.name) {
+                    translationMap.set(prompt, fuzzy.name);
+                    translatedCount++;
+                    console.log(`TXT模糊翻译: ${prompt} -> ${fuzzy.name} (${fuzzy.group || '未知来源'})`);
+                }
+            } catch (err) {
+                console.error(`TXT翻译查询失败: ${prompt}`, err);
+            }
+        }
         
         // 更新标签显示
         if (translatedCount > 0) {
             renderSelectedTags();
             console.log(`成功翻译了 ${translatedCount} 个标签！`);
             showToast(`成功翻译了 ${translatedCount} 个标签！`);
+            saveTranslationCache();
         } else {
             console.log("所有标签都已有中文翻译，无需再次翻译。");
             showToast("所有标签都已有中文翻译，无需再次翻译。");
+        }
+    }
+
+    // 自动翻译：仅使用缓存与 YAML，不查找TXT
+    function autoTranslateSelectedTags() {
+
+        let translatedCount = 0;
+
+        currentPrompts.forEach((weight, prompt) => {
+            if (translationMap.get(prompt)) return; // 已有缓存
+            let found = false;
+            if (Array.isArray(currentData)) {
+                for (let i = 0; i < currentData.length && !found; i++) {
+                    const category = currentData[i];
+                    if (!category || !category.groups) continue;
+                    for (let j = 0; j < category.groups.length && !found; j++) {
+                        const group = category.groups[j];
+                        if (!group || !group.tags) continue;
+                        if (group.tags.hasOwnProperty(prompt)) {
+                            const name = group.tags[prompt];
+                            translationMap.set(prompt, name);
+                            translatedCount++;
+                            found = true;
+                        }
+                    }
+                }
+            }
+        });
+
+        if (translatedCount > 0) {
+            renderSelectedTags();
+            console.log(`自动翻译完成：${translatedCount} 个标签`);
+            saveTranslationCache();
         }
     }
     
@@ -654,7 +857,7 @@ function translateSelectedTags() {
     const translateBtn = $el("button", {
         textContent: "翻译",
         className: "zml-prompt-ui-btn zml-prompt-ui-btn-primary",
-        title: "为未翻译的标签查找中文名称",
+        title: "从本地yaml和txt中寻找提示词进行翻译。",
         onclick: translateSelectedTags
     });
     
@@ -708,7 +911,22 @@ function translateSelectedTags() {
     };
     
     undoBtn.onclick = () => { if (historyStack.length > 0) { currentPrompts = new Map(historyStack.pop()); updateNodePrompt(); renderSelectedTags(); const c = currentData[activeCategoryIndex]; if (c?.groups?.[activeGroupIndex]) renderGroupTags([c.groups[activeGroupIndex]]); savePromptsToBackend(currentData); } };
-    editModeBtn.onclick = () => { isEditMode = !isEditMode; editModeBtn.classList.toggle('active', isEditMode); renderAllButtons(); };
+    editModeBtn.onclick = () => {
+  // When toggling on, let user choose between Edit and Delete
+  if (!isEditMode) {
+    showChoiceDialog("选择模式", ["编辑", "删除"], (choice) => {
+      isEditMode = true;
+      editModeBtn.classList.add('active');
+      editAction = choice === "编辑" ? 'edit' : 'delete';
+      renderAllButtons();
+    });
+  } else {
+    // Turning off edit mode
+    isEditMode = false;
+    editModeBtn.classList.remove('active');
+    renderAllButtons();
+  }
+};
     copyBtn.onclick = () => { navigator.clipboard.writeText(getPromptString()).then(() => { const o = copyBtn.textContent; copyBtn.textContent = "已复制!"; setTimeout(() => { copyBtn.textContent = o; }, 1000); }); };
     clearBtn.onclick = () => { pushHistory(); currentPrompts.clear(); updateNodePrompt(); renderSelectedTags(); const c = currentData[activeCategoryIndex]; if (c?.groups?.[activeGroupIndex]) renderGroupTags([c.groups[activeGroupIndex]]); savePromptsToBackend(currentData); };
     addMainTabBtn.onclick = () => showInputDialog("新增一级分类", [{ label: "分类名称", placeholder: "请输入分类名...", id: "name" }], (v) => { if (v.name) { currentData.push({ name: v.name, groups: [] }); renderAllButtons(); savePromptsToBackend(currentData); } });
@@ -758,9 +976,24 @@ function translateSelectedTags() {
                 $el("span", { textContent: "字体大小" }), fontSizeInput ]);
             groupHeader.appendChild(controlsDiv);
 
-            if (isEditMode) { /* ... 此部分未改变 ... */
+            if (isEditMode && editAction === 'delete') {
                 const deleteGroupBtn = $el("span", { textContent: "×", className: "zml-prompt-ui-group-delete-btn", onclick: (e) => { e.stopPropagation(); if (confirm(`确定要删除二级分类 '${group.name}' 吗？`)) { pushHistory(); const c = currentData[activeCategoryIndex]; const i = c.groups.indexOf(group); if (i > -1) { c.groups.splice(i, 1); renderAllButtons(); savePromptsToBackend(currentData); } } }});
                 groupHeader.prepend(deleteGroupBtn);
+            } else if (isEditMode && editAction === 'edit') {
+                const editGroupBtn = $el("span", { textContent: "✎", className: "zml-prompt-ui-edit-edit-btn", onclick: (e) => {
+                    e.stopPropagation();
+                    showInputDialog("编辑二级分类", [
+                        { label: "分类名称", placeholder: "请输入分类名...", id: "name", value: group.name }
+                    ], (v) => {
+                        const newName = (v.name || "").trim();
+                        if (!newName) { alert("分类名称不能为空"); return; }
+                        pushHistory();
+                        group.name = newName;
+                        renderAllButtons();
+                        savePromptsToBackend(currentData);
+                    });
+                }});
+                groupHeader.prepend(editGroupBtn);
             }
             groupContainer.appendChild(groupHeader);
             const promptContainer = $el("div", { className: "zml-prompt-ui-prompt-container" });
@@ -775,7 +1008,36 @@ function translateSelectedTags() {
                 const nameEl = $el("div", { className: "name", textContent: name, style: { fontSize: `${group.fontSize || 16}px`, color: group.textColor || CHINESE_TEXT_COLOR }});
                 const promptEl = $el("div", { className: "prompt", textContent: prompt, style: { fontSize: `${(group.fontSize || 16) * 0.8}px`, color: "#bbb" }});
                 promptBtn.append(nameEl, promptEl);
-                if (isEditMode) { promptBtn.appendChild($el("span", { textContent: "×", className: "zml-prompt-ui-edit-delete-btn", style: { top: '-5px', right: '-5px' }, onclick: (e) => { e.stopPropagation(); if (confirm(`确定要删除标签 '${prompt}' 吗？`)) { pushHistory(); delete group.tags[prompt]; renderAllButtons(); savePromptsToBackend(currentData); } }})); }
+                if (isEditMode && editAction === 'delete') {
+                    promptBtn.appendChild($el("span", { textContent: "×", className: "zml-prompt-ui-edit-delete-btn", style: { top: '-5px', right: '-5px' }, onclick: (e) => { e.stopPropagation(); if (confirm(`确定要删除标签 '${prompt}' 吗？`)) { pushHistory(); delete group.tags[prompt]; renderAllButtons(); savePromptsToBackend(currentData); } }}));
+                } else if (isEditMode && editAction === 'edit') {
+                    promptBtn.appendChild($el("span", { textContent: "✎", className: "zml-prompt-ui-edit-edit-btn", style: { top: '-5px', right: '-5px' }, onclick: (e) => {
+                        e.stopPropagation();
+                        const oldPrompt = prompt;
+                        const oldName = name;
+                        showInputDialog("编辑提示词", [
+                            { label: "提示词 (英文)", placeholder: "例如: 1girl", id: "prompt", value: oldPrompt },
+                            { label: "中文翻译", placeholder: "例如: 1女孩", id: "name", value: oldName }
+                        ], (v) => {
+                            const newPrompt = (v.prompt || "").trim();
+                            const newName = (v.name || "").trim();
+                            if (!newPrompt) { alert("提示词(英文)不能为空"); return; }
+                            pushHistory();
+                            const existingWeight = currentPrompts.get(oldPrompt);
+                            delete group.tags[oldPrompt];
+                            group.tags[newPrompt] = newName;
+                            if (existingWeight !== undefined) {
+                                currentPrompts.delete(oldPrompt);
+                                currentPrompts.set(newPrompt, existingWeight);
+                            }
+                            translationMap.delete(oldPrompt);
+                            translationMap.set(newPrompt, newName);
+                            updateNodePrompt();
+                            renderAllButtons();
+                            savePromptsToBackend(currentData);
+                        });
+                    }}));
+                }
                 promptContainer.appendChild(promptBtn);
             }
             groupContainer.appendChild(promptContainer); tagArea.appendChild(groupContainer);
@@ -785,7 +1047,7 @@ function translateSelectedTags() {
         mainTabs.innerHTML = "";
         data.forEach((categoryData, index) => {
             const navBtn = $el("button", { textContent: categoryData.name, className: `zml-prompt-ui-nav-btn ${index === activeCategoryIndex ? 'active' : ''}`, onclick: () => { activeCategoryIndex = index; activeGroupIndex = 0; renderAllButtons(); } });
-            if (isEditMode) { navBtn.appendChild($el("span", { textContent: "×", className: "zml-prompt-ui-edit-delete-btn", onclick: (e) => { e.stopPropagation(); if (confirm(`确定要删除一级分类 '${categoryData.name}' 吗？`)) { pushHistory(); currentData.splice(index, 1); activeCategoryIndex = 0; activeGroupIndex = 0; renderAllButtons(); savePromptsToBackend(currentData); } }})); }
+            if (isEditMode && editAction === 'delete') { navBtn.appendChild($el("span", { textContent: "×", className: "zml-prompt-ui-edit-delete-btn", onclick: (e) => { e.stopPropagation(); if (confirm(`确定要删除一级分类 '${categoryData.name}' 吗？`)) { pushHistory(); currentData.splice(index, 1); activeCategoryIndex = 0; activeGroupIndex = 0; renderAllButtons(); savePromptsToBackend(currentData); } }})); } else if (isEditMode && editAction === 'edit') { navBtn.appendChild($el("span", { textContent: "✎", className: "zml-prompt-ui-edit-edit-btn", onclick: (e) => { e.stopPropagation(); showInputDialog("编辑一级分类", [{ label: "分类名称", placeholder: "请输入分类名...", id: "name", value: categoryData.name }], (v) => { const newName = (v.name || "").trim(); if (!newName) { alert("分类名称不能为空"); return; } pushHistory(); categoryData.name = newName; renderAllButtons(); savePromptsToBackend(currentData); }); } })); }
             mainTabs.appendChild(navBtn);
         });
         if (data.length > 0) { if (activeCategoryIndex >= data.length) activeCategoryIndex = 0; renderSubNavAndTags(data[activeCategoryIndex].groups); } else { renderSubNavAndTags([]); }
@@ -793,8 +1055,8 @@ function translateSelectedTags() {
     const renderSubNavAndTags = (groups) => { /* ... 此函数未改变 ... */
         subNav.innerHTML = ""; tagArea.innerHTML = ""; if (!groups) groups = [];
         if (activeGroupIndex >= groups.length) activeGroupIndex = 0;
-        groups.forEach((group, index) => { if (group.name) subNav.appendChild($el("button", { textContent: group.name, className: `zml-prompt-ui-nav-btn ${index === activeGroupIndex ? 'active' : ''}`, onclick: () => { activeGroupIndex = index; renderSubNavAndTags(groups); } })); });
-        subNav.appendChild($el("button", { textContent: "+ 新增二级栏目", className: "zml-prompt-ui-btn zml-prompt-ui-btn-add", onclick: () => showInputDialog("新增二级分类", [{ label: "分类名称", placeholder: "请输入分类名...", id: "name" }], (v) => { if (v.name && currentData[activeCategoryIndex]) { const g = { name: v.name, tags: {} }; currentData[activeCategory-index].groups.push(g); activeGroupIndex = currentData[activeCategory-index].groups.length - 1; renderAllButtons(); savePromptsToBackend(currentData); } })}));
+        groups.forEach((group, index) => { if (group.name) { const navBtn = $el("button", { textContent: group.name, className: `zml-prompt-ui-nav-btn ${index === activeGroupIndex ? 'active' : ''}`, onclick: () => { activeGroupIndex = index; renderSubNavAndTags(groups); } }); if (isEditMode && editAction === 'edit') { navBtn.appendChild($el("span", { textContent: "✎", className: "zml-prompt-ui-edit-edit-btn", onclick: (e) => { e.stopPropagation(); showInputDialog("编辑二级分类", [{ label: "分类名称", placeholder: "请输入分类名...", id: "name", value: group.name }], (v) => { const newName = (v.name || "").trim(); if (!newName) { alert("分类名称不能为空"); return; } pushHistory(); group.name = newName; renderAllButtons(); savePromptsToBackend(currentData); }); } })); } subNav.appendChild(navBtn); } });
+        subNav.appendChild($el("button", { textContent: "+ 新增二级栏目", className: "zml-prompt-ui-btn zml-prompt-ui-btn-add", onclick: () => showInputDialog("新增二级分类", [{ label: "分类名称", placeholder: "请输入分类名...", id: "name" }], (v) => { if (v.name && currentData[activeCategoryIndex]) { const g = { name: v.name, tags: {} }; currentData[activeCategoryIndex].groups.push(g); activeGroupIndex = currentData[activeCategoryIndex].groups.length - 1; renderAllButtons(); savePromptsToBackend(currentData); } })}));
         if (groups.length > 0 && groups[activeGroupIndex]) { renderGroupTags([groups[activeGroupIndex]]); }
     };
     
@@ -825,48 +1087,17 @@ function translateSelectedTags() {
         document.body.append(backdrop, dialog); backdrop.onclick = closeDialog;
     }
     
-    api.fetchApi(`${PROMPT_API_PREFIX}/get_prompts`).then(r => r.json()).then(d => { if (d.error) { tagArea.textContent = `加载失败: ${d.error}`; return; } currentData = d; renderAllButtons(); 
-        // 实现自动翻译功能：打开UI时自动翻译一次，然后每隔1秒自动翻译一次，一共三次
-        let translateCount = 0;
-        const autoTranslate = () => {
-            if (translateCount >= 3) return;
-            
-            let translatedCount = 0;
-            // 遍历当前选中的所有提示词
-            currentPrompts.forEach((_, prompt) => {
-                // 如果提示词还没有中文翻译
-                if (!translationMap.has(prompt)) {
-                    // 在currentData中查找对应的中文翻译
-                    for (const category of currentData) {
-                        for (const group of category.groups) {
-                            if (group.tags && group.tags[prompt]) {
-                                // 找到翻译后更新translationMap
-                                translationMap.set(prompt, group.tags[prompt]);
-                                translatedCount++;
-                                break;
-                            }
-                        }
-                    }
-                }
-            });
-            
-            // 如果本次翻译了新的内容，重新渲染标签
-            if (translatedCount > 0) {
-                renderSelectedTags();
-                console.log(`自动翻译完成，本次翻译了 ${translatedCount} 个标签`);
-                // 移除自动翻译的消息提示
-            }
-            
-            translateCount++;
-            // 如果还需要继续翻译，设置1秒后再次执行
-            if (translateCount < 3) {
-                setTimeout(autoTranslate, 1000);
-            }
-        };
-        
-        // 开始第一次自动翻译
-        autoTranslate();
-    }).catch(e => { tagArea.textContent = `加载失败: ${e}`; console.error(e); });
+    api.fetchApi(`${PROMPT_API_PREFIX}/get_prompts`).then(r => r.json()).then(d => { if (d.error) { tagArea.textContent = `加载失败: ${d.error}`; return; } currentData = d; renderAllButtons();
+    // 延迟一秒后自动为已选标签执行一次翻译
+    setTimeout(() => {
+        try {
+            autoTranslateSelectedTags();
+        } catch (err) {
+            console.error("自动翻译失败:", err);
+        }
+    }, 1000);
+    
+}).catch(e => { tagArea.textContent = `加载失败: ${e}`; console.error(e); });
 }
 
 app.registerExtension({

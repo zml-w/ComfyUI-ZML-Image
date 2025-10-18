@@ -737,7 +737,36 @@ function showPainterModal(node, widget) {
                         border: solid 1px #d58512;
                     }
 
-                    /* 侧边功能面板基类 */
+                    /* 不透明度滑块样式 */
+                #zml-opacity-slider {
+                    width: 100px;
+                    -webkit-appearance: none;
+                    appearance: none;
+                    height: 6px;
+                    background: #555;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    outline: none;
+                }
+                #zml-opacity-slider::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 16px; height: 16px;
+                    border-radius: 50%;
+                    background: #0080ff;
+                    cursor: pointer;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+                    margin-top: -5px;
+                    border: solid 1px #0066cc;
+                }
+                #zml-opacity-slider::-moz-range-thumb {
+                    width: 16px; height: 16px;
+                    border-radius: 50%;
+                    background: #0080ff;
+                    cursor: pointer;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+                    border: solid 1px #0066cc;
+                }
                     .zml-side-panel {
                         background: #3a3a3a; /* 工具栏背景 */
                         padding: 8px; border-radius: 8px; /* 工具栏圆角和内边距 */
@@ -756,8 +785,12 @@ function showPainterModal(node, widget) {
 
                     /* 快速颜色球样式 */
                     .zml-quick-colors {
-                        display: flex; flex-direction: column; gap: 7px;
-                    }
+                         display: flex; 
+                         flex-direction: column; 
+                         gap: 7px;
+                         align-items: center; /* 水平居中 */
+                         width: 100%; /* 确保占满容器宽度 */
+                      }
                     .zml-color-ball {
                         width: 24px; height: 24px;
                         border-radius: 50%; 
@@ -814,9 +847,10 @@ function showPainterModal(node, widget) {
                     }
                 </style>
                 
-                <!-- 左侧快速颜色球 -->
+                <!-- 左侧面板 - 包含颜色球和功能按钮 -->
                 <div class="zml-side-panel">
-                    <div class="zml-quick-colors">
+                    <!-- 快速颜色球 -->
+                    <div class="zml-quick-colors" style="display: flex; justify-content: center;">
                         <button class="zml-color-ball" data-color="#FFFFFF" style="background-color: #FFFFFF;" title="白色"></button>
                         <button class="zml-color-ball" data-color="#000000" style="background-color: #000000;" title="黑色"></button>
                         <button class="zml-color-ball" data-color="#FF0000" style="background-color: #FF0000;" title="红色"></button>
@@ -824,6 +858,44 @@ function showPainterModal(node, widget) {
                         <button class="zml-color-ball" data-color="#0000FF" style="background-color: #0000FF;" title="蓝色"></button>
                         <button class="zml-color-ball" data-color="#FFFF00" style="background-color: #FFFF00;" title="黄色"></button>
                     </div>
+                    
+                    <!-- 分隔线 -->
+                     <div style="height: 1px; background-color: #555; margin: 20px 0;"></div>
+                    
+                    <!-- 功能按钮 - 竖向排列 -->
+                    <style>
+                        /* 1:1方形按钮样式 */
+                        .zml-square-btn {
+                            width: 40px;
+                            height: 40px;
+                            padding: 0;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            background-color: #555555;
+                            border: 1px solid #777777;
+                            border-radius: 4px;
+                            color: white;
+                            font-size: 14px;
+                            cursor: pointer;
+                            transition: all 0.2s ease;
+                            box-sizing: border-box;
+                            text-align: center;
+                            margin-bottom: 8px;
+                            margin-left: auto;
+                            margin-right: auto;
+                        }
+                        .zml-square-btn:hover {
+                            background-color: #666666;
+                            border-color: #999999;
+                        }
+                        .zml-square-btn:active {
+                            background-color: #444444;
+                        }
+                    </style>
+                    <button id="zml-reset-view-btn" class="zml-square-btn" title="重置视角">重置</button>
+                    <button id="zml-undo-paint-btn" class="zml-square-btn" title="撤销上一次操作">撤销</button>
+                    <button id="zml-clear-paint-btn" class="zml-square-btn" title="清空画面">清空</button>
                 </div>
 
                 <!-- 中间主内容区 -->
@@ -831,7 +903,7 @@ function showPainterModal(node, widget) {
                     <div class="zml-editor-main" id="zml-editor-main-container">
                         <canvas id="zml-fabric-canvas" class="zml-hidden-canvas"></canvas>
                     </div>
-                    <p id="zml-editor-tip" class="zml-editor-tip">按住Ctrl+滚轮缩放, 按住Ctrl+左键拖拽平移。画笔模式：按住鼠标左键绘制。</p>
+                    <p id="zml-editor-tip" class="zml-editor-tip">按住Ctrl+滚轮缩放, 按住Ctrl+左键拖拽平移，Ctrl+Z撤回。画笔模式：按住鼠标左键绘制。</p>
                     
                     <div id="zml-painter-bottom-panel" class="zml-painter-bottom-panel">
                         <div class="zml-control-group">
@@ -839,13 +911,14 @@ function showPainterModal(node, widget) {
                             <input type="color" id="zml-color-picker" class="zml-styled-input" value="#FF0000">
                         </div>
                         <div class="zml-control-group">
+                            <label for="zml-opacity-slider" class="zml-control-label">不透明度:</label>
+                            <input type="range" id="zml-opacity-slider" class="zml-styled-input" min="1" max="100" value="100">
+                        </div>
+                        <div class="zml-control-group">
                             <label for="zml-brush-size" class="zml-control-label">大小:</label>
                             <input type="range" id="zml-brush-size" class="zml-styled-input" min="1" max="100" value="10">
                         </div>
                         <div class="zml-control-group zml-action-buttons">
-                            <button id="zml-reset-view-btn" class="zml-editor-btn zml-option-btn">重置视角</button> 
-                            <button id="zml-undo-paint-btn" class="zml-editor-btn zml-option-btn">撤销</button>
-                            <button id="zml-clear-paint-btn" class="zml-editor-btn zml-option-btn">清空</button>
                             <button id="zml-confirm-paint-btn" class="zml-editor-btn zml-confirm-btn">确认</button>
                             <button id="zml-cancel-paint-btn" class="zml-editor-btn zml-cancel-btn">取消</button>
                         </div>
@@ -905,10 +978,10 @@ function showPainterModal(node, widget) {
     const canvasElement = modal.querySelector('#zml-fabric-canvas'); // 获取canvas元素
     const colorPicker = modal.querySelector('#zml-color-picker');
     const brushSizeSlider = modal.querySelector('#zml-brush-size');
+    const opacitySlider = modal.querySelector('#zml-opacity-slider'); // 不透明度滑块
     const quickColorBalls = modal.querySelectorAll('.zml-color-ball');
     const bottomPanel = modal.querySelector('#zml-painter-bottom-panel');
     const tipElement = modal.querySelector('#zml-editor-tip');
-
 
     loadScript(extensionBasePath + 'lib/fabric.min.js').then(() => {
         // Initialize canvas
@@ -942,6 +1015,27 @@ function showPainterModal(node, widget) {
         const fillBtn = modal.querySelector('#zml-fill-tool');
         const toolBtns = [brushBtn, rectBtn, triangleBtn, htriangleBtn, circleBtn, starBtn, heartBtn, mosaicBtn, imageStampBtn, arrowBtn];
 
+        // 辅助函数：将十六进制颜色转换为带透明度的RGBA格式
+        function hexToRgba(hex, alpha) {
+            // 移除可能的#前缀
+            hex = hex.replace(/^#/, '');
+            
+            // 解析十六进制颜色值
+            let r = 0, g = 0, b = 0;
+            if (hex.length === 6) {
+                r = parseInt(hex.substring(0, 2), 16);
+                g = parseInt(hex.substring(2, 4), 16);
+                b = parseInt(hex.substring(4, 6), 16);
+            } else if (hex.length === 3) {
+                r = parseInt(hex[0] + hex[0], 16);
+                g = parseInt(hex[1] + hex[1], 16);
+                b = parseInt(hex[2] + hex[2], 16);
+            }
+            
+            // 返回RGBA格式字符串
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
         // --- 全局Ctrl键监听 --- 
         let isCtrlKeyPressed = false;
         let isHandToolMode = false; // 抓手模式标志
@@ -954,8 +1048,9 @@ function showPainterModal(node, widget) {
                     if (!canvas.freeDrawingBrush) {
                         canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
                     }
+                    const opacityValue = parseInt(opacitySlider.value) / 100;
                     canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
-                    canvas.freeDrawingBrush.color = colorPicker.value;
+                    canvas.freeDrawingBrush.color = hexToRgba(colorPicker.value, opacityValue);
                     canvas.freeDrawingBrush.strokeLineJoin = 'round';
                     canvas.freeDrawingBrush.strokeLineCap = 'round';
                     canvas.defaultCursor = 'crosshair';
@@ -1016,20 +1111,52 @@ function showPainterModal(node, widget) {
         toolBtns.forEach(btn => btn.onclick = () => setActiveTool(btn));
         fillBtn.onclick = () => { isFillMode = !isFillMode; fillBtn.classList.toggle('active', isFillMode); };
 
-        // --- Undo/Redo and Data Management ---
+        // --- Undo/Redo and Data Management ---        
         function saveStateForUndo() {
-            undoStack.push({
+            // 创建当前状态的深拷贝
+            const currentState = {
                 paths: JSON.parse(JSON.stringify(drawPaths)),
                 mosaics: JSON.parse(JSON.stringify(mosaicRects)),
                 stamps: JSON.parse(JSON.stringify(imageStamps))
-            });
+            };
+            
+            // 限制撤销栈的大小，防止内存占用过大
+            const MAX_UNDO_STACK_SIZE = 50;
+            if (undoStack.length >= MAX_UNDO_STACK_SIZE) {
+                undoStack.shift(); // 移除最旧的状态
+            }
+            
+            // 将状态添加到撤销栈
+            undoStack.push(currentState);
         }
+        // 优化恢复状态函数，确保在恢复过程中不会显示中间状态
         function restoreState(state) {
+            // 在更新数据前先隐藏画布，避免中间状态显示
+            const canvasElement = canvas.getElement();
+            const originalDisplay = canvasElement.style.display;
+            canvasElement.style.display = 'none';
+            
+            // 更新数据
             drawPaths = state.paths;
             mosaicRects = state.mosaics;
             imageStamps = state.stamps;
-            renderAllDrawings();
+            
+            // 使用requestAnimationFrame确保在下一帧渲染，避免视觉闪烁
+            requestAnimationFrame(() => {
+                // 重新渲染
+                renderAllDrawings();
+                
+                // 重新显示画布
+                canvasElement.style.display = originalDisplay;
+            });
         }
+        
+        // 初始化时添加一个空状态
+        undoStack = [{
+            paths: [],
+            mosaics: [],
+            stamps: []
+        }];
 
         const img = new Image();
         img.src = imageUrl;
@@ -1111,10 +1238,22 @@ function showPainterModal(node, widget) {
             modal.querySelector('#zml-reset-view-btn').onclick = resetView;
 
             try {
-                const existingData = JSON.parse(widget.data.value);
-                drawPaths = existingData.draw_paths || [];
-                mosaicRects = existingData.mosaic_rects || [];
-                imageStamps = existingData.image_stamps || [];
+                // 检查节点是否有'清空绘制内容'参数且值为true
+                const clearContentWidget = node.widgets.find(w => w.name === "清空绘制内容");
+                const shouldClearContent = clearContentWidget && clearContentWidget.value;
+                
+                if (shouldClearContent) {
+                    // 如果启用了清空绘制内容，则使用空数据
+                    drawPaths = [];
+                    mosaicRects = [];
+                    imageStamps = [];
+                } else {
+                    // 否则尝试加载已保存的数据
+                    const existingData = JSON.parse(widget.data.value);
+                    drawPaths = existingData.draw_paths || [];
+                    mosaicRects = existingData.mosaic_rects || [];
+                    imageStamps = existingData.image_stamps || [];
+                }
             } catch (e) { /* ignore */ }
             
             // 确保在背景图加载且canvas已正确设置尺寸后，再渲染之前的绘制
@@ -1206,7 +1345,8 @@ function showPainterModal(node, widget) {
         }
 
         canvas.isDrawingMode = true;
-        canvas.freeDrawingBrush.color = colorPicker.value;
+        const initialOpacity = parseInt(opacitySlider.value) / 100; // 获取初始不透明度
+        canvas.freeDrawingBrush.color = hexToRgba(colorPicker.value, initialOpacity);
         canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
         canvas.freeDrawingBrush.decimate = 1;
 
@@ -1235,7 +1375,6 @@ function showPainterModal(node, widget) {
         updateDisplayBorderColor(colorPicker.value); // 初始化边框颜色
 
         canvas.on('path:created', (e) => {
-            saveStateForUndo();
             const path = e.path;
             canvas.remove(path); // 移除临时 Fabric.js 路径，因为我们要存储原始图像坐标
             
@@ -1271,6 +1410,8 @@ function showPainterModal(node, widget) {
                     isFill: false
                 };
                 drawPaths.push(pathData);
+                // 在这里保存状态，而不是在其他地方重复保存
+                saveStateForUndo();
                 renderAllDrawings(); // 重新渲染所有绘制，包括新路径
             }
         });
@@ -1296,9 +1437,10 @@ function showPainterModal(node, widget) {
                     // 临时关闭再重新打开画笔模式，强制重新初始化
                     canvas.isDrawingMode = false;
                     // 完全重置画笔属性
+                    const opacityValue = parseInt(opacitySlider.value) / 100;
                     canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
                     canvas.freeDrawingBrush.width = currentBrushWidth;
-                    canvas.freeDrawingBrush.color = currentBrushColor;
+                    canvas.freeDrawingBrush.color = hexToRgba(currentBrushColor, opacityValue);
                     canvas.freeDrawingBrush.strokeLineJoin = 'round';
                     canvas.freeDrawingBrush.strokeLineCap = 'round';
                     canvas.isDrawingMode = true;
@@ -1388,9 +1530,10 @@ function showPainterModal(node, widget) {
                     if (drawingMode === 'brush') {
                         canvas.isDrawingMode = true;
                         if (!canvas.freeDrawingBrush) {
+                            const opacityValue = parseInt(opacitySlider.value) / 100;
                             canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
                             canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
-                            canvas.freeDrawingBrush.color = colorPicker.value;
+                            canvas.freeDrawingBrush.color = hexToRgba(colorPicker.value, opacityValue);
                             canvas.freeDrawingBrush.strokeLineJoin = 'round';
                             canvas.freeDrawingBrush.strokeLineCap = 'round';
                         }
@@ -1438,9 +1581,10 @@ function showPainterModal(node, widget) {
                     canvas.isDrawingMode = true;
                     // 重新创建画笔对象，确保画笔功能完全恢复
                     if (!canvas.freeDrawingBrush) {
+                        const opacityValue = parseInt(opacitySlider.value) / 100;
                         canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
                         canvas.freeDrawingBrush.width = parseInt(brushSizeSlider.value);
-                        canvas.freeDrawingBrush.color = colorPicker.value;
+                        canvas.freeDrawingBrush.color = hexToRgba(colorPicker.value, opacityValue);
                         canvas.freeDrawingBrush.strokeLineJoin = 'round';
                         canvas.freeDrawingBrush.strokeLineCap = 'round';
                     }
@@ -1453,8 +1597,7 @@ function showPainterModal(node, widget) {
             }
             if (isDrawingShape && currentShape) {
                 isDrawingShape = false;
-                saveStateForUndo();
-                // 存储原始坐标，反向缩放所有坐标
+                // 先存储路径数据，然后再保存状态
                 if (drawingMode === 'mosaic') {
                     mosaicRects.push({ 
                         x: currentShape.left / initialDisplayScale, 
@@ -1472,7 +1615,7 @@ function showPainterModal(node, widget) {
                             [currentShape.left + currentShape.width, currentShape.top + currentShape.height], 
                             [currentShape.left, currentShape.top + currentShape.height], 
                             [currentShape.left, currentShape.top]
-                        ].map(p => [ // 将绘制后的点反向缩放
+                        ].map(p => [ 
                             (p[0] / initialDisplayScale), 
                             (p[1] / initialDisplayScale)
                         ]);
@@ -1495,30 +1638,92 @@ function showPainterModal(node, widget) {
                     }
                     if (pathData.points.length > 1) drawPaths.push(pathData);
                 }
+                saveStateForUndo(); // 现在才保存状态，确保包含最新绘制的数据
                 canvas.remove(currentShape); currentShape = null;
                 renderAllDrawings();
             }
         });
 
-        modal.querySelector('#zml-undo-paint-btn').onclick = () => { if (undoStack.length > 1) { undoStack.pop(); restoreState(undoStack[undoStack.length - 1]); } };
+        modal.querySelector('#zml-undo-paint-btn').onclick = () => { 
+            if (undoStack.length > 1) { 
+                // 一次性完成撤销操作，避免中间状态被显示
+                const previousState = undoStack[undoStack.length - 2];
+                
+                // 复制一份完整的状态，确保状态一致性
+                const stateToRestore = {
+                    paths: JSON.parse(JSON.stringify(previousState.paths)),
+                    mosaics: JSON.parse(JSON.stringify(previousState.mosaics)),
+                    stamps: JSON.parse(JSON.stringify(previousState.stamps))
+                };
+                
+                // 移除当前状态
+                undoStack.pop();
+                
+                // 恢复到上一个状态
+                restoreState(stateToRestore);
+            }
+        };
         modal.querySelector('#zml-clear-paint-btn').onclick = () => { saveStateForUndo(); drawPaths = []; mosaicRects = []; imageStamps = []; renderAllDrawings(); };
         colorPicker.onchange = (e) => { // 当主颜色选择器改变时
             const newColor = e.target.value;
-            canvas.freeDrawingBrush.color = newColor;
+            const opacityValue = parseInt(opacitySlider.value) / 100;
+            canvas.freeDrawingBrush.color = hexToRgba(newColor, opacityValue);
             updateActiveColorBall(newColor); // 更新颜色球的激活状态
             updateDisplayBorderColor(newColor); // 更新图像显示区域的边框颜色
         };
         brushSizeSlider.oninput = (e) => { canvas.freeDrawingBrush.width = parseInt(e.target.value); };
-
+        // 不透明度滑块事件监听
+        opacitySlider.oninput = (e) => {
+            const opacityValue = parseInt(e.target.value) / 100; // 将0-100转换为0-1
+            if (canvas.freeDrawingBrush) {
+                canvas.freeDrawingBrush.color = hexToRgba(colorPicker.value, opacityValue);
+            }
+        };
         quickColorBalls.forEach(ball => { // 为每个颜色球添加点击事件
             ball.onclick = () => {
                 const selectedColor = ball.dataset.color;
+                const opacityValue = parseInt(opacitySlider.value) / 100;
                 colorPicker.value = selectedColor; // 更新主颜色选择器
-                canvas.freeDrawingBrush.color = selectedColor; // 更新画笔颜色
+                canvas.freeDrawingBrush.color = hexToRgba(selectedColor, opacityValue); // 更新画笔颜色
                 updateActiveColorBall(selectedColor); // 更新颜色球的激活状态
                 updateDisplayBorderColor(selectedColor); // 更新图像显示区域的边框颜色
             };
         });
+
+        // 添加键盘事件监听器以支持Ctrl+z撤销操作
+        function handleKeyDown(e) {
+            // 只有在模态框打开时才处理快捷键
+            if (document.body.contains(modal) && (e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault(); // 阻止默认浏览器行为
+                // 与撤销按钮使用相同的优化撤销逻辑
+                if (undoStack.length > 1) {
+                    const previousState = undoStack[undoStack.length - 2];
+                    
+                    // 复制一份完整的状态，确保状态一致性
+                    const stateToRestore = {
+                        paths: JSON.parse(JSON.stringify(previousState.paths)),
+                        mosaics: JSON.parse(JSON.stringify(previousState.mosaics)),
+                        stamps: JSON.parse(JSON.stringify(previousState.stamps))
+                    };
+                    
+                    // 移除当前状态
+                    undoStack.pop();
+                    
+                    // 恢复到上一个状态
+                    restoreState(stateToRestore);
+                }
+            }
+        }
+        
+        // 在模态框打开时添加事件监听器
+        document.addEventListener('keydown', handleKeyDown);
+        
+        // 确保在模态框关闭时移除事件监听器，防止内存泄漏
+        const originalCloseModal = closeModal;
+        closeModal = function(modalElement) {
+            document.removeEventListener('keydown', handleKeyDown);
+            originalCloseModal(modalElement);
+        };
 
         modal.querySelector('#zml-confirm-paint-btn').onclick = () => {
             widget.data.value = JSON.stringify({ draw_paths: drawPaths, mosaic_rects: mosaicRects, image_stamps: imageStamps });

@@ -668,6 +668,132 @@ app.registerExtension({
                 mainImage.className = "zml-main-image";
                 singleImageContainer.appendChild(mainImage);
                 
+                // 变量声明
+                let isSingleImageMode = false;
+                
+                // 创建放大镜按钮
+                const zoomButton = document.createElement("button");
+                zoomButton.className = "zml-zoom-button";
+                zoomButton.style.cssText = `
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    width: 32px;
+                    height: 32px;
+                    background-color: rgba(0, 0, 0, 0.7);
+                    color: white;
+                    border: none;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 18px;
+                    font-weight: bold;
+                    z-index: 20;
+                    transition: all 0.2s ease;
+                `;
+                zoomButton.textContent = "🔍";
+                zoomButton.onmouseover = () => {
+                    zoomButton.style.backgroundColor = "rgba(0, 0, 0, 0.9)";
+                    zoomButton.style.transform = "scale(1.1)";
+                };
+                zoomButton.onmouseout = () => {
+                    zoomButton.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+                    zoomButton.style.transform = "scale(1)";
+                };
+                singleImageContainer.appendChild(zoomButton);
+                
+                // 创建图像查看弹窗
+                const createImageViewerModal = () => {
+                    // 检查弹窗是否已存在
+                    let modal = document.getElementById('zml-image-viewer-modal');
+                    if (!modal) {
+                        modal = document.createElement('div');
+                        modal.id = 'zml-image-viewer-modal';
+                        modal.style.cssText = `
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                            background-color: rgba(0, 0, 0, 0.9);
+                            display: none;
+                            z-index: 1000;
+                            margin: 0;
+                            box-sizing: border-box;
+                            overflow: auto;
+                        `;
+                        
+                        const modalContent = document.createElement('div');
+                        modalContent.style.cssText = `
+                            position: relative;
+                            width: 100%;
+                            height: 100%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            box-sizing: border-box;
+                            padding: 20px;
+                        `;
+                        
+                        const modalImage = document.createElement('img');
+                        modalImage.style.cssText = `
+                            max-width: 100%;
+                            max-height: calc(100vh - 60px); /* 为关闭按钮留出空间 */
+                            width: auto;
+                            height: auto;
+                            object-fit: contain;
+                            display: block;
+                            margin: 0 auto;
+                        `;
+                        
+                        const closeButton = document.createElement('button');
+                        closeButton.style.cssText = `
+                            position: fixed;
+                            top: 50px;
+                            right: 50px;
+                            background-color: #ff4d4d;
+                            color: white;
+                            border: 2px solid white;
+                            border-radius: 4px;
+                            padding: 10px 20px;
+                            cursor: pointer;
+                            font-size: 18px;
+                            z-index: 10001;
+                            min-width: 80px;
+                            text-align: center;
+                        `;
+                        closeButton.textContent = '关闭';
+                        closeButton.onclick = () => {
+                            modal.style.display = 'none';
+                        };
+                        
+                        // 点击模态框背景关闭
+                        modal.onclick = (e) => {
+                            if (e.target === modal) {
+                                modal.style.display = 'none';
+                            }
+                        };
+                        
+                        modalContent.appendChild(modalImage);
+                        modalContent.appendChild(closeButton);
+                        modal.appendChild(modalContent);
+                        document.body.appendChild(modal);
+                    }
+                    return modal;
+                };
+                
+                // 放大镜按钮点击事件
+                zoomButton.onclick = () => {
+                    if (isSingleImageMode && mainImage.src) {
+                        const modal = createImageViewerModal();
+                        const modalImage = modal.querySelector('img');
+                        modalImage.src = mainImage.src;
+                        modal.style.display = 'flex';
+                    }
+                };
+                
                 // 创建左切换按钮
                 const prevButton = document.createElement("button");
                 prevButton.textContent = "‹";
@@ -682,8 +808,6 @@ app.registerExtension({
                 
                 let currentImageIndex = 0;
                 let allImages = [];
-                
-                let isSingleImageMode = false;
                 let channelNumberElement = null;
                 
                 // 创建通道序号元素
