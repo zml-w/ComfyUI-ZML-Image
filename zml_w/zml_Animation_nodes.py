@@ -748,6 +748,60 @@ class ZML_PreviewBridgeV2:
                 print(f"从本地加载图像失败: {e}")
         return None
 
+class ZML_PromptTokenBalancer:
+    """
+    提示词token统一节点
+    - 输入：正面条件、负面条件（可选接口，文本，逗号分隔），填充正面、填充负面（必填文本框，分别用于补齐对应一侧）
+    - 输出：正面条件、负面条件（按逗号分隔的tag数量尽量保持一致）
+    示例：
+      填充负面 = "nsfw"，正面 = "1girl,solo,hug"，负面 = "sex"  => 负面输出："sex,nsfw,nsfw"
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "填充正面": ("STRING", {"multiline": False, "default": "", "placeholder": "用于填充正面，例如: pretty"}),
+                "填充负面": ("STRING", {"multiline": False, "default": "", "placeholder": "用于填充负面，例如: nsfw"}),
+            },
+            "optional": {
+                "正面条件": ("STRING", {"forceInput": True}),
+                "负面条件": ("STRING", {"forceInput": True}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("正面条件", "负面条件")
+    FUNCTION = "balance"
+
+    def _split_tags(self, text: str):
+        t = (text or "").replace("\n", ",").replace("\r", ",").replace("，", ",")
+        return [p.strip() for p in t.split(",") if p.strip()]
+
+    def _join_tags(self, tags):
+        return ",".join(tags)
+
+    def balance(self, 填充正面, 填充负面, 正面条件=None, 负面条件=None):
+        pos = self._split_tags(正面条件 or "")
+        neg = self._split_tags(负面条件 or "")
+        pos_fillers = self._split_tags(填充正面)
+        neg_fillers = self._split_tags(填充负面)
+        pos_filler = pos_fillers[0] if pos_fillers else ""
+        neg_filler = neg_fillers[0] if neg_fillers else ""
+
+        # 如果正负长度不同，分别使用对应的填充项进行补齐
+        if len(pos) > len(neg):
+            diff = len(pos) - len(neg)
+            if neg_filler:
+                neg.extend([neg_filler] * diff)
+        elif len(neg) > len(pos):
+            diff = len(neg) - len(pos)
+            if pos_filler:
+                pos.extend([pos_filler] * diff)
+
+        return (self._join_tags(pos), self._join_tags(neg))
+
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageTransition": ZML_ImageTransition,
     "ZML_ImageEncryption": ZML_ImageEncryption,
@@ -755,6 +809,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MaskStroke": ZML_MaskStroke,
     "ZML_PreviewImage": ZML_PreviewImage,
     "ZML_PreviewBridgeV2": ZML_PreviewBridgeV2,
+    "ZML_PromptTokenBalancer": ZML_PromptTokenBalancer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -764,4 +819,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MaskStroke": "ZML_遮罩描边",
     "ZML_PreviewImage": "ZML_预览图像",
     "ZML_PreviewBridgeV2": "ZML_桥接预览图像",
+    "ZML_PromptTokenBalancer": "ZML_提示词token统一",
 }
