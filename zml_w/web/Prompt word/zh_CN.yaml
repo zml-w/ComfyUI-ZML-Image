@@ -9,7 +9,6 @@
       2boys: 2男孩
       3girls: 3女孩
       3boys: 3男孩
-      boy: 男孩
       solo: 单人
       multiple_girls: 多个女孩
       little_girl: 小女孩
@@ -4565,7 +4564,7 @@
   - name: R18词
     color: null
     tags:
-      '69': 69式
+      '69': '69'
       tentacle: 触手
       hairjob: 发交
       oral/fellatio: 口交
@@ -4726,8 +4725,4 @@
       faceless_male: 无脸男
       blood: 血
     tagWidth: 200
-    fontSize: 30
-  - name: wan
-    color: ''
-    tags:
-      You can see the woman bouncing up and down on the man's erect penis: 女上位
+    fontSize: 16
