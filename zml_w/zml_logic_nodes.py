@@ -263,6 +263,267 @@ class ZML_SwitchOutput:
         
         return (output1, output2)
 
+# ============================== 任意开关-五节点 ==============================
+class ZML_AnyTypeSwitchFiveBoolean:
+    """
+    ZML 任意开关-五节点
+    输入任意五个值，根据五个布尔开关的状态决定是否将对应的输入传递到对应的输出
+    每个布尔开关为True时，对应的输入值将传递到对应的输出端口
+    输入值都是可选的，未提供时不会报错
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "输入1": (any_type, lazy_options),
+                "输入2": (any_type, lazy_options),
+                "输入3": (any_type, lazy_options),
+                "输入4": (any_type, lazy_options),
+                "输入5": (any_type, lazy_options),
+            },
+            "required": {
+                "开关1": ("BOOLEAN", {"default": True, "label_on": "开", "label_off": "关"}),
+                "开关2": ("BOOLEAN", {"default": False, "label_on": "开", "label_off": "关"}),
+                "开关3": ("BOOLEAN", {"default": False, "label_on": "开", "label_off": "关"}),
+                "开关4": ("BOOLEAN", {"default": False, "label_on": "开", "label_off": "关"}),
+                "开关5": ("BOOLEAN", {"default": False, "label_on": "开", "label_off": "关"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/逻辑"
+    RETURN_TYPES = (any_type, any_type, any_type, any_type, any_type)
+    RETURN_NAMES = ("输出1", "输出2", "输出3", "输出4", "输出5")
+    FUNCTION = "switch_outputs"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
+    
+    def check_lazy_status(self, **kwargs):
+        """告诉系统只需要哪些输入值"""
+        # 检查哪些开关是开启的
+        active_inputs = []
+        for i in range(1, 6):
+            switch_key = f"开关{i}"
+            input_key = f"输入{i}"
+            # 如果开关开启且输入存在，则需要该输入
+            if switch_key in kwargs and kwargs[switch_key] and input_key in kwargs:
+                active_inputs.append(input_key)
+        
+        return active_inputs if active_inputs else None
+    
+    def switch_outputs(self, 输入1=None, 输入2=None, 输入3=None, 输入4=None, 输入5=None,
+                      开关1=True, 开关2=False, 开关3=False, 开关4=False, 开关5=False):
+        """根据五个布尔开关的状态决定是否将对应的输入传递到对应的输出"""
+        # 导入ExecutionBlocker用于阻止未使用的输出执行
+        from comfy_execution.graph import ExecutionBlocker
+        
+        # 根据每个开关的状态决定对应的输出
+        outputs = []
+        inputs = [输入1, 输入2, 输入3, 输入4, 输入5]
+        switches = [开关1, 开关2, 开关3, 开关4, 开关5]
+        
+        for i in range(5):
+            if switches[i] and inputs[i] is not None:
+                outputs.append(inputs[i])
+            else:
+                outputs.append(ExecutionBlocker(None))
+        
+        return tuple(outputs)
+
+# ============================== 切换输出-五节点 ==============================
+class ZML_SwitchOutputFive:
+    """
+    ZML 切换输出-五节点
+    输入一个任意类型的值，根据索引值选择从哪个输出端口输出
+    索引值为1时，只有输出1有效，其他输出不会执行下游节点
+    索引值为2时，只有输出2有效，其他输出不会执行下游节点
+    以此类推，索引值范围为1-5
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "输入": (any_type, {}),
+                "索引": ("INT", {"default": 1, "min": 1, "max": 5, "step": 1, "description": "1-5=选择对应的输出端口"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/逻辑"
+    RETURN_TYPES = (any_type, any_type, any_type, any_type, any_type)
+    RETURN_NAMES = ("输出1", "输出2", "输出3", "输出4", "输出5")
+    FUNCTION = "switch_output"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
+    
+    def switch_output(self, 输入, 索引=1):
+        """根据索引值决定哪个输出端口有效"""
+        # 导入ExecutionBlocker用于阻止未使用的输出执行
+        from comfy_execution.graph import ExecutionBlocker
+        
+        # 确保索引在有效范围内
+        if not 1 <= 索引 <= 5:
+            索引 = 1  # 默认为1
+        
+        # 初始化所有输出为阻止状态
+        outputs = [ExecutionBlocker(None) for _ in range(5)]
+        
+        # 根据索引值设置对应的输出有效
+        outputs[索引 - 1] = 输入
+        
+        return tuple(outputs)
+
+# ============================== 下游节点开关 ==============================
+class ZML_DownstreamNodeSwitch:
+    """
+    ZML 下游节点开关
+    根据计数值控制下游节点的执行
+    计数值为n时，需要运行n次节点才会执行下游节点
+    输出当前执行次数作为计数
+    """
+    
+    # 使用静态变量存储计数器
+    _execution_count = 0
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "任意输入": (any_type, {}),
+                "计数": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1, "description": "妹妹"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/逻辑"
+    RETURN_TYPES = (any_type, "INT")
+    RETURN_NAMES = ("任意输出", "当前计数")
+    FUNCTION = "control_execution"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
+    
+    def control_execution(self, 任意输入, 计数=0):
+        """根据计数值和当前执行次数控制下游节点的执行"""
+        # 导入ExecutionBlocker用于阻止未使用的输出执行
+        from comfy_execution.graph import ExecutionBlocker
+        
+        # 确保计数是非负整数
+        计数 = max(0, 计数)
+        
+        # 更新执行计数器
+        ZML_DownstreamNodeSwitch._execution_count += 1
+        current_count = ZML_DownstreamNodeSwitch._execution_count
+        
+        # 判断是否执行下游节点
+        if 计数 == 0:
+            # 计数为0时，始终执行下游节点
+            output = 任意输入
+        else:
+            # 计数为n时，当前执行次数等于计数时执行下游节点
+            if current_count == 计数:
+                output = 任意输入
+                # 执行后重置计数器
+                ZML_DownstreamNodeSwitch._execution_count = 0
+            else:
+                output = ExecutionBlocker(None)
+        
+        return (output, current_count)
+
+# ============================== 运算判断节点 ==============================
+class ZML_ArithmeticComparison:
+    """
+    ZML 运算判断节点
+    只有当判断条件满足（A>B、A<B、A=B）时，才执行下游节点
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "任意输入": (any_type, {}),
+                "A": (any_type, {}),
+                "B": (any_type, {}),
+                "判断条件": (["A大于B", "A小于B", "A等于B"], {"default": "A大于B"}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像/逻辑"
+    RETURN_TYPES = (any_type, "BOOLEAN")
+    RETURN_NAMES = ("任意输出", "判断结果")
+    FUNCTION = "evaluate_and_gate"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
+
+    def evaluate_and_gate(self, 任意输入, A, B, 判断条件="A大于B"):
+        # 导入ExecutionBlocker用于阻止未满足条件时的输出执行
+        from comfy_execution.graph import ExecutionBlocker
+
+        def extract_resolution(x):
+            """尝试从输入中提取图像分辨率(宽, 高)。支持torch.Tensor或list/tuple中的tensor。
+            ComfyUI的IMAGE通常是BHWC，即[批次, 高, 宽, 通道]。"""
+            try:
+                # 如果是list/tuple，优先取其中的第一个tensor
+                if isinstance(x, (list, tuple)) and len(x) > 0:
+                    t = next((item for item in x if isinstance(item, torch.Tensor)), None)
+                    x = t if t is not None else x
+                
+                # 直接是tensor的情况
+                if isinstance(x, torch.Tensor):
+                    dims = x.dim()
+                    if dims == 4:  # [B, H, W, C]
+                        h = int(x.shape[1])
+                        w = int(x.shape[2])
+                        return (w, h)
+                    elif dims == 3:  # [H, W, C]
+                        h = int(x.shape[0])
+                        w = int(x.shape[1])
+                        return (w, h)
+                    elif dims == 2:  # [H, W]
+                        h = int(x.shape[0])
+                        w = int(x.shape[1])
+                        return (w, h)
+            except Exception:
+                return None
+            return None
+
+        result = False
+        try:
+            resA = extract_resolution(A)
+            resB = extract_resolution(B)
+
+            if resA is not None and resB is not None:
+                # 基于分辨率判断：等于=宽高都相等；大于/小于=按像素总数(面积)比较
+                if 判断条件 == "A等于B":
+                    result = (resA[0] == resB[0] and resA[1] == resB[1])
+                elif 判断条件 == "A大于B":
+                    result = (resA[0] * resA[1] > resB[0] * resB[1])
+                elif 判断条件 == "A小于B":
+                    result = (resA[0] * resA[1] < resB[0] * resB[1])
+            else:
+                # 非图像或无法解析分辨率，回退到常规比较逻辑
+                if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+                    # 逐元素比较：只有在形状相同时判断
+                    if A.shape == B.shape:
+                        if 判断条件 == "A等于B":
+                            result = torch.equal(A, B)
+                        elif 判断条件 == "A大于B":
+                            result = bool(torch.all(A > B))
+                        elif 判断条件 == "A小于B":
+                            result = bool(torch.all(A < B))
+                    else:
+                        # 形状不同，等于为False；> / < 无法逐元素成立，保持False
+                        result = False
+                else:
+                    # 处理其他可比较类型
+                    if 判断条件 == "A等于B":
+                        result = (A == B)
+                    elif 判断条件 == "A大于B":
+                        result = (A > B)
+                    elif 判断条件 == "A小于B":
+                        result = (A < B)
+        except Exception:
+            # 比较失败时，认为条件不成立
+            result = False
+
+        # 条件成立则透传输入，否则阻断下游执行
+        output = 任意输入 if result else ExecutionBlocker(None)
+        return (output, result)
+
 # 节点注册
 NODE_CLASS_MAPPINGS = {
     "ZML_BooleanInverter": ZML_BooleanInverter,
@@ -270,6 +531,10 @@ NODE_CLASS_MAPPINGS = {
     "ZML_AnyTypeSwitch": ZML_AnyTypeSwitch,
     "ZML_AnyTypeSwitchFive": ZML_AnyTypeSwitchFive,
     "ZML_SwitchOutput": ZML_SwitchOutput,
+    "ZML_AnyTypeSwitchFiveBoolean": ZML_AnyTypeSwitchFiveBoolean,
+    "ZML_SwitchOutputFive": ZML_SwitchOutputFive,
+    "ZML_DownstreamNodeSwitch": ZML_DownstreamNodeSwitch,
+    "ZML_ArithmeticComparison": ZML_ArithmeticComparison,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -278,4 +543,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_AnyTypeSwitch": "ZML_任意切换",
     "ZML_AnyTypeSwitchFive": "ZML_任意切换_五",
     "ZML_SwitchOutput": "ZML_切换输出",
+    "ZML_AnyTypeSwitchFiveBoolean": "ZML_任意开关-五",
+    "ZML_SwitchOutputFive": "ZML_切换输出-五",
+    "ZML_DownstreamNodeSwitch": "ZML_下游节点开关",
+    "ZML_ArithmeticComparison": "ZML_运算判断",
 }

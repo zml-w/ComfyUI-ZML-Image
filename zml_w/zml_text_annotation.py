@@ -63,7 +63,7 @@ class ZML_AddTextWatermark:
                 "位置": (["左上", "中上", "右上", "左中", "居中", "右中", "左下", "中下", "右下", "全屏"],),
                 "水平边距": ("INT", {"default": 20, "min": 0, "max": 4096}),
                 "垂直边距": ("INT", {"default": 20, "min": 0, "max": 4096}),
-                "字符间距": ("INT", {"default": 0, "min": -50, "max": 100}),
+                "字符间距": ("INT", {"default": 10, "min": -50, "max": 100}),
                 "行间距": ("INT", {"default": 10, "min": -50, "max": 200}),
                 "描边宽度": ("INT", {"default": 1, "min": 0, "max": 100}), # 默认描边宽度1
                 "描边颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则不描边; 输入'ZML'为随机颜色"}), # 默认白色描边
@@ -402,7 +402,7 @@ class ZML_AddTextWatermark:
 class ZML_TextToImage:
     # 文本内容在文本图像区域内的缩放比例，100%表示使用全部可用区域
     TEXT_CONTENT_SCALE_PERCENTAGE = 0.9 
-    BATCH_INDEX_PLACEHOLDER = r"#(\d+(\.\d+)?):(\d+(\.\d+)?)#" # 正则表达式匹配 #start:step#
+    NAME_SEPARATOR = "#-#"  # 多图名称分隔符
 
     def __init__(self):
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
@@ -451,22 +451,22 @@ class ZML_TextToImage:
                 "文本": ("STRING", {"multiline": True, "default": "ZML_文本"}),
                 "字体": (fonts,),
                 "字体大小": ("INT", {"default": 48, "min": 1, "max": 1024}),
-                "颜色": ("STRING", {"default": "#000000", "placeholder": "留空为透明字体; 输入'ZML'为随机填充色"}), # 默认黑色
+                "颜色": ("STRING", {"default": "#000000", "placeholder": "留空为透明字体; 输入'ZML'为随机填充色"}),
                 "书写方向": (["横排", "竖排"],),
-                "字符间距": ("INT", {"default": 0, "min": -50, "max": 100}),
+                "字符间距": ("INT", {"default": 10, "min": -50, "max": 100}),
                 "行间距": ("INT", {"default": 10, "min": -50, "max": 200}),
-                "描边宽度": ("INT", {"default": 1, "min": 0, "max": 100}), # 默认描边宽度1
-                "描边颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则不描边; 输入'ZML'为随机颜色"}), # 默认白色描边
-                "背景颜色": (["白色", "黑色", "透明", "红色", "蓝色", "黄色", "绿色"], {"default": "白色"}), # 调整默认和顺序
-                "图像大小模式": (["根据字体大小决定图像尺寸", "根据图像尺寸决定字体大小", "字体大小和图像尺寸独立计算"], {"default": "根据字体大小决定图像尺寸"}), # 移除了"根据输入图像尺寸决定"选项
+                "描边宽度": ("INT", {"default": 3, "min": 0, "max": 100}), 
+                "描边颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则不描边; 输入'ZML'为随机颜色"}), 
+                "背景颜色": (["白色", "黑色", "透明", "红色", "蓝色", "黄色", "绿色"], {"default": "白色"}), 
+                "图像大小模式": (["根据字体大小决定图像尺寸", "根据图像尺寸决定字体大小", "字体大小和图像尺寸独立计算"], {"default": "根据字体大小决定图像尺寸"}), 
                 "图像宽": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
                 "图像高": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
-                "文本图像占比": ("FLOAT", {"default": 0.15, "min": 0.05, "max": 0.5, "step": 0.05}), # 新增文本图像占比选项
+                "文本图像占比": ("FLOAT", {"default": 0.15, "min": 0.05, "max": 0.5, "step": 0.05, "tooltip": "此参数仅在接入图像时生效"}), 
             },
             "optional": {
                 "输入图像": ("IMAGE", {"forceInput": True}),
-                "图像拼接方向": (["上", "下", "左", "右"], {"default": "左"}), # 移动到接缝选项上方
-                "多图模式图像接缝": ("INT", {"default": 10, "min": 0, "max": 256}), # 新增接缝选项
+                "图像拼接方向": (["上", "下", "左", "右"], {"default": "下", "tooltip": "此参数仅在接入图像时生效"}), 
+                "多图模式图像接缝": ("INT", {"default": 30, "min": 0, "max": 256, "tooltip": "此参数仅在接入图像时生效"}), 
             }
         }
 
@@ -739,9 +739,9 @@ class ZML_TextToImage:
 
         return best_fit_font_size
 
-    def generate_text_image(self, 文本, 字体, 字体大小, 颜色, 书写方向, 字符间距, 行间距, 描边宽度, 描边颜色, 背景颜色, 图像大小模式, 图像宽, 图像高, 文本图像占比, 输入图像=None, 图像拼接方向="左", 多图模式图像接缝=10): # 调整参数顺序
+    def generate_text_image(self, 文本, 字体, 字体大小, 颜色, 书写方向, 字符间距, 行间距, 描边宽度, 描边颜色, 背景颜色, 图像大小模式, 图像宽, 图像高, 文本图像占比, 输入图像=None, 图像拼接方向="下", 多图模式图像接缝=30): # 调整参数顺序
         node_execution_count = self.increment_counter()
-        help_text = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共添加了{node_execution_count}次文本图像！！\n颜色代码那里输入‘ZML’代表随机颜色哦。\n\n节点默认是生成一张空白的文本图像，不含背景什么的。在接入图像时会自动将文本图像拼接到输入的图像那里。\n\n节点也支持输入多批次图像！会自动排序并给予序号，拼接方向为左右时排序方向为从上到下，拼接方向为上下时则排序方向为从左到右。\n默认序号是从‘1’开始，步长也是‘1’，如果你想自定义起始数和步长，可以用这样的格式‘#x:x#’，x代表数字，第一个x是起始数，第二个是步长，‘#x:x#’格式生效的时候还可以添加前后缀文本！比如输入的为‘ZML_#0:0.5#_哈哈’，那么输出的序号就为‘ZML_0_哈哈哈’、‘ZML_0.5_哈哈哈’……这种，当然！也支持换行文本！\n\n你可以使用‘统一图像分辨率’节点来输入并处理多个图像，再输入给这个‘文本图像’节点！\n祝你天天开心~"
+        help_text = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共添加了{node_execution_count}次文本图像！！\n颜色代码那里输入‘ZML’代表随机颜色哦。\n\n接入图像时会自动将文本图像拼接到输入图像的对应方向上，拼接方向为左右时排序方向为从上到下，拼接方向为上下时排序方向为从左到右。\n\n也可以输入多张图像，多图模式可以用‘#-#’分隔每张图的文本名称：例如‘输入图像#-#输出图像’，则第一张使用‘输入图像’，第二张使用‘输出图像’。\n如果某张没有对应名称，则使用自然数序号‘1、2、3…’作为名称。\n\n你可以使用‘统一图像分辨率’节点来输入并处理多个图像，再输入给这个‘文本图像’节点！也可以用‘多文本输入-五’节点来分开写提示词，并分隔符换成‘#-#’，这会让你的使用体验大大提升！\n祝你天天开心~"
 
         default_opacity = 1.0
         # 这些默认边距将用于计算 "有效可绘制区域" 的内部文本边距
@@ -790,31 +790,18 @@ class ZML_TextToImage:
         processed_combined_images_raw = [] # This list will store individual combined images BEFORE padding/border
         input_batch_size = 输入图像.shape[0] if 输入图像 is not None else 1
         first_image_font_size = None  # 存储第一张图像的字体大小
+        names = [seg.strip() for seg in 文本.split(self.NAME_SEPARATOR)] if self.NAME_SEPARATOR in 文本 else [文本]
 
         for i in range(input_batch_size):
             # 1. 动态生成当前图像的文本内容 (支持 #start:step# 格式)
-            current_text_to_draw = 文本
-            match = re.search(self.BATCH_INDEX_PLACEHOLDER, 文本)
-            if input_batch_size > 1 and match:
-                try:
-                    start_val = float(match.group(1))
-                    step_val = float(match.group(3))
-                    calculated_value = start_val + i * step_val
-                    
-                    # Determine appropriate formatting for integer/float
-                    if step_val == 0 and start_val.is_integer():
-                         formatted_value = int(start_val)
-                    elif calculated_value.is_integer():
-                        formatted_value = int(calculated_value)
-                    else:
-                        # Format float to avoid excessive decimal places
-                        formatted_value = round(calculated_value, 2)
-                    
-                    current_text_to_draw = re.sub(self.BATCH_INDEX_PLACEHOLDER, str(formatted_value), 文本)
-                except ValueError:
-                    print(f"ZML_TextToImage: Invalid number format in batch index '{match.group(0)}'. Falling back to plain text.")
-            elif input_batch_size > 1: # No #x:y# pattern, but multiple images, use simple 1,2,3...
-                current_text_to_draw = f"{i+1}"
+            # 使用 '#-#' 作为多图名称分隔符
+            if input_batch_size > 1:
+                if i < len(names) and names[i]:
+                    current_text_to_draw = names[i]
+                else:
+                    current_text_to_draw = str(i + 1)
+            else:
+                current_text_to_draw = names[0]
             
             # 2. 获取当前迭代的输入图像
             current_input_pil_image = None

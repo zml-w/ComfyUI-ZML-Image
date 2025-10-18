@@ -1124,7 +1124,7 @@ class ZML_SelectTextV3:
         # 返回float("nan")使ComfyUI认为节点每次都发生了变化，从而每次执行时都重新计算随机结果
         return float("nan")
 
-    def execute(self, separator, selectTextV3_data, unique_id=None, extra_pnginfo=None):
+    def execute(self, separator, selectTextV3_data, unique_id=None, extra_pnginfo=None, 可选输入=None):
         import json
         import random
 
@@ -1162,6 +1162,10 @@ class ZML_SelectTextV3:
         else:
             # 不启用随机时，使用所有启用的文本条目
             final_parts = enabled_entries
+        
+        # 如果有可选输入并且不为空，添加到结果中
+        if 可选输入 and 可选输入.strip():
+            final_parts.append(可选输入.strip())
         
         # 处理分隔符中的换行符
         processed_separator = separator.replace("\\n", "\n")
@@ -1327,6 +1331,57 @@ class ZML_AppendTextByKeyword:
 
 # 合并相同提示词功能已集成到ZML_TextFormatter节点中，作为一个新选项
 
+# ============================== 合并文本（动态）节点 ==============================
+class ZML_MergeText:
+    """ZML 合并文本（动态输入）节点：支持动态字符串输入、分隔符、标签化提示词。
+    标签化提示词启用时，会将所有输入拆分为标签（按逗号、中文逗号、空格、换行等分隔），去重后以分隔符连接。
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        # 预定义最多10个文本输入名称，供前端按需动态添加/移除
+        optional_inputs = {}
+        for i in range(1, 11):
+            optional_inputs[f"文本{i}"] = ("STRING", {"forceInput": True})
+        return {
+            "required": {
+                "分隔符": ("STRING", {"multiline": False, "default": ",\n\n"}),
+            },
+            "optional": optional_inputs,
+        }
+
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
+    FUNCTION = "merge_text"
+
+    def _split_to_tags(self, text):
+        # 以常见分隔符拆分为标签：英文逗号、中文逗号、顿号、分号、空白、换行
+        if not text:
+            return []
+        parts = [p.strip() for p in re.split(r"[\s,，、；;\n\r]+", text) if p and p.strip()]
+        return parts
+
+    def merge_text(self, 分隔符,
+                   文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None,
+                   文本6=None, 文本7=None, 文本8=None, 文本9=None, 文本10=None):
+        # 收集所有非空文本
+        texts = [
+            文本1 or "", 文本2 or "", 文本3 or "", 文本4 or "", 文本5 or "",
+            文本6 or "", 文本7 or "", 文本8 or "", 文本9 or "", 文本10 or "",
+        ]
+        non_empty_texts = [t for t in texts if t.strip()]
+
+        # 处理分隔符中的换行符写法
+        processed_separator = 分隔符.replace("\\n", "\n")
+
+        # 原样合并
+        combined = processed_separator.join(non_empty_texts)
+
+        # 标点格式化清理
+        combined = format_punctuation_global(combined)
+        return (combined,)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
@@ -1343,6 +1398,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SelectTextV4": ZML_SelectTextV4,
     "ZML_SplitText": ZML_SplitText,
     "ZML_AppendTextByKeyword": ZML_AppendTextByKeyword,
+    "ZML_MergeText": ZML_MergeText,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1360,4 +1416,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SelectTextV4": "ZML_选择文本V4",
     "ZML_SplitText": "ZML_文本分离",
     "ZML_AppendTextByKeyword": "ZML_追加提示词",
+    "ZML_MergeText": "ZML_合并文本（动态）",
 }

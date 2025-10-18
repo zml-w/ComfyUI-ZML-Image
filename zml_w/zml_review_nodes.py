@@ -999,99 +999,6 @@ class ZML_AudioPlayerNode:
         # 返回结果，可以连接到其他任何节点
         return (output,)
 
-
-# ============================== 桥接预览节点 ==============================
-class ZML_ImageMemory:
-    # 启用OUTPUT_NODE，使其能在UI中预览图像。
-    OUTPUT_NODE = True
-
-    def __init__(self):
-        self.stored_image = None
-        # 定义临时预览图像子目录
-        self.temp_subfolder = "zml_image_memory_previews"
-        self.temp_output_dir = folder_paths.get_temp_directory()
-        # 本地持久化文件路径
-        self.persistence_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "image_memory_cache.png")
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "关闭输入": ("BOOLEAN", {"default": False}),
-            },
-            "optional": {
-                "输入图像": ("IMAGE",),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("图像",)
-    FUNCTION = "store_and_retrieve_image"
-    CATEGORY = "image/ZML_图像/工具"
-
-    def store_and_retrieve_image(self, 关闭输入, 输入图像=None):
-        image_to_output = None
-
-        if 关闭输入:
-            # 关闭输入时，从内存获取图像
-            image_to_output = self.stored_image
-        elif 输入图像 is not None:
-            # 有新输入图像时，存储到内存
-            self.stored_image = 输入图像
-            image_to_output = 输入图像
-        else:
-            # 无新输入图像时，从内存获取
-            image_to_output = self.stored_image
-
-        if image_to_output is None:
-            default_size = 1
-            image_to_output = torch.zeros((1, default_size, default_size, 3), dtype=torch.float32, device="cpu")
-
-        # ====== 处理UI预览图像 ======
-        subfolder_path = os.path.join(self.temp_output_dir, self.temp_subfolder)
-        os.makedirs(subfolder_path, exist_ok=True)
-
-        # 将 tensor 转换为 PIL Image
-        # 确保尺寸正确，如果 tensor 是 (1, 1, 1, 3)，PIL无法处理，需要先转换为 (1, 3) 假图
-        if image_to_output.shape[1] == 1 and image_to_output.shape[2] == 1:
-            # 对于1x1的黑图，创建一个可见的小图用于预览，例如 32x32，并保存
-            preview_image_tensor = torch.zeros((1, 32, 32, 3), dtype=torch.float32, device=image_to_output.device)
-            pil_image = Image.fromarray((preview_image_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
-        else:
-            # 正常图像处理
-            pil_image = Image.fromarray((image_to_output.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
-
-        # 生成唯一文件名
-        filename = f"zml_image_memory_{uuid.uuid4()}.png"
-        file_path = os.path.join(subfolder_path, filename)
-
-        pil_image.save(file_path, "PNG")
-
-        # 准备UI所需的数据
-        ui_image_data = [{"filename": filename, "subfolder": self.temp_subfolder, "type": "temp"}]
-
-        # 返回结果：(图像,), 同时返回UI信息
-        return {"ui": {"images": ui_image_data}, "result": (image_to_output,)}
-
-    def _save_to_local(self, image_tensor):
-        """将图像张量保存到本地文件"""
-        try:
-            pil_image = Image.fromarray((image_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
-            pil_image.save(self.persistence_file, "PNG")
-        except Exception as e:
-            print(f"保存图像到本地失败: {e}")
-
-    def _load_from_local(self):
-        """从本地文件加载图像张量"""
-        if os.path.exists(self.persistence_file):
-            try:
-                pil_image = Image.open(self.persistence_file).convert('RGB')
-                image_np = np.array(pil_image).astype(np.float32) / 255.0
-                return torch.from_numpy(image_np).unsqueeze(0)
-            except Exception as e:
-                print(f"从本地加载图像失败: {e}")
-        return None
-
 # ============================== 遮罩分离-2 节点 ==============================
 class ZML_MaskSeparateDistance:
     @classmethod
@@ -1836,7 +1743,6 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageRotate": ZML_ImageRotate,
     "ZML_PauseNode": ZML_PauseNode,
     "ZML_AudioPlayerNode": ZML_AudioPlayerNode,
-    "ZML_ImageMemory": ZML_ImageMemory,
     "ZML_MaskSeparateDistance": ZML_MaskSeparateDistance,
     "ZML_MaskSeparateThree": ZML_MaskSeparateThree,
     "ZML_UnifyImageResolution": ZML_UnifyImageResolution,
@@ -1855,7 +1761,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageRotate": "ZML_图像旋转",
     "ZML_PauseNode": "ZML_图像暂停选择",
     "ZML_AudioPlayerNode": "ZML_音频播放器",
-    "ZML_ImageMemory": "ZML_桥接预览图像",
     "ZML_MaskSeparateDistance": "ZML_遮罩分离-二",
     "ZML_MaskSeparateThree": "ZML_遮罩分离-三",
     "ZML_UnifyImageResolution": "ZML_统一图像分辨率",

@@ -538,6 +538,7 @@ class ZML_ImagePainter:
             "required": {
                 "默认宽": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
                 "默认高": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
+                "清空绘制内容": ("BOOLEAN", {"default": False, "tooltip": "开启此按钮时，每次打开绘制UI都会清空画布"}),
                 "paint_data": ("STRING", {"multiline": True, "default": "{}", "widget": "hidden"}),
             },
             "optional": { 
@@ -546,8 +547,8 @@ class ZML_ImagePainter:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("图像", "遮罩")
+    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK")
+    RETURN_NAMES = ("图像", "绘制图层", "遮罩")
     FUNCTION = "paint_image"
     CATEGORY = "image/ZML_图像/高级图像工具"
 
@@ -567,7 +568,9 @@ class ZML_ImagePainter:
         else: # Fallback for other modes
             return torch.from_numpy(np.array(pil_image.convert("RGBA")).astype(np.float32) / 255.0).unsqueeze(0)
 
-    def paint_image(self, 默认宽, 默认高, paint_data="{}", 图像=None, 画笔图像=None):
+    def paint_image(self, 默认宽, 默认高, 清空绘制内容=False, paint_data="{}", 图像=None, 画笔图像=None):
+        # 始终尝试解析paint_data，无论清空绘制内容参数如何设置
+        # 这样可以确保用户在UI中绘制的内容能够被正确应用
         try:
             data = json.loads(paint_data)
         except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
@@ -588,7 +591,9 @@ class ZML_ImagePainter:
         if is_empty_paint:
             h, w = 图像.shape[1:3]
             black_mask_tensor = torch.zeros((图像.shape[0], h, w), dtype=torch.float32)
-            return (图像, black_mask_tensor)
+            # 创建空的绘制图层（透明背景）
+            empty_draw_layer = torch.zeros((图像.shape[0], h, w, 4), dtype=torch.float32)
+            return (图像, empty_draw_layer, black_mask_tensor)
 
         brush_pil = None
         if 画笔图像 is not None and len(image_stamps) > 0:
@@ -596,6 +601,7 @@ class ZML_ImagePainter:
 
         processed_images = []
         mask_tensors = []
+        draw_layers = []
         
         for img_tensor in 图像:
             pil_image = self.tensor_to_pil(img_tensor).convert("RGBA")
@@ -603,9 +609,15 @@ class ZML_ImagePainter:
             
             # 创建一个副本用于马赛克处理，避免影响后续的图像笔刷和路径绘制
             mosaic_layer = pil_image.copy()
+            
+            # 创建一个透明背景的绘制图层，只包含绘制内容
+            draw_layer = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
 
             # 1. 绘制马赛克
             if mosaic_rects:
+                # 创建马赛克专用的临时图层
+                mosaic_temp_layer = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
+                
                 for rect in mosaic_rects:
                     try:
                         # 确保所有坐标和尺寸都是整数
@@ -621,15 +633,22 @@ class ZML_ImagePainter:
                         mosaic = small.resize(region.size, Image.NEAREST)
                         
                         mosaic_layer.paste(mosaic, box)
+                        mosaic_temp_layer.paste(mosaic, box)
                         
                         # 在遮罩上标记马赛克区域
                         draw_mask = ImageDraw.Draw(mask_image)
                         draw_mask.rectangle(box, fill=255)
                     except Exception as e:
                         print(f"ZML_ImagePainter: 绘制马赛克时出错: {e}")
+                
+                # 将马赛克绘制到绘制图层
+                draw_layer = Image.alpha_composite(draw_layer, mosaic_temp_layer)
 
             # 2. 绘制图像笔刷 (在马赛克层之上)
             if brush_pil and image_stamps:
+                # 创建笔刷专用的临时图层
+                brush_temp_layer = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
+                
                 for stamp in image_stamps:
                     try:
                         w, h = brush_pil.size
@@ -642,6 +661,7 @@ class ZML_ImagePainter:
                         y_pos = int(stamp['y'] - new_size[1] / 2)
                         
                         mosaic_layer.paste(resized_brush, (x_pos, y_pos), resized_brush)
+                        brush_temp_layer.paste(resized_brush, (x_pos, y_pos), resized_brush)
                         
                         # 在遮罩上标记笔刷区域
                         mask_stamp = Image.new('L', resized_brush.size, 255)
@@ -649,36 +669,67 @@ class ZML_ImagePainter:
                         draw_mask.bitmap((x_pos, y_pos), mask_stamp, fill=255)
                     except Exception as e:
                         print(f"ZML_ImagePainter: 绘制图像笔刷时出错: {e}")
+                
+                # 将笔刷绘制到绘制图层
+                draw_layer = Image.alpha_composite(draw_layer, brush_temp_layer)
 
             # 3. 绘制路径和形状 (在所有图层之上)
             if draw_paths:
                 draw_img = ImageDraw.Draw(mosaic_layer)
                 draw_mask = ImageDraw.Draw(mask_image)
+                # 创建路径专用的临时图层
+                path_temp_layer = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
+                
                 for path in draw_paths:
                     try:
                         points = path.get('points', [])
                         if len(points) < 1: continue
                         
                         pts_int = [tuple(map(int, p)) for p in points]
-                        color_hex = path.get('color', '#FF0000')
+                        color_str = path.get('color', '#FF0000')
                         width = int(path.get('width', 5))
                         is_fill = path.get('isFill', False)
                         
-                        fill_color_rgb = tuple(int(color_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                        # 解析颜色，支持rgba和hex格式
+                        if color_str.startswith('rgba'):
+                            # 解析rgba格式: rgba(r, g, b, a)
+                            import re
+                            rgba_match = re.search(r'rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)', color_str)
+                            if rgba_match:
+                                r, g, b, alpha = map(float, rgba_match.groups())
+                                alpha = int(alpha * 255)  # 转换为0-255范围
+                                fill_color = (int(r), int(g), int(b), alpha)
+                            else:
+                                # 解析失败，使用默认值
+                                fill_color = (255, 0, 0, 255)
+                        else:
+                            # 处理十六进制颜色
+                            hex_color = color_str.lstrip('#')
+                            if len(hex_color) == 6:
+                                r = int(hex_color[0:2], 16)
+                                g = int(hex_color[2:4], 16)
+                                b = int(hex_color[4:6], 16)
+                                fill_color = (r, g, b, 255)  # 默认完全不透明
+                            else:
+                                fill_color = (255, 0, 0, 255)  # 默认红色
+                        
+                        # 创建一个临时图层用于绘制透明效果
+                        temp_layer = Image.new('RGBA', mosaic_layer.size, (0, 0, 0, 0))
+                        temp_draw = ImageDraw.Draw(temp_layer)
                         
                         if is_fill:
-                            draw_img.polygon(pts_int, fill=fill_color_rgb)
+                            temp_draw.polygon(pts_int, fill=fill_color)
                             draw_mask.polygon(pts_int, fill=255)
                         else:
                             # 单点情况，画一个圆点
                             if len(pts_int) == 1:
                                 r = width / 2
                                 box = [pts_int[0][0]-r, pts_int[0][1]-r, pts_int[0][0]+r, pts_int[0][1]+r]
-                                draw_img.ellipse(box, fill=fill_color_rgb)
+                                temp_draw.ellipse(box, fill=fill_color)
                                 draw_mask.ellipse(box, fill=255)
                             else: # 多点情况，画线
                                 # 绘制基础线条
-                                draw_img.line(pts_int, fill=fill_color_rgb, width=width, joint='curve')
+                                temp_draw.line(pts_int, fill=fill_color, width=width, joint='curve')
                                 draw_mask.line(pts_int, fill=255, width=width, joint='curve')
                                 
                                 # 为线条端点添加圆形来模拟圆角效果
@@ -687,22 +738,33 @@ class ZML_ImagePainter:
                                     r = width / 2
                                     # 起点
                                     start_x, start_y = pts_int[0]
-                                    draw_img.ellipse([start_x-r, start_y-r, start_x+r, start_y+r], fill=fill_color_rgb)
+                                    temp_draw.ellipse([start_x-r, start_y-r, start_x+r, start_y+r], fill=fill_color)
                                     draw_mask.ellipse([start_x-r, start_y-r, start_x+r, start_y+r], fill=255)
                                     # 终点
                                     end_x, end_y = pts_int[-1]
-                                    draw_img.ellipse([end_x-r, end_y-r, end_x+r, end_y+r], fill=fill_color_rgb)
+                                    temp_draw.ellipse([end_x-r, end_y-r, end_x+r, end_y+r], fill=fill_color)
                                     draw_mask.ellipse([end_x-r, end_y-r, end_x+r, end_y+r], fill=255)
+                        
+                        # 将临时图层合并到马赛克层和路径临时图层
+                        mosaic_layer = Image.alpha_composite(mosaic_layer, temp_layer)
+                        path_temp_layer = Image.alpha_composite(path_temp_layer, temp_layer)
                     except Exception as e:
                         print(f"ZML_ImagePainter: 绘制路径时出错: {e}")
+                
+                # 将路径绘制到绘制图层
+                draw_layer = Image.alpha_composite(draw_layer, path_temp_layer)
 
             processed_images.append(self.pil_to_tensor(mosaic_layer.convert("RGB")))
             mask_tensors.append(self.pil_to_tensor(mask_image))
+            draw_layers.append(self.pil_to_tensor(draw_layer))
 
         if not processed_images:
-            return (图像, torch.zeros_like(图像[:, :, :, 0]))
+            # 创建空的绘制图层（透明背景）
+            h, w = 图像.shape[1:3]
+            empty_draw_layer = torch.zeros((图像.shape[0], h, w, 4), dtype=torch.float32)
+            return (图像, empty_draw_layer, torch.zeros_like(图像[:, :, :, 0]))
 
-        return (torch.cat(processed_images, dim=0), torch.cat(mask_tensors, dim=0))
+        return (torch.cat(processed_images, dim=0), torch.cat(draw_layers, dim=0), torch.cat(mask_tensors, dim=0))
 
 # ============================== 取色器节点 ==============================
 class ZML_ColorPicker:
