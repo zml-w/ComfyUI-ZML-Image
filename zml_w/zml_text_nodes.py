@@ -1439,7 +1439,7 @@ class ZML_IntegerBooleanConverter:
             }
         }
     
-    CATEGORY = "image/ZML_图像/整数"
+    CATEGORY = "image/ZML_图像/逻辑"
     RETURN_TYPES = ("BOOLEAN", "INT")
     RETURN_NAMES = ("布尔值", "整数")
     FUNCTION = "convert"

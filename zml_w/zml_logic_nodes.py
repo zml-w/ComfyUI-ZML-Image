@@ -524,6 +524,32 @@ class ZML_ArithmeticComparison:
         output = 任意输入 if result else ExecutionBlocker(None)
         return (output, result)
 
+# ============================== 双布尔节点 ==============================
+class ZML_DualBoolean:
+    """
+    ZML 双布尔节点
+    提供两个独立的布尔开关，可以分别控制不同的功能
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "A": ("BOOLEAN", {"default": False, "label_on": "True", "label_off": "False"}),
+                "B": ("BOOLEAN", {"default": False, "label_on": "True", "label_off": "False"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/逻辑"
+    RETURN_TYPES = ("BOOLEAN", "BOOLEAN")
+    RETURN_NAMES = ("True", "False")
+    FUNCTION = "output_booleans"
+    
+    def output_booleans(self, A, B):
+        """输出两个布尔值"""
+        return (A, B)
+
+
 # 节点注册
 NODE_CLASS_MAPPINGS = {
     "ZML_BooleanInverter": ZML_BooleanInverter,
@@ -535,6 +561,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SwitchOutputFive": ZML_SwitchOutputFive,
     "ZML_DownstreamNodeSwitch": ZML_DownstreamNodeSwitch,
     "ZML_ArithmeticComparison": ZML_ArithmeticComparison,
+    "ZML_DualBoolean": ZML_DualBoolean,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -547,4 +574,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SwitchOutputFive": "ZML_切换输出-五",
     "ZML_DownstreamNodeSwitch": "ZML_下游节点开关",
     "ZML_ArithmeticComparison": "ZML_运算判断",
+    "ZML_DualBoolean": "ZML_双布尔开关",
 }
