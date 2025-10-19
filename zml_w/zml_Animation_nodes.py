@@ -615,7 +615,7 @@ except ImportError:
             self.value = value
 
 # ============================== 桥接预览图象V2 ==============================
-class ZML_PreviewBridgeV2:
+class ZML_ImageMemory:
     # 启用OUTPUT_NODE，使其能在UI中预览图像。
     OUTPUT_NODE = True
 
@@ -808,7 +808,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_BooleanSwitch": ZML_BooleanSwitch,
     "ZML_MaskStroke": ZML_MaskStroke,
     "ZML_PreviewImage": ZML_PreviewImage,
-    "ZML_PreviewBridgeV2": ZML_PreviewBridgeV2,
+    "ZML_ImageMemory": ZML_ImageMemory,
     "ZML_PromptTokenBalancer": ZML_PromptTokenBalancer,
 }
 
@@ -818,6 +818,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_BooleanSwitch": "ZML_布尔开关",
     "ZML_MaskStroke": "ZML_遮罩描边",
     "ZML_PreviewImage": "ZML_预览图像",
-    "ZML_PreviewBridgeV2": "ZML_桥接预览图像",
+    "ZML_ImageMemory": "ZML_桥接预览图像",
     "ZML_PromptTokenBalancer": "ZML_提示词token统一",
 }
