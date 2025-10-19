@@ -811,13 +811,14 @@ class ZML_PauseNode:
                 pass
 
         start_time = time.time()
+        timeout_seconds = 60  # 60秒超时
 
         selected_path = 0
         selected_images_indices = []
         interrupted = False
         channels_images_map = None  # 新增：用于存储多通道图像映射
 
-        # 无限期等待直到收到用户操作信号
+        # 等待直到收到用户操作信号或超时
         while True:
             if os.path.exists(signal_file):
                 try:
@@ -857,6 +858,11 @@ class ZML_PauseNode:
                     break
                 except Exception as e:
                     pass
+            # 检查是否超时
+            elif time.time() - start_time >= timeout_seconds:
+                # 超时情况下，自动选择第一张图像
+                selected_images_indices = [0]  # 选择第一张图像
+                break
             time.sleep(0.1)
 
         # 初始化所有输出为ExecutionBlocker
@@ -1249,7 +1255,7 @@ class ZML_UnifyImageResolution:
                 "分辨率": (["根据首张图像", "根据最大图像", "根据最小图像", "自定义"], {"default": "根据首张图像"}),
                 "宽度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
                 "高度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
-                "处理模式": (["拉伸", "中心裁剪", "填充黑", "填充白"],),
+                "处理模式": (["拉伸", "中心裁剪", "填充黑", "填充白", "填充透明"],),
             },
             "optional": {
                 "图像_2": ("IMAGE",),
@@ -1290,6 +1296,8 @@ class ZML_UnifyImageResolution:
             return (0, 0, 0, 255) # 黑色透明度255
         elif 处理模式 == "填充白":
             return (255, 255, 255, 255) # 白色透明度255
+        elif 处理模式 == "填充透明":
+            return (0, 0, 0, 0) # 完全透明
         else: # 对于拉伸和中心裁剪，实际上不会用到填充色，但为了RGBA统一返回透明
             return (0, 0, 0, 0) # 完全透明
 
@@ -1404,7 +1412,7 @@ class ZML_UnifyImageResolution:
                 cropped_bottom = (resize_height + target_height) / 2
                 new_pil_image = resized_image.crop((int(cropped_left), int(cropped_top), int(cropped_right), int(cropped_bottom)))
 
-            elif 处理模式 in ["填充黑", "填充白"]: # 填充模式
+            elif 处理模式 in ["填充黑", "填充白", "填充透明"]: # 填充模式
                 # 计算缩放后的尺寸，使图像能够完全适应目标区域
                 if image_aspect > target_aspect:  # 图像宽于目标比例，以宽度为基准缩放
                     scaled_width = target_width

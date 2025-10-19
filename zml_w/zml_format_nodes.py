@@ -217,6 +217,7 @@ class ZML_TextFormatter:
                 "文本格式化": (["禁用", "下划线转空格", "空格转下划线", "空格隔离标签", "逗号追加换行", "清空换行"], {"default": "下划线转空格"}),
                 "格式化标点符号": ("BOOLEAN", {"default": True, "label_on": "启用", "label_off": "禁用"}),
                 "合并相同提示词": ("BOOLEAN", {"default": False, "label_on": "启用", "label_off": "禁用"}),
+                "合并白名单": ("STRING", {"default": " BREAK ", "multiline": False, "placeholder": "不合并的提示词，逗号分隔", "tooltip": "这里的提示词不会被合并，请使用逗号分隔"}),
             }
         }
     
@@ -360,14 +361,26 @@ class ZML_TextFormatter:
             return base_tag, f"({base_tag}:{weight})"
         return tag.strip(), tag.strip()
         
-    def merge_duplicate_prompts(self, text):
-        """合并文本中的重复提示词，默认使用第一个出现的提示词的权重"""
+    def merge_duplicate_prompts(self, text, 合并白名单=None):
+        """合并文本中的重复提示词，默认使用第一个出现的提示词的权重。
+        支持跨多行去重：保留首次出现的提示词（及其权重），后续行中的相同提示词会被移除，同时尽量保留原有的行结构。
+        白名单中的提示词不参与合并，会按原样保留重复。"""
         if not text.strip():
             return text
+        
+        # 解析白名单（支持逗号/中文逗号/空白分隔），统一用基础标签比较
+        whitelist_set = set()
+        if 合并白名单:
+            for w in [p.strip() for p in re.split(r"[\s,，、；;]+", 合并白名单) if p.strip()]:
+                base_w, _ = self.extract_base_tag(w)
+                whitelist_set.add(base_w)
         
         # 按行处理文本
         lines = text.splitlines()
         result_lines = []
+        
+        # 全局已见标签：在整个文本范围内保留首次出现的标签
+        global_seen = {}
         
         for line in lines:
             if not line.strip():
@@ -380,19 +393,35 @@ class ZML_TextFormatter:
             # 分割标签
             tags = [tag.strip() for tag in line.split(',') if tag.strip()]
             
-            # 合并重复标签，默认使用第一个出现的提示词的权重
-            seen_tags = {}
+            # 行内已见集合，用于避免单行内重复
+            line_seen = set()
+            kept_tags = []
             for tag in tags:
                 base_tag, processed_tag = self.extract_base_tag(tag)
-                # 只有当base_tag不存在于seen_tags中时才添加，这样就保留了第一个出现的权重
-                if base_tag not in seen_tags:
-                    seen_tags[base_tag] = processed_tag
+                
+                # 白名单：不参与合并、保留原样
+                if base_tag in whitelist_set:
+                    kept_tags.append(tag.strip())
+                    continue
+                
+                # 如果在全局已见中，跳过（跨行去重）
+                if base_tag in global_seen:
+                    continue
+                
+                # 行内去重
+                if base_tag in line_seen:
+                    continue
+                
+                # 记录首个出现的标签（保留其权重表达）
+                line_seen.add(base_tag)
+                global_seen[base_tag] = processed_tag
+                kept_tags.append(processed_tag)
             
-            # 重新组合该行
-            result_line = ', '.join(seen_tags.values())
+            # 重新组合该行（不自动在逗号后添加空格）
+            result_line = ','.join(kept_tags)
             
-            # 如果原始行以逗号结尾，则在处理后也添加逗号
-            if original_line_ends_with_comma:
+            # 若原始行以逗号结尾，且该行仍有内容，则保留逗号
+            if original_line_ends_with_comma and result_line:
                 result_line += ','
                 
             result_lines.append(result_line)
@@ -402,7 +431,7 @@ class ZML_TextFormatter:
         
         return result_text
     
-    def format_text(self, 文本, 权重转换, 文本格式化, 格式化标点符号, 合并相同提示词):
+    def format_text(self, 文本, 权重转换, 文本格式化, 格式化标点符号, 合并相同提示词, 合并白名单):
         """处理文本转换"""
         
         # 1. 处理权重转换
@@ -434,7 +463,7 @@ class ZML_TextFormatter:
 
         # 3. 处理合并相同提示词
         if 合并相同提示词:
-            文本 = self.merge_duplicate_prompts(文本)
+            文本 = self.merge_duplicate_prompts(文本, 合并白名单)
 
         # 4. 处理标点符号格式化
         if 格式化标点符号:

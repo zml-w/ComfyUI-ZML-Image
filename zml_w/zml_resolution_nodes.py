@@ -718,8 +718,24 @@ class ZML_ImagePainter:
                         temp_draw = ImageDraw.Draw(temp_layer)
                         
                         if is_fill:
+                            # 与前端一致：既填充形状，又绘制边框线（使用strokeWidth）
+                            # 先填充
                             temp_draw.polygon(pts_int, fill=fill_color)
                             draw_mask.polygon(pts_int, fill=255)
+                            
+                            # 再绘制边框线，保证与fabric的填充+描边效果一致
+                            if len(pts_int) > 1:
+                                # 不强制闭合，保持与保存的数据一致；非箭头通常已包含首点收尾
+                                temp_draw.line(pts_int, fill=fill_color, width=width, joint='curve')
+                                draw_mask.line(pts_int, fill=255, width=width, joint='curve')
+                                # 圆润端点
+                                r = width / 2
+                                start_x, start_y = pts_int[0]
+                                temp_draw.ellipse([start_x-r, start_y-r, start_x+r, start_y+r], fill=fill_color)
+                                draw_mask.ellipse([start_x-r, start_y-r, start_x+r, start_y+r], fill=255)
+                                end_x, end_y = pts_int[-1]
+                                temp_draw.ellipse([end_x-r, end_y-r, end_x+r, end_y+r], fill=fill_color)
+                                draw_mask.ellipse([end_x-r, end_y-r, end_x+r, end_y+r], fill=255)
                         else:
                             # 单点情况，画一个圆点
                             if len(pts_int) == 1:
@@ -773,6 +789,7 @@ class ZML_ColorPicker:
         return {
             "required": {
                 "颜色代码": ("STRING", {"multiline": False, "default": "#FFFFFF", "widget": "hidden"}),
+                "随机输出颜色": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -781,7 +798,17 @@ class ZML_ColorPicker:
     FUNCTION = "get_color"
     CATEGORY = "image/ZML_图像/工具"
 
-    def get_color(self, 颜色代码):
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+
+    def get_color(self, 颜色代码, 随机输出颜色=False):
+        if 随机输出颜色:
+            r = random.randint(0, 255)
+            g = random.randint(0, 255)
+            b = random.randint(0, 255)
+            随机颜色代码 = f"#{r:02X}{g:02X}{b:02X}"
+            return (随机颜色代码,)
         return (颜色代码,)
 
 
