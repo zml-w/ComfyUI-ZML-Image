@@ -542,7 +542,7 @@ class ZML_DualBoolean:
     
     CATEGORY = "image/ZML_图像/逻辑"
     RETURN_TYPES = ("BOOLEAN", "BOOLEAN")
-    RETURN_NAMES = ("True", "False")
+    RETURN_NAMES = ("Boole", "Boole")
     FUNCTION = "output_booleans"
     
     def output_booleans(self, A, B):
