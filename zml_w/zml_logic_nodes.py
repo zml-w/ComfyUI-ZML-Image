@@ -173,7 +173,7 @@ class ZML_AnyTypeSwitchFive:
                 "输入值5": (any_type, lazy_options),
             },
             "required": {
-                "索引": ("INT", {"default": 1, "min": 1, "max": 5, "step": 1, "description": "1-5=选择对应的输入值"}),
+                "索引": ("INT", {"default": 1, "min": 1, "max": 5, "step": 1, "description": "1-5=选择对应的输入值", "tooltip": "从索引值开始查找，索引值没有输入则递增寻找其它输入"}),
             }
         }
     
@@ -247,19 +247,32 @@ class ZML_SwitchOutput:
     OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
     
     def switch_output(self, 输入, 选择输出=False):
-        """根据布尔值决定哪个输出端口有效"""
+        """根据布尔值决定哪个输出端口有效。对于整数和文本类型，未选中的端口返回空值而不是阻止执行"""
         # 导入ExecutionBlocker用于阻止未使用的输出执行
         from comfy_execution.graph import ExecutionBlocker
         
+        # 判断输入类型是否为整数或文本
+        is_int_or_text = isinstance(输入, (int, str))
+        
         # 根据布尔值决定输出
         if 选择输出:
-            # 布尔值为True时，输出1阻止执行，输出2有效
-            output1 = ExecutionBlocker(None)
+            # 布尔值为True时，输出2有效
+            if is_int_or_text:
+                # 对于整数和文本类型，未选中的端口返回空值
+                output1 = "" if isinstance(输入, str) else 0  # 文本返回空字符串，整数返回0
+            else:
+                # 其他类型使用ExecutionBlocker阻止执行
+                output1 = ExecutionBlocker(None)
             output2 = 输入
         else:
-            # 布尔值为False时，输出1有效，输出2阻止执行
+            # 布尔值为False时，输出1有效
             output1 = 输入
-            output2 = ExecutionBlocker(None)
+            if is_int_or_text:
+                # 对于整数和文本类型，未选中的端口返回空值
+                output2 = "" if isinstance(输入, str) else 0  # 文本返回空字符串，整数返回0
+            else:
+                # 其他类型使用ExecutionBlocker阻止执行
+                output2 = ExecutionBlocker(None)
         
         return (output1, output2)
 
@@ -355,19 +368,29 @@ class ZML_SwitchOutputFive:
     OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
     
     def switch_output(self, 输入, 索引=1):
-        """根据索引值决定哪个输出端口有效"""
+        """根据索引值决定哪个输出端口有效。对于整数和文本类型，未选中的端口返回空值而不是阻止执行"""
         # 导入ExecutionBlocker用于阻止未使用的输出执行
         from comfy_execution.graph import ExecutionBlocker
+        
+        # 判断输入类型是否为整数或文本
+        is_int_or_text = isinstance(输入, (int, str))
         
         # 确保索引在有效范围内
         if not 1 <= 索引 <= 5:
             索引 = 1  # 默认为1
         
-        # 初始化所有输出为阻止状态
-        outputs = [ExecutionBlocker(None) for _ in range(5)]
-        
-        # 根据索引值设置对应的输出有效
-        outputs[索引 - 1] = 输入
+        # 初始化所有输出
+        outputs = []
+        for i in range(5):
+            if i == 索引 - 1:
+                # 选中的端口输出原始输入值
+                outputs.append(输入)
+            elif is_int_or_text:
+                # 对于整数和文本类型，未选中的端口返回空值
+                outputs.append("") if isinstance(输入, str) else outputs.append(0)
+            else:
+                # 其他类型使用ExecutionBlocker阻止执行
+                outputs.append(ExecutionBlocker(None))
         
         return tuple(outputs)
 
