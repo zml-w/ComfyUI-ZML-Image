@@ -5673,7 +5673,7 @@ app.registerExtension({
                 // 创建左侧文件夹树容器
                 const folderTreeContainer = zmlCreateEl("div", { 
                     className: "zml-lora-folder-tree", 
-                    style: "width: 120px; border-right: 1px solid #444; overflow-y: auto; padding: 8px;"
+                    style: "width: 180px; border-right: 1px solid #444; overflow-y: auto; padding: 8px; max-height: 600px; flex-shrink: 0;"
                 });
                 folderTreeContainer.style.backgroundColor = "#1a1a1a";
                 
