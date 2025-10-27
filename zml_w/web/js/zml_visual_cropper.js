@@ -611,6 +611,29 @@ function showPainterModal(node, widget) {
                         color: #E0E0E0; /* 默认字体颜色 */
                         flex-direction: row; /* 主轴方向为行 */
                         align-items: flex-start; /* 顶部对齐 */
+                        position: relative; /* For resize handle */
+                        overflow: hidden; /* Hide overflow, let content handle it */
+                    }
+                    /* Resize Handle Style */
+                    .zml-resize-handle {
+                        position: absolute;
+                        bottom: 0;
+                        right: 0;
+                        width: 20px;
+                        height: 20px;
+                        cursor: se-resize;
+                        z-index: 20; /* Above other content */
+                    }
+                    .zml-resize-handle::after {
+                        content: '';
+                        position: absolute;
+                        right: 3px;
+                        bottom: 3px;
+                        width: 8px;
+                        height: 8px;
+                        border-right: 2px solid #888;
+                        border-bottom: 2px solid #888;
+                        box-sizing: border-box;
                     }
                     /* 主内容区: 包含图像, 提示和底部控制面板 */
                     .zml-main-content-area {
@@ -967,6 +990,8 @@ function showPainterModal(node, widget) {
                     </div>
                 </div>
 
+                <!-- Resize Handle -->
+                <div class="zml-resize-handle"></div>
             </div>
         </div>
     `;
@@ -982,6 +1007,39 @@ function showPainterModal(node, widget) {
     const quickColorBalls = modal.querySelectorAll('.zml-color-ball');
     const bottomPanel = modal.querySelector('#zml-painter-bottom-panel');
     const tipElement = modal.querySelector('#zml-editor-tip');
+
+    // --- Window Resizing Logic ---
+    const resizeHandle = modal.querySelector('.zml-resize-handle');
+    if (resizeHandle) {
+        resizeHandle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const startWidth = modalContent.offsetWidth;
+            const startHeight = modalContent.offsetHeight;
+
+            const onMouseMove = (moveE) => {
+                const newWidth = startWidth + (moveE.clientX - startX);
+                const newHeight = startHeight + (moveE.clientY - startY);
+                
+                const minWidth = parseInt(getComputedStyle(modalContent).minWidth, 10) || 0;
+                const minHeight = parseInt(getComputedStyle(modalContent).minHeight, 10) || 0;
+
+                modalContent.style.width = `${Math.max(minWidth, newWidth)}px`;
+                modalContent.style.height = `${Math.max(minHeight, newHeight)}px`;
+            };
+
+            const onMouseUp = () => {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+            };
+
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        });
+    }
 
     loadScript(extensionBasePath + 'lib/fabric.min.js').then(() => {
         // Initialize canvas

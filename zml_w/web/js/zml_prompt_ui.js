@@ -14,8 +14,8 @@ const ZML_PROMPT_UI_STYLES = `
     --zml-border-color: #4a5162;
     --zml-text-color: #e0e2e6;
     --zml-text-color-secondary: #a0a6b3;
-    --zml-accent-color: #00aaff;
-    --zml-accent-hover-color: #33bbff;
+    --zml-accent-color: #00aaff; /* 默认强调色 */
+    --zml-accent-hover-color: #33bbff; /* 默认强调悬停色 */
     --zml-green-color: #6a6;
     --zml-red-color: #e57373;
     --zml-yellow-color: #ffeb3b;
@@ -209,13 +209,13 @@ const INACTIVE_BUTTON_BG = "#3c4250";
 const ACTIVE_BUTTON_BG = "#00aaff";
 
 const THEMES = {
-    blue: { name: '天空蓝', color: '#3a5a9a', vars: { '--zml-bg-color': '#2c3e50', '--zml-modal-bg-color': '#34495e', '--zml-secondary-bg-color': '#4a6fa5', '--zml-input-bg-color': '#283747', '--zml-border-color': '#5d7bb2', '--zml-text-color': '#ecf0f1', '--zml-text-color-secondary': '#bdc3c7' } },
-    green: { name: '抹茶绿', color: '#4CAF50', vars: { '--zml-bg-color': '#2e463c', '--zml-modal-bg-color': '#385449', '--zml-secondary-bg-color': '#4CAF50', '--zml-input-bg-color': '#263a31', '--zml-border-color': '#5a7e6b', '--zml-text-color': '#e8f5e9', '--zml-text-color-secondary': '#c8e6c9' } },
-    yellow: { name: '活力黄', color: '#FFC107', vars: { '--zml-bg-color': '#53431b', '--zml-modal-bg-color': '#614d20', '--zml-secondary-bg-color': '#7a622a', '--zml-input-bg-color': '#4a3b16', '--zml-border-color': '#8a723a', '--zml-text-color': '#fffde7', '--zml-text-color-secondary': '#fff9c4' } },
-    black: { name: '深邃黑', color: '#313642', vars: { '--zml-bg-color': '#282c34', '--zml-modal-bg-color': '#313642', '--zml-secondary-bg-color': '#3c4250', '--zml-input-bg-color': '#262a32', '--zml-border-color': '#4a5162', '--zml-text-color': '#e0e2e6', '--zml-text-color-secondary': '#a0a6b3' } },
-    white: { name: '象牙白', color: '#e0e0e0', vars: { '--zml-bg-color': '#dcdcdc', '--zml-modal-bg-color': '#ebebeb', '--zml-secondary-bg-color': '#d6d6d6', '--zml-input-bg-color': '#f5f5f5', '--zml-border-color': '#c0c0c0', '--zml-text-color': '#333333', '--zml-text-color-secondary': '#555555' } },
+    blue: { name: '天空蓝', color: '#00FFE1', vars: { '--zml-bg-color': '#2c3e50', '--zml-modal-bg-color': '#34495e', '--zml-secondary-bg-color': '#00B2A0', '--zml-input-bg-color': '#283747', '--zml-border-color': '#00D4C0', '--zml-text-color': '#ecf0f1', '--zml-text-color-secondary': '#bdc3c7', '--zml-accent-color': '#00FFE1', '--zml-accent-hover-color': '#33FFEB' } },
+    green: { name: '抹茶绿', color: '#4CAF50', vars: { '--zml-bg-color': '#2e463c', '--zml-modal-bg-color': '#385449', '--zml-secondary-bg-color': '#4CAF50', '--zml-input-bg-color': '#263a31', '--zml-border-color': '#5a7e6b', '--zml-text-color': '#e8f5e9', '--zml-text-color-secondary': '#c8e6c9', '--zml-accent-color': '#4CAF50', '--zml-accent-hover-color': '#66BB6A' } },
+    pink: { name: '少女粉', color: '#FF69B4', vars: { '--zml-bg-color': '#4a2c3e', '--zml-modal-bg-color': '#5e3449', '--zml-secondary-bg-color': '#a54a6f', '--zml-input-bg-color': '#372847', '--zml-border-color': '#b25d7b', '--zml-text-color': '#f1ecf0', '--zml-text-color-secondary': '#c7bdc3', '--zml-accent-color': '#FF69B4', '--zml-accent-hover-color': '#FF85C1' } },
+    black: { name: '深邃黑', color: '#313642', vars: { '--zml-bg-color': '#282c34', '--zml-modal-bg-color': '#313642', '--zml-secondary-bg-color': '#3c4250', '--zml-input-bg-color': '#262a32', '--zml-border-color': '#4a5162', '--zml-text-color': '#e0e2e6', '--zml-text-color-secondary': '#a0a6b3', '--zml-accent-color': '#00aaff', '--zml-accent-hover-color': '#33bbff' } },
+    white: { name: '象牙白', color: '#e0e0e0', vars: { '--zml-bg-color': '#dcdcdc', '--zml-modal-bg-color': '#ebebeb', '--zml-secondary-bg-color': '#d6d6d6', '--zml-input-bg-color': '#f5f5f5', '--zml-border-color': '#c0c0c0', '--zml-text-color': '#333333', '--zml-text-color-secondary': '#555555', '--zml-accent-color': '#007bff', '--zml-accent-hover-color': '#0056b3' } },
 };
-const DEFAULT_THEME = 'blue';
+const DEFAULT_THEME = 'black';
 
 let translationMap = new Map();
 // 翻译缓存：避免每次打开UI重复翻译
@@ -421,9 +421,9 @@ function createPromptModal(node) {
             backgroundColor: "var(--zml-modal-bg-color)",
             border: "1px solid var(--zml-border-color)",
             borderRadius: "var(--zml-border-radius)",
-            maxHeight: "300px",
+            maxHeight: "min(300px, calc(100vh - 200px))", // 调整最大高度以适应屏幕
             overflowY: "auto",
-            zIndex: 1000, // 提高z-index确保在最上层显示
+            zIndex: 1002, // 提高z-index确保在最上层显示
             minWidth: "300px",
             boxShadow: "0 5px 15px rgba(0,0,0,0.3)",
             margin: "5px 0 0 0"
@@ -894,20 +894,351 @@ async function translateSelectedTags() {
     };
     const updateNodePrompt = () => { currentPromptWidget.value = getPromptString(); app.graph.setDirtyCanvas(true); };
     const renderAllButtons = () => { if (!currentData) return; renderMainTabs(currentData); renderSelectedTags(); };
-    const renderSelectedTags = () => { /* ... 此函数未改变 ... */
+    
+    // 添加拖动相关变量
+    let isDragging = false;
+    let dragElement = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragClone = null;
+    let insertIndicator = null;
+    let currentInsertIndex = -1;
+    let longPressTimer = null;
+    let isLongPressing = false;
+    const LONG_PRESS_DURATION = 20; // 长按时间为20毫秒
+    
+    // 创建插入位置指示器
+    function createInsertIndicator() {
+        if (!insertIndicator) {
+            insertIndicator = $el("div", {
+                className: "zml-prompt-ui-insert-indicator",
+                style: {
+                    display: "inline-block",
+                    height: "40px",
+                    backgroundColor: "rgba(100, 180, 255, 0.3)",
+                    border: "2px solid var(--zml-accent-color)",
+                    borderRadius: "6px",
+                    boxShadow: "0 0 8px rgba(100, 180, 255, 0.5)",
+                    pointerEvents: "none",
+                    textAlign: "center",
+                    lineHeight: "40px",
+                    fontSize: "12px",
+                    color: "var(--zml-accent-color)",
+                    fontWeight: "bold",
+                    margin: "0 4px"
+                }
+            });
+            // 添加插入提示文字
+            const insertText = $el("span", { 
+                textContent: "插入此处",
+                style: { 
+                    whiteSpace: "nowrap",
+                    padding: "0 10px"
+                }
+            });
+            insertIndicator.appendChild(insertText);
+        }
+        return insertIndicator;
+    }
+    
+    // 显示插入位置指示器
+    function showInsertIndicator(x, y, index, width = 80) {
+        // 先移除旧的指示器
+        hideInsertIndicator();
+        
+        const indicator = createInsertIndicator();
+        indicator.style.width = `${width}px`;
+        
+        // 直接插入到DOM流中
+        const tags = tagDisplay.querySelectorAll('.zml-prompt-ui-selected-tag');
+        if (index === 0) {
+            // 插入到最前面
+            tagDisplay.insertBefore(indicator, tags[0]);
+        } else if (index === tags.length) {
+            // 插入到最后面
+            tagDisplay.appendChild(indicator);
+        } else {
+            // 插入到指定位置
+            tagDisplay.insertBefore(indicator, tags[index]);
+        }
+        
+        currentInsertIndex = index;
+    }
+    
+    // 隐藏插入位置指示器（从DOM中移除）
+    function hideInsertIndicator() {
+        if (insertIndicator && insertIndicator.parentNode) {
+            insertIndicator.parentNode.removeChild(insertIndicator);
+        }
+        currentInsertIndex = -1;
+    }
+    
+    // 更新提示词顺序
+    function reorderPrompts(fromIndex, toIndex) {
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+        
+        const promptsArray = Array.from(currentPrompts.entries());
+        const [removed] = promptsArray.splice(fromIndex, 1);
+        promptsArray.splice(toIndex, 0, removed);
+        
+        // 创建新的Map来保持顺序
+        const newPrompts = new Map();
+        promptsArray.forEach(([key, value]) => newPrompts.set(key, value));
+        
+        currentPrompts = newPrompts;
+    }
+    
+    // 获取鼠标位置对应的插入索引
+    function getInsertIndexAt(x, y) {
+        const tags = tagDisplay.querySelectorAll('.zml-prompt-ui-selected-tag');
+        let index = tags.length;
+        
+        for (let i = 0; i < tags.length; i++) {
+            const rect = tags[i].getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            
+            if (x < centerX && tags[i] !== dragElement) {
+                index = i;
+                break;
+            }
+        }
+        
+        return index;
+    }
+    const renderSelectedTags = () => {
         tagDisplay.innerHTML = "";
-        Array.from(currentPrompts.keys()).forEach(prompt => {
-            const name = translationMap.get(prompt) || prompt; const weight = currentPrompts.get(prompt) || 1.0;
-            const tagEl = $el("div", { className: "zml-prompt-ui-selected-tag" });
+        
+        // 为tagDisplay添加样式以支持绝对定位的子元素
+        tagDisplay.style.position = 'relative';
+        
+        const promptsArray = Array.from(currentPrompts.keys());
+        promptsArray.forEach((prompt, index) => {
+            const name = translationMap.get(prompt) || prompt; 
+            const weight = currentPrompts.get(prompt) || 1.0;
+            const tagEl = $el("div", { 
+                className: "zml-prompt-ui-selected-tag",
+                draggable: false, // 禁用原生拖拽
+                style: {
+                    cursor: 'grab', // 设置抓手光标
+                    userSelect: 'none' // 防止文本选择
+                }
+            });
+            
             tagEl.innerHTML = `<div class="name">${name}</div><div class="prompt">${weight === 1.0 ? prompt : `(${prompt}:${weight.toFixed(1)})`}</div>`;
-            const updateWeight = (nW) => { pushHistory(); currentPrompts.set(prompt, nW.toFixed(1) * 1); updateNodePrompt(); renderSelectedTags(); const c = currentData[activeCategoryIndex]; if (c?.groups?.[activeGroupIndex]) renderGroupTags([c.groups[activeGroupIndex]]); savePromptsToBackend(currentData); };
-            const mBtn = $el("button", { textContent: "-", className: "minus", onclick: (e) => { e.stopPropagation(); updateWeight(Math.max(0.1, weight - 0.1)); } });
-            const pBtn = $el("button", { textContent: "+", className: "plus", onclick: (e) => { e.stopPropagation(); updateWeight(weight + 0.1); } });
-            const ctlDiv = $el("div", { className: "zml-prompt-ui-selected-tag-controls" }, [mBtn, pBtn]);
-            const rmBtn = $el("div", { textContent: "×", className: "zml-prompt-ui-selected-tag-remove-btn", onclick: (e) => { e.stopPropagation(); pushHistory(); currentPrompts.delete(prompt); updateNodePrompt(); renderSelectedTags(); const c = currentData[activeCategoryIndex]; if (c?.groups?.[activeGroupIndex]) renderGroupTags([c.groups[activeGroupIndex]]); savePromptsToBackend(currentData); }});
-            tagEl.append(ctlDiv, rmBtn); tagDisplay.appendChild(tagEl);
+            
+            // 添加鼠标按下事件 - 开始长按检测
+            tagEl.addEventListener('mousedown', (e) => {
+                // 如果点击的是按钮，不触发长按
+                if (e.target.closest('.minus') || e.target.closest('.plus') || e.target.closest('.zml-prompt-ui-selected-tag-remove-btn')) {
+                    return;
+                }
+                
+                e.preventDefault();
+                isLongPressing = false;
+                
+                longPressTimer = setTimeout(() => {
+                    isLongPressing = true;
+                    
+                    // 开始拖动
+                    dragElement = tagEl;
+                    dragStartX = e.clientX;
+                    dragStartY = e.clientY;
+                    
+                    // 设置抓手光标
+                    document.body.style.cursor = 'grabbing';
+                    
+                    // 创建克隆元素
+                    dragClone = tagEl.cloneNode(true);
+                    dragClone.style.position = 'absolute';
+                    dragClone.style.zIndex = '999';
+                    dragClone.style.opacity = '0.8';
+                    dragClone.style.pointerEvents = 'none';
+                    dragClone.style.left = `${tagEl.getBoundingClientRect().left}px`;
+                    dragClone.style.top = `${tagEl.getBoundingClientRect().top}px`;
+                    dragClone.style.width = `${tagEl.offsetWidth}px`;
+                    dragClone.style.height = `${tagEl.offsetHeight}px`;
+                    dragClone.style.cursor = 'grabbing';
+                    document.body.appendChild(dragClone);
+                    
+                    // 添加拖动时的样式
+                    tagEl.style.opacity = '0.3';
+                    
+                    // 添加鼠标移动和释放事件
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                }, LONG_PRESS_DURATION);
+            });
+            
+            // 添加鼠标抬起事件 - 清除长按计时器
+            tagEl.addEventListener('mouseup', () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+            });
+            
+            // 添加鼠标离开事件 - 清除长按计时器
+            tagEl.addEventListener('mouseleave', () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+            });
+            
+            const updateWeight = (nW) => { 
+                pushHistory(); 
+                currentPrompts.set(prompt, nW.toFixed(1) * 1); 
+                updateNodePrompt(); 
+                renderSelectedTags(); 
+                const c = currentData[activeCategoryIndex]; 
+                if (c?.groups?.[activeGroupIndex]) renderGroupTags([c.groups[activeGroupIndex]]); 
+                savePromptsToBackend(currentData); 
+            };
+            
+            const mBtn = $el("button", { 
+                textContent: "-", 
+                className: "minus", 
+                onclick: (e) => { 
+                    e.stopPropagation(); 
+                    updateWeight(Math.max(0.1, weight - 0.1)); 
+                } 
+            });
+            
+            const pBtn = $el("button", { 
+                textContent: "+", 
+                className: "plus", 
+                onclick: (e) => { 
+                    e.stopPropagation(); 
+                    updateWeight(weight + 0.1); 
+                } 
+            });
+            
+            const ctlDiv = $el("div", { 
+                className: "zml-prompt-ui-selected-tag-controls" 
+            }, [mBtn, pBtn]);
+            
+            const rmBtn = $el("div", { 
+                textContent: "×", 
+                className: "zml-prompt-ui-selected-tag-remove-btn", 
+                onclick: (e) => { 
+                    e.stopPropagation(); 
+                    pushHistory(); 
+                    currentPrompts.delete(prompt); 
+                    updateNodePrompt(); 
+                    renderSelectedTags(); 
+                    const c = currentData[activeCategoryIndex]; 
+                    if (c?.groups?.[activeGroupIndex]) renderGroupTags([c.groups[activeGroupIndex]]); 
+                    savePromptsToBackend(currentData); 
+                } 
+            });
+            
+            tagEl.append(ctlDiv, rmBtn); 
+            tagDisplay.appendChild(tagEl);
         });
+        
         updateNodePrompt();
+    };
+    
+    // 鼠标移动处理函数
+    function handleMouseMove(e) {
+        if (!isDragging && isLongPressing && dragElement) {
+            // 当鼠标移动超过一定距离时开始拖动
+            const deltaX = Math.abs(e.clientX - dragStartX);
+            const deltaY = Math.abs(e.clientY - dragStartY);
+            
+            if (deltaX > 5 || deltaY > 5) {
+                isDragging = true;
+                // 设置抓手光标
+                document.body.style.cursor = 'grabbing';
+            }
+        }
+        
+        if (isDragging && dragClone) {
+            // 更新克隆元素位置
+            dragClone.style.left = `${e.clientX - dragClone.offsetWidth / 2}px`;
+            dragClone.style.top = `${e.clientY - dragClone.offsetHeight / 2}px`;
+            
+            // 计算插入位置
+            const insertIndex = getInsertIndexAt(e.clientX, e.clientY);
+            const tags = Array.from(tagDisplay.querySelectorAll('.zml-prompt-ui-selected-tag'));
+            
+            if (insertIndex >= 0 && insertIndex <= tags.length) {
+                // 计算指示器宽度
+                let indicatorWidth = 80;
+                if (tags.length > 0) {
+                    if (insertIndex === 0 || insertIndex === tags.length) {
+                        // 使用第一个或最后一个标签的宽度
+                        const refTag = insertIndex === 0 ? tags[0] : tags[tags.length - 1];
+                        indicatorWidth = refTag.offsetWidth;
+                    } else {
+                        // 使用相邻两个标签的平均宽度
+                        const prevTag = tags[insertIndex - 1];
+                        const nextTag = tags[insertIndex];
+                        indicatorWidth = Math.max(80, Math.min(prevTag.offsetWidth, nextTag.offsetWidth));
+                    }
+                }
+                
+                // 显示指示器，这里的坐标参数已经不再使用，但为了兼容函数签名仍然保留
+                showInsertIndicator(0, 0, insertIndex, indicatorWidth);
+            } else {
+                // 如果没有合适的插入位置，隐藏指示器
+                hideInsertIndicator();
+            }
+        }
+    }
+    
+    // 鼠标释放处理函数
+    function handleMouseUp(e) {
+        if (isDragging && dragElement) {
+            const promptsArray = Array.from(currentPrompts.keys());
+            const fromIndex = Array.from(tagDisplay.querySelectorAll('.zml-prompt-ui-selected-tag')).indexOf(dragElement);
+            let toIndex = currentInsertIndex;
+            
+            // 调整目标索引
+            if (toIndex > fromIndex) {
+                toIndex--; // 因为我们先移除了元素
+            }
+            
+            // 确保索引有效
+            if (toIndex < 0) toIndex = 0;
+            if (toIndex > promptsArray.length - 1) toIndex = promptsArray.length - 1;
+            
+            // 如果索引发生了变化，则重新排序
+            if (fromIndex !== toIndex && fromIndex >= 0 && toIndex >= 0) {
+                pushHistory();
+                reorderPrompts(fromIndex, toIndex);
+                updateNodePrompt();
+                renderSelectedTags();
+                savePromptsToBackend(currentData);
+            }
+        }
+        
+        // 清理拖动状态
+        if (dragClone) {
+            document.body.removeChild(dragClone);
+            dragClone = null;
+        }
+        
+        if (dragElement) {
+            dragElement.style.opacity = '1';
+            dragElement = null;
+        }
+        
+        // 恢复光标
+        document.body.style.cursor = 'default';
+        
+        hideInsertIndicator();
+        isDragging = false;
+        isLongPressing = false;
+        
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        
+        // 移除事件监听器
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
     };
     
     undoBtn.onclick = () => { if (historyStack.length > 0) { currentPrompts = new Map(historyStack.pop()); updateNodePrompt(); renderSelectedTags(); const c = currentData[activeCategoryIndex]; if (c?.groups?.[activeGroupIndex]) renderGroupTags([c.groups[activeGroupIndex]]); savePromptsToBackend(currentData); } };

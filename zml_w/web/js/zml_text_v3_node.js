@@ -3145,7 +3145,7 @@ app.registerExtension({
                             }
                         };
 
-                        header.append(toggle, enableToggle, dragHandle, nameInput, saveBtn, deleteBtn);
+                        header.append(toggle, dragHandle, enableToggle, nameInput, saveBtn, deleteBtn);
                         folderCard.append(header, content);
                         this.addDragDropHandlers(folderCard, entry);
                         return folderCard;
