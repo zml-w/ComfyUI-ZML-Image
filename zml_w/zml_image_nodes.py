@@ -1691,7 +1691,8 @@ class ZML_LoadImageFromPathV2:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "模式": (["选择", "随机", "关闭预览"], {"default": "选择"}),
+                "模式": (["选择", "随机"], {"default": "选择"}),
+                "根目录路径": ("STRING", {"default": "", "placeholder": "输入根目录的绝对路径"}),
                 "selected_files_json": ("STRING", {"multiline": False, "default": '{"path": "", "files": []}'}),
             },
             "hidden": { "unique_id": "UNIQUE_ID", "prompt": "PROMPT" },
@@ -1707,10 +1708,14 @@ class ZML_LoadImageFromPathV2:
         """创建一个黑色的占位符图像张量"""
         return torch.zeros((1, size, size, 3), dtype=torch.float32, device="cpu")
 
-    def load_images_v2(self, 模式, selected_files_json, **kwargs):
+    def load_images_v2(self, 模式, 根目录路径, selected_files_json, **kwargs):
         try:
             data = json.loads(selected_files_json)
             folder_path = data.get("path", "")
+            
+            # 如果提供了根目录路径，优先使用它
+            if 根目录路径:
+                data["root_path"] = 根目录路径
         except (json.JSONDecodeError, TypeError):
             return ([self._create_placeholder_image()], "")
 
@@ -1719,7 +1724,7 @@ class ZML_LoadImageFromPathV2:
         if 模式 == "选择":
             selected_files = data.get("files", [])
         
-        elif 模式 == "随机" or 模式 == "关闭预览":
+        elif 模式 == "随机":
             if not folder_path:
                 print("[ZMLv2-随机模式] 警告: 文件夹路径为空。")
                 return ([self._create_placeholder_image()], "")
@@ -1774,8 +1779,8 @@ class ZML_LoadImageFromPathV2:
 
     @classmethod
     def IS_CHANGED(cls, 模式, selected_files_json, **kwargs):
-        # "随机" 和 "关闭预览" 模式都需要每次强制刷新
-        if 模式 == "随机" or 模式 == "关闭预览":
+        # "随机" 模式需要每次强制刷新
+        if 模式 == "随机":
             return float("nan")
         
         return (selected_files_json,)
@@ -1784,25 +1789,38 @@ class ZML_LoadImageFromPathV2:
 
 @server.PromptServer.instance.routes.get("/zml/v2/list_images")
 async def list_images_v2(request):
-    """API: 根据绝对路径列出目录中的图像文件"""
+    """API: 根据绝对路径列出目录中的图像文件和子文件夹"""
     path_param = request.query.get("path", "")
+    
+    # 如果路径参数为空，则使用当前工作目录作为默认路径
     if not path_param:
-        return web.json_response({"error": "缺少路径参数"}, status=400)
-
-    try:
-        # 安全性: 解析路径以防止目录遍历攻击 (如 ../)
+        target_path = Path(os.getcwd()).resolve()
+    else:
         target_path = Path(path_param).resolve()
 
+    try:
         # 安全性: 确保路径是一个存在的目录
         if not target_path.is_dir():
             return web.json_response({"error": "路径不是一个有效的目录"}, status=404)
         
-        # 扫描目录中所有支持的图像文件
-        files = [f.name for f in target_path.iterdir() if f.is_file() and f.suffix.lower() in supported_image_extensions]
+        files = []
+        folders = []
+        
+        for item in target_path.iterdir():
+            if item.is_file() and item.suffix.lower() in supported_image_extensions:
+                files.append(item.name)
+            elif item.is_dir():
+                folders.append(item.name)
         
         files.sort() # 按名称排序
+        folders.sort() # 按名称排序
         
-        return web.json_response({"path": str(target_path), "files": files})
+        return web.json_response({
+            "path": str(target_path), 
+            "files": files, 
+            "folders": folders,
+            "comfyui_root_path": str(COMFYUI_ROOT) # 返回ComfyUI的根目录
+        })
 
     except Exception as e:
         return web.json_response({"error": f"发生错误: {str(e)}"}, status=500)

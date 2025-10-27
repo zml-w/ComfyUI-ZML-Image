@@ -933,6 +933,11 @@ class ZML_MultiTextInput5V2:
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "分隔符": ("STRING", {
+                    "multiline": False,
+                    "default": ",\n\n",
+                    "placeholder": "输入分隔符"
+                }),
                 "文本1_输入": ("STRING", {
                     "multiline": False, # 单行输入
                     "default": "",
@@ -966,10 +971,26 @@ class ZML_MultiTextInput5V2:
     RETURN_NAMES = ("文本1", "文本2", "文本3", "文本4", "文本5", "合并文本",)
     FUNCTION = "passthrough_texts"
 
-    def passthrough_texts(self, 文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入):
-        """简单地将五个输入文本作为五个独立输出返回，并新增合并文本输出。"""
-        # 合并所有文本，不需要分隔符和格式化标点符号
-        merged_text = 文本1_输入 + 文本2_输入 + 文本3_输入 + 文本4_输入 + 文本5_输入
+    def passthrough_texts(self, 分隔符, 文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入):
+        """将五个输入文本作为五个独立输出返回，并使用分隔符合并文本输出。"""
+        # 安全地将所有文本放入列表
+        texts = [
+            文本1_输入,
+            文本2_输入,
+            文本3_输入,
+            文本4_输入,
+            文本5_输入
+        ]
+        
+        # 过滤掉空文本
+        non_empty_texts = [t for t in texts if t.strip()]
+
+        # 处理分隔符中的换行符写法
+        processed_separator = 分隔符.replace("\\n", "\n")
+
+        # 使用分隔符合并文本
+        merged_text = processed_separator.join(non_empty_texts)
+            
         return (文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入, merged_text,)
 
 # ============================== 多文本输入节点（三个输入框）==============================
