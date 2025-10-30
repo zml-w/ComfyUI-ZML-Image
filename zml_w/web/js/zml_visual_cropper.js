@@ -555,10 +555,14 @@ function showPainterModal(node, widget) {
     // 获取默认宽和默认高参数值
     let defaultWidth = 1024;
     let defaultHeight = 1024;
+    // 获取启用自适应动画参数值，默认为true
+    let enableAdaptiveAnimation = true;
     const widthWidget = node.widgets.find(w => w.name === '默认宽');
     const heightWidget = node.widgets.find(w => w.name === '默认高');
+    const animationWidget = node.widgets.find(w => w.name === '启用自适应动画');
     if (widthWidget) defaultWidth = widthWidget.value || defaultWidth;
     if (heightWidget) defaultHeight = heightWidget.value || defaultHeight;
+    if (animationWidget !== undefined) enableAdaptiveAnimation = animationWidget.value;
     
     // 检查是否有上游图像节点连接
     if (upstreamNode && upstreamNode.imgs && upstreamNode.imgs.length > 0) {
@@ -1220,47 +1224,72 @@ function showPainterModal(node, widget) {
         img.src = imageUrl;
         
         const setupCanvasAndImage = () => {
-            // 获取模态框内容区的实际尺寸
-            const modalContentRect = modalContent.getBoundingClientRect();
-            const modalContentStyle = getComputedStyle(modalContent);
-            const modalContentPaddingX = parseFloat(modalContentStyle.paddingLeft) + parseFloat(modalContentStyle.paddingRight);
-            const modalContentPaddingY = parseFloat(modalContentStyle.paddingTop) + parseFloat(modalContentStyle.paddingBottom);
-            const modalContentGap = parseFloat(modalContentStyle.columnGap || modalContentStyle.gap);
+            if (enableAdaptiveAnimation) {
+                // 获取模态框内容区的实际尺寸
+                const modalContentRect = modalContent.getBoundingClientRect();
+                const modalContentStyle = getComputedStyle(modalContent);
+                const modalContentPaddingX = parseFloat(modalContentStyle.paddingLeft) + parseFloat(modalContentStyle.paddingRight);
+                const modalContentPaddingY = parseFloat(modalContentStyle.paddingTop) + parseFloat(modalContentStyle.paddingBottom);
+                const modalContentGap = parseFloat(modalContentStyle.columnGap || modalContentStyle.gap);
 
-            const sidePanels = modal.querySelectorAll('.zml-side-panel');
-            let totalSidePanelWidth = 0;
-            if (sidePanels.length > 0) {
-                totalSidePanelWidth = Array.from(sidePanels).reduce((sum, panel) => sum + panel.offsetWidth, 0);
-            }
+                const sidePanels = modal.querySelectorAll('.zml-side-panel');
+                let totalSidePanelWidth = 0;
+                if (sidePanels.length > 0) {
+                    totalSidePanelWidth = Array.from(sidePanels).reduce((sum, panel) => sum + panel.offsetWidth, 0);
+                }
 
-            // 计算主内容区可用的水平空间
-            const availableMainContentAreaWidth = modalContentRect.width - modalContentPaddingX - totalSidePanelWidth - (modalContentGap * (sidePanels.length > 0 ? sidePanels.length : 0));
+                // 计算主内容区可用的水平空间
+                const availableMainContentAreaWidth = modalContentRect.width - modalContentPaddingX - totalSidePanelWidth - (modalContentGap * (sidePanels.length > 0 ? sidePanels.length : 0));
 
-            // 获取底部面板和提示的高度
-            const bottomPanelHeight = bottomPanel.offsetHeight + parseFloat(getComputedStyle(bottomPanel).marginTop) + parseFloat(getComputedStyle(bottomPanel).marginBottom);
-            const tipHeight = tipElement.offsetHeight + parseFloat(getComputedStyle(tipElement).marginTop) + parseFloat(getComputedStyle(tipElement).marginBottom);
-            const mainContentAreaStyle = getComputedStyle(mainContentArea);
-            const mainContentAreaGap = parseFloat(mainContentAreaStyle.rowGap || mainContentAreaStyle.gap);
+                // 获取底部面板和提示的高度
+                const bottomPanelHeight = bottomPanel.offsetHeight + parseFloat(getComputedStyle(bottomPanel).marginTop) + parseFloat(getComputedStyle(bottomPanel).marginBottom);
+                const tipHeight = tipElement.offsetHeight + parseFloat(getComputedStyle(tipElement).marginTop) + parseFloat(getComputedStyle(tipElement).marginBottom);
+                const mainContentAreaStyle = getComputedStyle(mainContentArea);
+                const mainContentAreaGap = parseFloat(mainContentAreaStyle.rowGap || mainContentAreaStyle.gap);
 
-            // 计算图像区域可用的垂直空间
-            const availableImageHeightForScaler = modalContentRect.height - modalContentPaddingY - bottomPanelHeight - tipHeight - (mainContentAreaGap * 2);
+                // 计算图像区域可用的垂直空间
+                const availableImageHeightForScaler = modalContentRect.height - modalContentPaddingY - bottomPanelHeight - tipHeight - (mainContentAreaGap * 2);
 
-            // 计算初始缩放比例
-            initialDisplayScale = Math.min(1, 
-                availableMainContentAreaWidth / img.naturalWidth, 
-                availableImageHeightForScaler / img.naturalHeight
-            );
-            
-            // 可以设置一个最小缩放比例，防止图像过小（可选）
-            const MIN_SCALE = 0.05; 
-            if (initialDisplayScale < MIN_SCALE && (img.naturalWidth * MIN_SCALE) > 100) { // 避免超小图被放大到无意义的尺寸
-                initialDisplayScale = Math.min(1, MIN_SCALE);
-            } else if (initialDisplayScale * img.naturalWidth < 100) { // 确保图像至少有100px宽
-                 initialDisplayScale = 100 / img.naturalWidth;
-                 if (initialDisplayScale * img.naturalHeight > availableImageHeightForScaler) { // 如果按宽放大后高溢出
-                    initialDisplayScale = availableImageHeightForScaler / img.naturalHeight;
-                 }
-                 initialDisplayScale = Math.min(1, initialDisplayScale); // 避免放大到大于原始尺寸
+                // 计算初始缩放比例
+                initialDisplayScale = Math.min(1, 
+                    availableMainContentAreaWidth / img.naturalWidth, 
+                    availableImageHeightForScaler / img.naturalHeight
+                );
+                
+                // 可以设置一个最小缩放比例，防止图像过小（可选）
+                const MIN_SCALE = 0.05; 
+                if (initialDisplayScale < MIN_SCALE && (img.naturalWidth * MIN_SCALE) > 100) { // 避免超小图被放大到无意义的尺寸
+                    initialDisplayScale = Math.min(1, MIN_SCALE);
+                } else if (initialDisplayScale * img.naturalWidth < 100) { // 确保图像至少有100px宽
+                     initialDisplayScale = 100 / img.naturalWidth;
+                     if (initialDisplayScale * img.naturalHeight > availableImageHeightForScaler) { // 如果按宽放大后高溢出
+                        initialDisplayScale = availableImageHeightForScaler / img.naturalHeight;
+                     }
+                     initialDisplayScale = Math.min(1, initialDisplayScale); // 避免放大到大于原始尺寸
+                }
+            } else {
+                // 不启用自适应动画时，使用默认大小但仍然计算合适的缩放比例
+                // 设置模态框宽度固定，但高度根据内容自适应
+                modalContent.style.minWidth = 'auto';
+                modalContent.style.minHeight = 'auto';
+                modalContent.style.width = '850px';
+                modalContent.style.height = 'auto'; // 改为auto让高度自适应内容
+                modalContent.style.maxHeight = '80vh'; // 添加最大高度限制，避免内容过长时溢出屏幕
+                
+                // 计算合适的缩放比例，确保图像完全可见
+                // 先获取默认尺寸
+                const defaultCanvasWidth = 600;
+                const defaultCanvasHeight = 450;
+                
+                // 计算缩放比例，确保图像完全适应画布
+                const scaleX = defaultCanvasWidth / img.naturalWidth;
+                const scaleY = defaultCanvasHeight / img.naturalHeight;
+                initialDisplayScale = Math.min(scaleX, scaleY, 1.0); // 最大不超过1:1
+                
+                // 确保缩放比例不会太小，图像至少有100px宽
+                if (initialDisplayScale * img.naturalWidth < 100) {
+                    initialDisplayScale = 100 / img.naturalWidth;
+                }
             }
 
 
@@ -1332,16 +1361,20 @@ function showPainterModal(node, widget) {
             closeModal(modal);
         };
 
-        // 为了响应窗口大小变化 (可选但推荐)
-        const resizeObserver = new ResizeObserver(() => {
-            if (modal.isConnected) { // 确保模态框仍然在DOM中
-                setupCanvasAndImage(); // 重新计算并设置尺寸
-                canvas.renderAll(); // 重新渲染以适应新尺寸
-            } else {
-                resizeObserver.disconnect(); // 如果模态框已关闭，断开Observer
-            }
-        });
-        resizeObserver.observe(modalContent); // 监听模态框内容区尺寸变化
+        // 根据是否启用自适应动画来决定是否添加ResizeObserver
+        let resizeObserver = null;
+        if (enableAdaptiveAnimation) {
+            // 为了响应窗口大小变化 (可选但推荐)
+            resizeObserver = new ResizeObserver(() => {
+                if (modal.isConnected) { // 确保模态框仍然在DOM中
+                    setupCanvasAndImage(); // 重新计算并设置尺寸
+                    canvas.renderAll(); // 重新渲染以适应新尺寸
+                } else {
+                    resizeObserver.disconnect(); // 如果模态框已关闭，断开Observer
+                }
+            });
+            resizeObserver.observe(modalContent); // 监听模态框内容区尺寸变化
+        }
 
         
         function renderAllDrawings() {

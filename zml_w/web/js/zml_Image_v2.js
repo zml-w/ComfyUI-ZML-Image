@@ -113,6 +113,32 @@ app.registerExtension({
                             height: 100%;
                             object-fit: contain;
                         }
+                        .zml-v2-edit-btn {
+                            position: absolute;
+                            top: 5px;
+                            left: 5px;
+                            z-index: 10;
+                            background: rgba(0, 0, 0, 0.5);
+                            color: white;
+                            border: none;
+                            border-radius: 50%;
+                            cursor: pointer;
+                            width: 28px;
+                            height: 28px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: background 0.2s, transform 0.2s;
+                            backdrop-filter: blur(2px);
+                            opacity: 0;
+                        }
+                        .zml-v2-edit-btn:hover {
+                            background: rgba(74, 144, 226, 0.8);
+                            transform: scale(1.1);
+                        }
+                        .zml-v2-image-item:hover .zml-v2-edit-btn {
+                            opacity: 1;
+                        }
                         .zml-v2-image-item:hover { border-color: #4a90e2; }
                         .zml-v2-image-item.selected {
                             border-color: #5cb85c;
@@ -310,7 +336,295 @@ app.registerExtension({
                         const fullPath = basePath + (basePath.endsWith('/') || basePath.endsWith('\\') ? '' : '/') + filename;
                         const encodedPath = encodeURIComponent(fullPath);
                         const img = $el("img", { src: `/zml/v2/view_thumb?path=${encodedPath}`, title: filename });
-                        const imageItem = $el("div.zml-v2-image-item", [img]);
+                        const editBtn = $el("button.zml-v2-edit-btn", {
+                            title: "编辑图像文本块",
+                            textContent: "✏️"
+                        });
+                        
+                        // 编辑按钮点击事件
+                        editBtn.addEventListener("click", async (e) => {
+                            e.stopPropagation(); // 阻止事件冒泡，避免触发图像选择
+                            
+                            try {
+                                // 获取当前图像的文本块内容
+                                const response = await api.fetchApi(`/zml/v2/get_text_block?path=${encodedPath}`);
+                                let textContent = '';
+                                
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    textContent = data.text || '';
+                                }
+                                
+                                // 创建编辑对话框
+                                const overlay = $el("div", {
+                                    style: {
+                                        position: 'fixed',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                        zIndex: 10000,
+                                        padding: '20px'
+                                    }
+                                });
+                                
+                                const dialog = $el("div", {
+                                    style: {
+                                        position: 'absolute',
+                                        top: '50%',
+                                        left: '50%',
+                                        transform: 'translate(-50%, -50%)',
+                                        backgroundColor: '#2a2a2a',
+                                        border: '1px solid #444',
+                                        borderRadius: '8px',
+                                        padding: '0',
+                                        width: '100%',
+                                        maxWidth: '600px',
+                                        maxHeight: '80vh',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        overflow: 'hidden',
+                                        cursor: 'move'
+                                    }
+                                });
+                                
+                                const header = $el("div", {
+                                    style: {
+                                        backgroundColor: '#333',
+                                        padding: '12px 16px',
+                                        borderBottom: '1px solid #444',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        cursor: 'move',
+                                        userSelect: 'none'
+                                    }
+                                });
+                                
+                                const title = $el("h3", {
+                                    textContent: `编辑图像文本块 - ${filename}`,
+                                    style: {
+                                        margin: 0,
+                                        color: '#fff',
+                                        fontSize: '16px'
+                                    }
+                                });
+                                
+                                const closeBtn = $el("button", {
+                                    textContent: "×",
+                                    style: {
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#fff',
+                                        fontSize: '24px',
+                                        cursor: 'pointer',
+                                        padding: '0',
+                                        width: '30px',
+                                        height: '30px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }
+                                });
+                                
+                                closeBtn.addEventListener("click", () => {
+                                    document.body.removeChild(overlay);
+                                });
+                                
+                                header.appendChild(title);
+                                header.appendChild(closeBtn);
+                                
+                                const label = $el("label", {
+                                    textContent: "文本内容:",
+                                    style: {
+                                        display: 'block',
+                                        padding: '12px 16px 8px',
+                                        color: '#ccc',
+                                        fontSize: '14px'
+                                    }
+                                });
+                                
+                                const textarea = $el("textarea", {
+                                    value: textContent,
+                                    placeholder: "在此输入文本块内容...",
+                                    style: {
+                                        width: '100%',
+                                        minHeight: '200px',
+                                        padding: '12px 16px',
+                                        backgroundColor: '#333',
+                                        border: '1px solid #555',
+                                        borderRadius: '4px',
+                                        color: '#fff',
+                                        fontSize: '14px',
+                                        fontFamily: 'monospace',
+                                        resize: 'vertical',
+                                        boxSizing: 'border-box'
+                                    }
+                                });
+                                
+                                const buttons = $el("div", {
+                                    style: {
+                                        padding: '12px 16px',
+                                        borderTop: '1px solid #444',
+                                        display: 'flex',
+                                        justifyContent: 'flex-end',
+                                        gap: '8px'
+                                    }
+                                });
+                                
+                                const cancelBtn = $el("button", {
+                                    textContent: "取消",
+                                    style: {
+                                        padding: '8px 16px',
+                                        backgroundColor: '#6c757d',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }
+                                });
+                                
+                                cancelBtn.addEventListener("click", () => {
+                                    document.body.removeChild(overlay);
+                                });
+                                
+                                const saveBtn = $el("button", {
+                                    textContent: "保存",
+                                    style: {
+                                        padding: '8px 16px',
+                                        backgroundColor: '#4a90e2',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }
+                                });
+                                
+                                saveBtn.addEventListener("click", async () => {
+                                    const newText = textarea.value;
+                                    
+                                    saveBtn.disabled = true;
+                                    saveBtn.textContent = '保存中...';
+                                    
+                                    try {
+                                        const response = await api.fetchApi(
+                                            `/zml/v2/edit_text_block?path=${encodedPath}`,
+                                            {
+                                                method: "POST",
+                                                headers: {
+                                                    "Content-Type": "application/json"
+                                                },
+                                                body: JSON.stringify({ text: newText })
+                                            }
+                                        );
+                                        
+                                        if (response.ok) {
+                                            document.body.removeChild(overlay);
+                                        } else {
+                                            const error = await response.json();
+                                            alert(`保存失败: ${error.error}`);
+                                        }
+                                    } catch (error) {
+                                        alert(`保存失败: ${error.message}`);
+                                    } finally {
+                                        // 恢复按钮状态
+                                        saveBtn.disabled = false;
+                                        saveBtn.textContent = '保存';
+                                    }
+                                });
+                                
+                                // 组合按钮容器
+                                buttons.appendChild(cancelBtn);
+                                buttons.appendChild(saveBtn);
+                                
+                                // 组合对话框
+                                dialog.appendChild(header);
+                                dialog.appendChild(label);
+                                dialog.appendChild(textarea);
+                                dialog.appendChild(buttons);
+                                
+                                // 组合覆盖层
+                                overlay.appendChild(dialog);
+                                
+                                // 添加到文档
+                                document.body.appendChild(overlay);
+                                
+                                // 自动聚焦文本区域
+                                textarea.focus();
+                                
+                                // 实现拖动功能
+                                let isDragging = false;
+                                let dragOffset = { x: 0, y: 0 };
+                                
+                                const startDrag = (e) => {
+                                    isDragging = true;
+                                    const rect = dialog.getBoundingClientRect();
+                                    dragOffset.x = e.clientX - rect.left;
+                                    dragOffset.y = e.clientY - rect.top;
+                                    dialog.style.cursor = 'grabbing';
+                                };
+                                
+                                const drag = (e) => {
+                                    if (!isDragging) return;
+                                    e.preventDefault();
+                                    
+                                    const newX = e.clientX - dragOffset.x;
+                                    const newY = e.clientY - dragOffset.y;
+                                    
+                                    // 限制在窗口范围内
+                                    const maxX = window.innerWidth - dialog.offsetWidth;
+                                    const maxY = window.innerHeight - dialog.offsetHeight;
+                                    
+                                    dialog.style.left = Math.max(0, Math.min(newX, maxX)) + 'px';
+                                    dialog.style.top = Math.max(0, Math.min(newY, maxY)) + 'px';
+                                    dialog.style.transform = 'none';
+                                };
+                                
+                                const stopDrag = () => {
+                                    isDragging = false;
+                                    dialog.style.cursor = 'move';
+                                };
+                                
+                                // 添加拖动事件监听器
+                                header.addEventListener('mousedown', startDrag);
+                                document.addEventListener('mousemove', drag);
+                                document.addEventListener('mouseup', stopDrag);
+                                
+                                // 按ESC键关闭对话框
+                                const handleEscape = (e) => {
+                                    if (e.key === 'Escape') {
+                                        document.body.removeChild(overlay);
+                                        document.removeEventListener('keydown', handleEscape);
+                                        document.removeEventListener('mousemove', drag);
+                                        document.removeEventListener('mouseup', stopDrag);
+                                    }
+                                };
+                                document.addEventListener('keydown', handleEscape);
+                                
+                                // 清理函数
+                                const cleanup = () => {
+                                    document.removeEventListener('mousemove', drag);
+                                    document.removeEventListener('mouseup', stopDrag);
+                                    document.removeEventListener('keydown', handleEscape);
+                                };
+                                
+                                // 在关闭对话框时清理事件监听器
+                                closeBtn.addEventListener('click', cleanup);
+                                cancelBtn.addEventListener('click', cleanup);
+                                saveBtn.addEventListener('click', () => {
+                                    // 保存成功后清理
+                                    setTimeout(cleanup, 100);
+                                });
+                            } catch (error) {
+                                console.error("编辑文本块时出错:", error);
+                                alert(`获取文本块时出错: ${error.message}`);
+                            }
+                        });
+                        
+                        const imageItem = $el("div.zml-v2-image-item", [img, editBtn]);
                         imageItem.dataset.fullpath = fullPath;
                         if (state.files.includes(fullPath)) {
                             imageItem.classList.add("selected");
