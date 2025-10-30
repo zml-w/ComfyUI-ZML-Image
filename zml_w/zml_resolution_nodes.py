@@ -539,6 +539,7 @@ class ZML_ImagePainter:
                 "默认宽": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
                 "默认高": ("INT", {"default": 1024, "min": 1, "max": 8192, "step": 1}),
                 "清空绘制内容": ("BOOLEAN", {"default": False, "tooltip": "开启此按钮时，每次打开绘制UI都会清空画布"}),
+                "启用自适应动画": ("BOOLEAN", {"default": True, "tooltip": "开启此按钮时，打开UI会显示窗口自适应动画；关闭时直接显示默认大小窗口"}),
                 "paint_data": ("STRING", {"multiline": True, "default": "{}", "widget": "hidden"}),
             },
             "optional": { 
@@ -568,7 +569,7 @@ class ZML_ImagePainter:
         else: # Fallback for other modes
             return torch.from_numpy(np.array(pil_image.convert("RGBA")).astype(np.float32) / 255.0).unsqueeze(0)
 
-    def paint_image(self, 默认宽, 默认高, 清空绘制内容=False, paint_data="{}", 图像=None, 画笔图像=None):
+    def paint_image(self, 默认宽, 默认高, 清空绘制内容=False, 启用自适应动画=True, paint_data="{}", 图像=None, 画笔图像=None):
         # 始终尝试解析paint_data，无论清空绘制内容参数如何设置
         # 这样可以确保用户在UI中绘制的内容能够被正确应用
         try:

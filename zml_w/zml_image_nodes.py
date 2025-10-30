@@ -1701,7 +1701,7 @@ class ZML_LoadImageFromPathV2:
     RETURN_TYPES = ("IMAGE", "STRING",)
     RETURN_NAMES = ("图像", "文本块",)
     FUNCTION = "load_images_v2"
-    CATEGORY = "image/ZML_图像/图像"
+    CATEGORY = "image/ZML_图像/工具"
     OUTPUT_IS_LIST = (True, False,)
 
     def _create_placeholder_image(self, size=64) -> torch.Tensor:
@@ -1860,6 +1860,112 @@ async def view_thumb_v2(request):
         print(f"为 {path_param} 生成v2缩略图时出错: {e}")
         return web.Response(status=500, text=f"生成缩略图时出错: {e}")
 
+@server.PromptServer.instance.routes.get("/zml/v2/get_text_block")
+async def get_text_block(request):
+    """API: 获取图像的文本块内容"""
+    try:
+        # 获取路径参数
+        path_param = request.query.get("path", "")
+        if not path_param:
+            return web.json_response({"error": "缺少路径参数"}, status=400)
+
+        # 安全性: 解码并解析路径
+        image_path = Path(urllib.parse.unquote(path_param)).resolve()
+
+        # 安全性: 确保它是一个文件且存在
+        if not image_path.is_file():
+            return web.json_response({"error": "图像文件未找到"}, status=404)
+        
+        # 安全性: 确保它是一个图像文件
+        if image_path.suffix.lower() != '.png':
+            return web.json_response({"error": "仅支持PNG格式图像的文本块操作"}, status=400)
+
+        # 读取PNG图像的文本块
+        text_content = ""
+        try:
+            with Image.open(image_path) as img:
+                # 检查是否有文本块
+                if hasattr(img, 'info'):
+                    # 获取文本块内容
+                    text_content = img.info.get(DEFAULT_TEXT_BLOCK_KEY, "")
+        except Exception as e:
+            print(f"读取文本块时出错: {e}")
+
+        return web.json_response({"text": text_content})
+
+    except Exception as e:
+        print(f"处理获取文本块请求时出错: {e}")
+        return web.json_response({"error": f"服务器错误: {str(e)}"}, status=500)
+
+@server.PromptServer.instance.routes.post("/zml/v2/edit_text_block")
+async def edit_text_block(request):
+    """API: 编辑图像中的文本块"""
+    try:
+        # 获取路径参数
+        path_param = request.query.get("path", "")
+        if not path_param:
+            return web.json_response({"error": "缺少路径参数"}, status=400)
+        
+        # 解析请求体
+        request_data = await request.json()
+        new_text = request_data.get("text", "")
+
+        # 安全性: 解码并解析路径
+        image_path = Path(urllib.parse.unquote(path_param)).resolve()
+
+        # 安全性: 确保它是一个文件且存在
+        if not image_path.is_file():
+            return web.json_response({"error": "图像文件未找到"}, status=404)
+        
+        # 安全性: 确保它是一个图像文件
+        if image_path.suffix.lower() != '.png':
+            return web.json_response({"error": "仅支持PNG格式图像的文本块操作"}, status=400)
+
+        # 保存临时文件路径（避免直接覆盖原文件）
+        temp_path = str(image_path) + ".tmp"
+        
+        try:
+            # 读取原图并保留所有元数据
+            with Image.open(image_path) as img:
+                # 创建新的元数据对象
+                metadata = PngImagePlugin.PngInfo()
+                
+                # 保留所有现有元数据（除了要更新的文本块）
+                if hasattr(img, 'info'):
+                    for key, value in img.info.items():
+                        if key != DEFAULT_TEXT_BLOCK_KEY:
+                            try:
+                                metadata.add_text(key, value)
+                            except:
+                                # 忽略无法添加的元数据
+                                pass
+                
+                # 添加或更新文本块
+                if new_text:
+                    metadata.add_text(DEFAULT_TEXT_BLOCK_KEY, new_text, zip=True)
+                
+                # 保存带有新元数据的图像到临时文件
+                img.save(temp_path, pnginfo=metadata, compress_level=4)
+            
+            # 使用原子操作替换原文件（避免文件损坏）
+            import shutil
+            shutil.move(temp_path, image_path)
+            
+            return web.json_response({"success": True, "message": "文本块已成功更新"})
+            
+        except Exception as e:
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            print(f"保存文本块时出错: {e}")
+            return web.json_response({"error": f"保存失败: {str(e)}"}, status=500)
+
+    except json.JSONDecodeError:
+        return web.json_response({"error": "无效的JSON请求体"}, status=400)
+    except Exception as e:
+        print(f"处理文本块编辑请求时出错: {e}")
+        return web.json_response({"error": f"服务器错误: {str(e)}"}, status=500)
+
 # ============================== 节点注册==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_SaveImage": ZML_SaveImage,
@@ -1877,7 +1983,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SimpleSaveImage": "ZML_简易_保存图像",
     "ZML_LoadImage": "ZML_加载图像",
     "ZML_LoadImageFromPath": "ZML_从路径加载图像",
-    "ZML_LoadImageFromPathV2": "ZML_从路径加载图像V2",
+    "ZML_LoadImageFromPathV2": "ZML_标签化图像加载器V2",
     "ZML_LoadVideoFromPath": "ZML_从路径加载视频",
     "ZML_TagImageLoader": "ZML_标签化图像加载器", 
     "ZML_ClassifyImage": "ZML_分类图像", 
