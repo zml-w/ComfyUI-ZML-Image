@@ -115,7 +115,7 @@ class ZML_AddTextWatermark:
             width = max(1, bbox[2] - bbox[0])
             height = max(1, bbox[3] - bbox[1])
             return width, height
-        except Exception: 
+        except Exception:
             w, h = font.getsize(char)
             return max(1, w), max(1, h)
 
@@ -536,8 +536,8 @@ class ZML_TextToImage:
                 "字体大小": ("INT", {"default": 48, "min": 1, "max": 1024}),
                 "颜色": ("STRING", {"default": "#000000", "placeholder": "留空为透明字体; 输入'ZML'为随机填充色"}),
                 "书写方向": (["横排", "竖排"],),
-                "字符间距": ("INT", {"default": 10, "min": -50, "max": 100}),
-                "行间距": ("INT", {"default": 10, "min": -50, "max": 200}),
+                "字符间距": ("INT", {"default": 0, "min": -10, "max": 100}),
+                "行间距": ("INT", {"default": 10, "min": -10, "max": 200}),
                 "内边距": ("INT", {"default": 20, "min": 0, "max": 100, "tooltip": "文本与图像边缘的距离，同时影响上下左右"}),
                 "文字描边宽度": ("INT", {"default": 3, "min": 0, "max": 100}), 
                 "文字描边颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则不描边; 输入'ZML'为随机颜色"}), 
@@ -584,6 +584,18 @@ class ZML_TextToImage:
         except Exception:
             w, h = font.getsize(char)
             return max(1, w), max(1, h)
+
+    def _get_font_line_height(self, font):
+        try:
+            ascent, descent = font.getmetrics()
+            return ascent + descent
+        except AttributeError:
+            try:
+                # Fallback using getbbox for a representative string including ascenders and descenders
+                return font.getbbox("Agy")[3] - font.getbbox("Agy")[1]
+            except Exception:
+                # Final fallback to font size
+                return font.size
 
     def _prepare_lines(self, text, font, char_spacing, orientation, max_dim=None):
         # 首先按用户手动换行符分割文本
@@ -722,24 +734,17 @@ class ZML_TextToImage:
 
         if orientation == "横排":
             max_w, total_h = 0, 0
+            # 使用基于字体度量的固定行高以获得更准确的高度
+            line_h = self._get_font_line_height(font)
             for i, line in enumerate(lines):
                 line_w = 0
                 if line:
                     line_w = sum(self._get_char_size(c, font)[0] for c in line) + (max(0, len(line) - 1) * char_spacing)
                 max_w = max(max_w, line_w)
-                
-                line_h = 0
-                if line:
-                    line_h = max([self._get_char_size(c, font)[1] for c in line])
-                else: 
-                    try:
-                        line_h = max(1, font.getbbox("A")[3] - font.getbbox("A")[1])
-                    except Exception:
-                        line_h = max(1, font.getsize("A")[1] if font.getsize("A") else 1)
-                
-                total_h += line_h
-                if i < len(lines) - 1:
-                    total_h += line_spacing
+            
+            if lines:
+                total_h = (len(lines) * line_h) + (max(0, len(lines) - 1) * line_spacing)
+
             return max(1, max_w), max(1, total_h)
         else: # 竖排
             total_w, max_h = 0, 0
@@ -776,16 +781,9 @@ class ZML_TextToImage:
                 return (0, 0, 0, 0) 
 
         if orientation == "横排":
+            # 使用基于字体度量的固定行高以确保绘制和尺寸计算一致
+            line_h = self._get_font_line_height(font)
             for line in lines:
-                line_h = 0
-                if line:
-                    line_h = max([self._get_char_size(c, font)[1] for c in line])
-                else:
-                    try:
-                        line_h = max(1, font.getbbox("A")[3] - font.getbbox("A")[1])
-                    except:
-                        line_h = max(1, font.getsize("A")[1] if font.getsize("A") else 1)
-
                 for char in line:
                     char_fill_color = get_char_color(fill_color_param, opacity)
                     char_stroke_color = get_char_color(stroke_fill_color_param, opacity)
