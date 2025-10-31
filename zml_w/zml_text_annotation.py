@@ -548,9 +548,9 @@ class ZML_TextToImage:
                 "文本图像占比": ("FLOAT", {"default": 0.25, "min": 0.10, "max": 0.5, "step": 0.05, "tooltip": "此参数仅在接入图像时生效"}), 
                 "图像拼接方向": (["上", "下", "左", "右"], {"default": "下", "tooltip": "此参数仅在接入图像时生效"}), 
                 "外边框宽度": ("INT", {"default": 30, "min": 0, "max": 100, "tooltip": "此参数仅在接入图像时生效"}),
-                "外边框颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则无边框; 输入'ZML'为随机颜色", "tooltip": "此参数仅在接入图像时生效"}), 
+                "外边框颜色": ("STRING", {"default": "#000000", "placeholder": "留空则无边框; 输入'ZML'为随机颜色", "tooltip": "此参数仅在接入图像时生效"}), 
                 "内边框宽度": ("INT", {"default": 20, "min": 0, "max": 100, "tooltip": "此参数仅在接入图像时生效"}),
-                "内边框颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则无边框; 输入'ZML'为随机颜色", "tooltip": "此参数仅在接入图像时生效"}),
+                "内边框颜色": ("STRING", {"default": "#000000", "placeholder": "留空则无边框; 输入'ZML'为随机颜色", "tooltip": "此参数仅在接入图像时生效"}),
             },
             "optional": {
                 "输入图像": ("IMAGE", {"forceInput": True}),
