@@ -1432,10 +1432,210 @@ class ZML_MergeText:
         combined = format_punctuation_global(combined)
         return (combined,)
 
+# ============================== 筛选提示词V2节点 ==============================
+class ZML_TextFilterV2:
+    """ZML 筛选提示词V2节点：基于十个布尔开关筛选提示词，支持从txt/miaoka/目录下的十个分类文件中加载提示词进行过滤"""
+    
+    def __init__(self):
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        self.miaoka_dir = os.path.join(self.node_dir, "txt", "miaoka")
+        self.category_files = {
+            "二次元角色": "二次元角色.txt",
+            "人物": "人物.txt", 
+            "场景": "场景.txt",
+            "服饰": "服饰.txt",
+            "物品": "物品.txt",
+            "环境": "环境.txt",
+            "画面": "画面.txt",
+            "艺术家": "艺术家.txt",
+            "表情动作": "表情动作.txt",
+            "镜头": "镜头.txt"
+        }
+        self.category_keywords = {}
+        self.category_translations = {}  # 新增：存储英文到中文的翻译映射
+        self._load_category_keywords()
+    
+    def _load_category_keywords(self):
+        """加载所有分类的关键词和翻译"""
+        for category, filename in self.category_files.items():
+            file_path = os.path.join(self.miaoka_dir, filename)
+            keywords = set()
+            translations = {}  # 英文到中文的映射
+            try:
+                if os.path.exists(file_path):
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and ',' in line:
+                                # 分割英文提示词和中文翻译
+                                parts = line.split(',', 1)
+                                english_part = parts[0].strip()
+                                chinese_part = parts[1].strip() if len(parts) > 1 else ""
+                                if english_part:
+                                    keywords.add(english_part)
+                                    if chinese_part:
+                                        translations[english_part] = chinese_part
+                    self.category_keywords[category] = keywords
+                    self.category_translations[category] = translations
+                else:
+                    print(f"ZML_TextFilterV2 [警告]: 分类文件不存在 {file_path}")
+                    self.category_keywords[category] = set()
+                    self.category_translations[category] = {}
+            except Exception as e:
+                print(f"ZML_TextFilterV2 [错误]: 加载分类文件失败 {file_path}: {e}")
+                self.category_keywords[category] = set()
+                self.category_translations[category] = {}
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "输入文本": ("STRING", {"forceInput": True}),
+                "自定义过滤词": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "placeholder": "输入自定义过滤词，用英文逗号分隔"
+                }),
+                "二次元角色": ("BOOLEAN", {"default": False}),
+                "人物": ("BOOLEAN", {"default": False}),
+                "场景": ("BOOLEAN", {"default": False}),
+                "服饰": ("BOOLEAN", {"default": False}),
+                "物品": ("BOOLEAN", {"default": False}),
+                "环境": ("BOOLEAN", {"default": False}),
+                "画面": ("BOOLEAN", {"default": False}),
+                "艺术家": ("BOOLEAN", {"default": False}),
+                "表情动作": ("BOOLEAN", {"default": False}),
+                "镜头": ("BOOLEAN", {"default": False}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("筛选后文本", "过滤提示词", "过滤翻译")
+    FUNCTION = "filter_text_v2"
+    
+    def filter_text_v2(self, 输入文本, 自定义过滤词, 二次元角色, 人物, 场景, 服饰, 物品, 环境, 画面, 艺术家, 表情动作, 镜头):
+        """根据开关状态筛选提示词，返回筛选后的文本、被过滤的提示词及其翻译"""
+        if not 输入文本.strip():
+            return ("", "", "")
+        
+        # 确定需要过滤的分类
+        active_categories = []
+        switch_states = {
+            "二次元角色": 二次元角色,
+            "人物": 人物,
+            "场景": 场景, 
+            "服饰": 服饰,
+            "物品": 物品,
+            "环境": 环境,
+            "画面": 画面,
+            "艺术家": 艺术家,
+            "表情动作": 表情动作,
+            "镜头": 镜头
+        }
+        
+        for category, is_active in switch_states.items():
+            if is_active:
+                active_categories.append(category)
+        
+        # 收集所有需要过滤的关键词和翻译
+        keywords_to_filter = set()
+        translations_to_filter = {}  # 被过滤词的英文到中文映射
+        
+        # 添加自定义过滤词
+        if 自定义过滤词.strip():
+            custom_keywords = [kw.strip() for kw in 自定义过滤词.split(',') if kw.strip()]
+            keywords_to_filter.update(custom_keywords)
+        
+        # 添加分类过滤词
+        for category in active_categories:
+            keywords_to_filter.update(self.category_keywords.get(category, set()))
+            translations_to_filter.update(self.category_translations.get(category, {}))
+        
+        # 如果没有需要过滤的关键词，直接返回原文本
+        if not keywords_to_filter:
+            return (输入文本, "", "")
+        
+        # 按行处理，保持原始结构
+        lines = 输入文本.splitlines()
+        filtered_lines = []
+        filtered_keywords = set()  # 被过滤的关键词
+        
+        for line in lines:
+            if not line.strip():
+                filtered_lines.append(line)
+                continue
+                
+            # 分割标签，保持原始格式
+            tags = []
+            current_tag = ""
+            in_tag = False
+            
+            for char in line:
+                if char == ',' and not in_tag:
+                    if current_tag.strip():
+                        tags.append(current_tag.strip())
+                    current_tag = ""
+                else:
+                    current_tag += char
+                    if char == '(':
+                        in_tag = True
+                    elif char == ')':
+                        in_tag = False
+            
+            if current_tag.strip():
+                tags.append(current_tag.strip())
+            
+            # 过滤标签
+            filtered_tags = []
+            for tag in tags:
+                # 提取标签的核心部分（去掉权重）
+                core_tag = tag.split(':')[0].strip('()')
+                if core_tag not in keywords_to_filter:
+                    filtered_tags.append(tag)
+                else:
+                    # 记录被过滤的关键词
+                    filtered_keywords.add(core_tag)
+            
+            # 重新组合行
+            if filtered_tags:
+                filtered_line = ', '.join(filtered_tags)
+                filtered_lines.append(filtered_line)
+        
+        # 重新组合所有行
+        result = '\n'.join(filtered_lines)
+        
+        # 应用全局标点符号格式化
+        result = format_punctuation_global(result)
+        
+        # 生成被过滤词的列表和翻译列表
+        filtered_list = sorted(list(filtered_keywords))
+        filtered_text = ', '.join(filtered_list) if filtered_list else ""
+        
+        # 生成翻译列表（英文/中文/分类格式，每行一个）
+        translation_list = []
+        for keyword in filtered_list:
+            translation = translations_to_filter.get(keyword, "")
+            # 找出这个词属于哪些分类
+            categories_for_word = []
+            for category in active_categories:
+                if keyword in self.category_keywords.get(category, set()):
+                    categories_for_word.append(category)
+            category_str = '/'.join(categories_for_word) if categories_for_word else "未知"
+            
+            if translation:
+                translation_list.append(f"{keyword}/{translation}/{category_str}")
+            else:
+                translation_list.append(f"{keyword}//{category_str}")
+        translation_text = '\n'.join(translation_list) if translation_list else ""
+        
+        return (result, filtered_text, translation_text)
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
     "ZML_TextFilter": ZML_TextFilter,
+    "ZML_TextFilterV2": ZML_TextFilterV2,
     "ZML_DeleteText": ZML_DeleteText,
     "ZML_TextLine": ZML_TextLine,
     "ZML_RandomTextWeight": ZML_RandomTextWeight,
@@ -1454,6 +1654,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextFormatter": "ZML_文本转格式",
     "ZML_TextFilter": "ZML_筛选提示词",
+    "ZML_TextFilterV2": "ZML_筛选提示词V2",
     "ZML_DeleteText": "ZML_删除文本",
     "ZML_TextLine": "ZML_文本行",
     "ZML_RandomTextWeight": "ZML_随机文本权重",

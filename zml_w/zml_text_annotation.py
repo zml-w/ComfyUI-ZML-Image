@@ -31,6 +31,7 @@ class ZML_AddTextWatermark:
         self.counter_file = os.path.join(self.counter_dir, "Watermark.txt")
         os.makedirs(self.font_dir, exist_ok=True)
         self.ensure_counter_file()
+        self.chinese_punctuation = '，。！？；：'"'（）《》【】{}[]()"'。；：！？,.'
 
     def ensure_counter_file(self):
         try:
@@ -538,7 +539,6 @@ class ZML_TextToImage:
                 "书写方向": (["横排", "竖排"],),
                 "字符间距": ("INT", {"default": 0, "min": -10, "max": 100}),
                 "行间距": ("INT", {"default": 10, "min": -10, "max": 200}),
-                "内边距": ("INT", {"default": 20, "min": 0, "max": 100, "tooltip": "文本与图像边缘的距离，同时影响上下左右"}),
                 "文字描边宽度": ("INT", {"default": 3, "min": 0, "max": 100}), 
                 "文字描边颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "留空则不描边; 输入'ZML'为随机颜色"}), 
                 "背景颜色": ("STRING", {"default": "#FFFFFF", "placeholder": "输入颜色代码，如#FFFFFF为白色，#000000为黑色"}), 
@@ -598,133 +598,124 @@ class ZML_TextToImage:
                 return font.size
 
     def _prepare_lines(self, text, font, char_spacing, orientation, max_dim=None):
-        # 首先按用户手动换行符分割文本
         manual_lines = text.split('\n')
         
-        # 当没有最大尺寸限制或不是输入图像模式时，直接返回手动换行的结果
         if max_dim is None or max_dim <= 0:
             return manual_lines
         
         result_lines = []
-        
-        # 定义中文标点符号，这些符号后面的空格应该被视为符号的一部分
-        chinese_punctuation = '，。！？；：'"'（）《》【】{}[]()"'。；：！？,.'
-        
-        # 对于每一行手动换行的文本，检查是否需要自动换行
+
         for manual_line in manual_lines:
             if not manual_line.strip():
                 result_lines.append('')
                 continue
                 
-            # 根据书写方向决定如何自动换行
             if orientation == "横排":
                 current_line = ''
                 current_width = 0
                 
-                # 智能处理英文单词和中文标点，避免在单词中间或标点符号后面的空格处换行
-                # 首先尝试按单词分割文本
-                words = []
-                current_word = ''
-                i = 0
-                while i < len(manual_line):
-                    char = manual_line[i]
+                # 为右内边距预留安全空间，确保文本不会紧贴边缘
+                # 增加安全边距的比例，使其更倾向于换行
+                safety_margin = int(max_dim * 0.05) # 5% of max_dim as safety margin
+                effective_max_dim = max_dim - safety_margin
+                effective_max_dim = max(1, effective_max_dim) # 确保不为0或负数
+
+                # 智能地分割文本，将单词和紧随其后的标点符号（非空白）视为一个单元
+                # 正则表达式模式：
+                # 1. `(\s+)`：匹配一个或多个空白字符
+                # 2. `(\\\(.*?\\\))`：匹配转义的括号内容（例如 `\(style\)`）
+                # 3. `(\w+[^\w\s]*)`：匹配一个或多个单词字符，后面跟着零个或多个非单词非空白字符（例如 `1990s!`）
+                # 4. `([^\w\s]+)`：匹配一个或多个非单词非空白字符（纯标点块，例如 `!!!` 或 `,`）
+                
+                matches = re.findall(r'(\s+)|(\\\(.*?\\\))|(\w+[^\w\s]*)|([^\w\s]+)', manual_line)
+                
+                tokens = []
+                for match_tuple in matches:
+                    for item in match_tuple:
+                        if item:
+                            tokens.append(item)
+                            break
+
+                for item in tokens:
+                    item_width = sum(self._get_char_size(c, font)[0] for c in item) + (max(0, len(item) - 1) * char_spacing)
                     
-                    # 检查是否是空格且前一个字符是中文标点符号
-                    if char.isspace() and i > 0 and manual_line[i-1] in chinese_punctuation:
-                        # 将标点符号后面的空格作为当前单词的一部分
-                        if current_word:
-                            current_word += char
+                    spacing_to_add = char_spacing if current_line and not item.isspace() else 0
+                    
+                    if not current_line and item.isspace():
+                        continue
+
+                    # 检查添加当前项是否会超出有效最大宽度
+                    if current_width + spacing_to_add + item_width > effective_max_dim:
+                        if current_line:
+                            result_lines.append(current_line)
+                        
+                        # 如果单个项的宽度就超过了有效最大宽度，则需要对项进行字符级换行
+                        if item_width > effective_max_dim:
+                            temp_char_line = ''
+                            temp_char_width = 0
+                            for char in item:
+                                char_w = self._get_char_size(char, font)[0]
+                                char_spacing_to_add = char_spacing if temp_char_line else 0
+                                
+                                if temp_char_width + char_spacing_to_add + char_w > effective_max_dim and temp_char_line:
+                                    result_lines.append(temp_char_line)
+                                    temp_char_line = char
+                                    temp_char_width = char_w
+                                else:
+                                    if temp_char_line:
+                                        temp_char_width += char_spacing
+                                    temp_char_line += char
+                                    temp_char_width += char_w
+                            if temp_char_line:
+                                result_lines.append(temp_char_line)
+                            current_line = ''
+                            current_width = 0
                         else:
-                            # 如果当前没有单词，但前一个字符是标点且被分割了，处理这种情况
-                            if words and words[-1][-1] in chinese_punctuation:
-                                words[-1] += char
-                            else:
-                                words.append(char)
-                    elif char.isspace():
-                        # 普通空格处理
-                        if current_word:
-                            words.append(current_word)
-                            words.append(char)
-                            current_word = ''
-                        else:
-                            words.append(char)
+                            # 项本身没有超出，但加上当前行会超出，所以新行从这个项开始
+                            current_line = item
+                            current_width = item_width
                     else:
-                        # 非空格字符添加到当前单词
-                        current_word += char
-                    i += 1
+                        # 不需要换行，正常添加项
+                        if current_line:
+                            current_width += spacing_to_add
+                        current_line += item
+                        current_width += item_width
                 
-                # 添加最后一个单词
-                if current_word:
-                    words.append(current_word)
-                
-                # 如果成功分割了单词（有空格分隔），则按单词进行换行处理
-                if len(words) > 1 and any(char.isspace() for char in manual_line):
-                    for word in words:
-                        word_width = sum(self._get_char_size(c, font)[0] for c in word) + (max(0, len(word) - 1) * char_spacing)
-                        
-                        # 如果是空格且当前行为空，跳过
-                        if word.isspace() and not current_line:
-                            continue
-                        
-                        # 检查添加当前单词是否会超出最大宽度
-                        if current_line and (current_width + word_width + char_spacing > max_dim):
-                            result_lines.append(current_line)
-                            current_line = word
-                            current_width = word_width
-                        else:
-                            if current_line and not word.isspace():  # 如果不是行首且当前单词不是纯空格，添加字符间距
-                                current_width += char_spacing
-                            current_line += word
-                            current_width += word_width
-                else:
-                    # 纯字符模式，按原始字符逐个处理
-                    for char in manual_line:
-                        char_width = self._get_char_size(char, font)[0]
-                        # 检查添加当前字符是否会超出最大宽度
-                        if current_line and (current_width + char_width + char_spacing > max_dim):
-                            result_lines.append(current_line)
-                            current_line = char
-                            current_width = char_width
-                        else:
-                            if current_line:  # 如果不是行首，添加字符间距
-                                current_width += char_spacing
-                            current_line += char
-                            current_width += char_width
-                
-                if current_line:  # 添加最后一行
+                if current_line:
                     result_lines.append(current_line)
             else:  # 竖排
-                # 对于竖排，我们需要智能处理标点加空格的组合，避免在它们之间分割
-                # 首先获取一个字符的高度，用于计算每行的最大字符数
                 char_height = self._get_char_size('一', font)[1]
+                if char_height == 0: char_height = font.size
                 
-                # 直接使用max_dim，因为安全边距已经在调用此方法之前的绘制区域计算中添加
-                # 计算每行最大字符数，确保有足够的安全空间
-                MAX_VERTICAL_CHARS_PER_LINE = max(5, int(max_dim / char_height))
-                
-                # 智能分割竖排文本，避免在标点加空格的组合处分割
+                if char_height + char_spacing > 0:
+                    MAX_VERTICAL_CHARS_PER_LINE = max(1, int(max_dim / (char_height + char_spacing)))
+                else:
+                    MAX_VERTICAL_CHARS_PER_LINE = max(1, int(max_dim / font.size))
+
                 i = 0
                 while i < len(manual_line):
-                    # 计算当前行的潜在结束位置
-                    end_pos = min(i + MAX_VERTICAL_CHARS_PER_LINE, len(manual_line))
-                    
-                    # 检查是否需要调整结束位置，避免在标点加空格的组合中间分割
-                    # 从潜在结束位置向前搜索
-                    adjusted_end_pos = end_pos
-                    for j in range(min(end_pos-1, i + MAX_VERTICAL_CHARS_PER_LINE - 1), max(i-1, i-5), -1):
-                        # 检查是否是标点加空格的组合
-                        if j < len(manual_line) - 1 and manual_line[j] in chinese_punctuation and manual_line[j+1].isspace():
-                            # 如果找到，确保将组合保持在一起
-                            adjusted_end_pos = j + 2  # 包含标点和空格
+                    current_line_chars = []
+                    current_line_height = 0
+                    j = i
+                    while j < len(manual_line):
+                        char = manual_line[j]
+                        char_h = self._get_char_size(char, font)[1]
+                        
+                        test_height = current_line_height + char_h + (char_spacing if current_line_chars else 0)
+                        
+                        if test_height <= max_dim:
+                            current_line_chars.append(char)
+                            current_line_height = test_height
+                            j += 1
+                        else:
                             break
                     
-                    # 如果没有找到需要调整的位置，或者调整后的位置超出了原始潜在位置，则使用原始位置
-                    if adjusted_end_pos > end_pos:
-                        adjusted_end_pos = end_pos
+                    if not current_line_chars:
+                        current_line_chars.append(manual_line[i])
+                        j = i + 1
                     
-                    # 添加当前行到结果
-                    result_lines.append(manual_line[i:adjusted_end_pos])
-                    i = adjusted_end_pos
+                    result_lines.append("".join(current_line_chars))
+                    i = j
         
         return result_lines
 
@@ -734,17 +725,24 @@ class ZML_TextToImage:
 
         if orientation == "横排":
             max_w, total_h = 0, 0
-            # 使用基于字体度量的固定行高以获得更准确的高度
-            line_h = self._get_font_line_height(font)
             for i, line in enumerate(lines):
                 line_w = 0
                 if line:
                     line_w = sum(self._get_char_size(c, font)[0] for c in line) + (max(0, len(line) - 1) * char_spacing)
                 max_w = max(max_w, line_w)
-            
-            if lines:
-                total_h = (len(lines) * line_h) + (max(0, len(lines) - 1) * line_spacing)
-
+                
+                line_height_for_this_line = 0
+                if line:
+                    line_height_for_this_line = max([self._get_char_size(c, font)[1] for c in line])
+                else: 
+                    try:
+                        line_height_for_this_line = max(1, font.getbbox("A")[3] - font.getbbox("A")[1])
+                    except Exception:
+                        line_height_for_this_line = max(1, font.getsize("A")[1] if font.getsize("A") else 1)
+                
+                total_h += line_height_for_this_line
+                if i < len(lines) - 1:
+                    total_h += line_spacing
             return max(1, max_w), max(1, total_h)
         else: # 竖排
             total_w, max_h = 0, 0
@@ -781,9 +779,16 @@ class ZML_TextToImage:
                 return (0, 0, 0, 0) 
 
         if orientation == "横排":
-            # 使用基于字体度量的固定行高以确保绘制和尺寸计算一致
-            line_h = self._get_font_line_height(font)
             for line in lines:
+                line_height_for_this_line = 0
+                if line:
+                    line_height_for_this_line = max([self._get_char_size(c, font)[1] for c in line])
+                else:
+                    try:
+                        line_height_for_this_line = max(1, font.getbbox("A")[3] - font.getbbox("A")[1])
+                    except:
+                        line_height_for_this_line = max(1, font.getsize("A")[1] if font.getsize("A") else 1)
+
                 for char in line:
                     char_fill_color = get_char_color(fill_color_param, opacity)
                     char_stroke_color = get_char_color(stroke_fill_color_param, opacity)
@@ -795,7 +800,7 @@ class ZML_TextToImage:
                     
                     cursor_x += self._get_char_size(char, font)[0] + char_spacing
                 cursor_x = start_x
-                cursor_y += line_h + line_spacing
+                cursor_y += line_height_for_this_line + line_spacing
         else: # 竖排
             for line in lines:
                 line_w = 0
@@ -877,21 +882,8 @@ class ZML_TextToImage:
         target_width = max(1, target_width)
         target_height = max(1, target_height)
         
-        # 根据文本长度动态调整安全空间，文本越长安全空间越小
-        text_length = len(text)
-        # 统一使用英文的处理方式，不再区分中英文
-        base_safety = 0.01  # 英文基础安全边距
-        reduction_factor = 0.95  # 英文文本长度对安全边距的调整幅度
+        base_safety_margin = int(target_height * 0.02) # 2% of target height as base safety
         
-        # 结合文本长度动态调整安全空间
-        # 重要优化：对于超长文本，进一步减少安全边距，让字体能更充分利用空间
-        if text_length > 1000:
-            safety_margin_percent = max(base_safety * (1 - (min(text_length, 2000) / 2000 * reduction_factor)), base_safety * 0.1)
-        elif text_length > 500:
-            safety_margin_percent = max(base_safety * (1 - (min(text_length, 1000) / 3000 * reduction_factor)), base_safety * 0.2)
-        else:
-            safety_margin_percent = max(base_safety * (1 - (min(text_length, 500) / 5000 * reduction_factor)), base_safety * 0.3)
-
         def check_fit(fs):
             if fs <= 0: return False
             try:
@@ -903,55 +895,14 @@ class ZML_TextToImage:
             lines = self._prepare_lines(text, test_font, char_spacing, orientation, max_dim=max_line_dim)
             actual_w, actual_h = self._get_text_block_size(lines, test_font, char_spacing, line_spacing, orientation)
 
-            # 使用动态安全空间
-            safety_margin = int(actual_h * safety_margin_percent)
-            # 对于描边宽度较大的情况，适当减少安全空间要求，确保字体不会过小
-            stroke_adjustment = max(0, stroke_width - 3) * 0.15  # 增加描边宽度的影响因子到15%
-            adjusted_safety_margin = max(1, int(safety_margin * (1 - stroke_adjustment)))
-            
-            # 统一使用英文的处理方式，但增加宽度和高度的允许使用空间
-            stroke_multiplier = 0.8  # 进一步减少描边宽度对宽度计算的影响
-            width_multiplier = 1.2  # 增加允许使用的宽度空间到20%
-            height_multiplier = 1.1  # 增加允许使用的高度空间到10%
-            
-            # 对超长文本采用更宽松的尺寸检查条件
-            if text_length > 1000:
-                width_multiplier = 1.3  # 超长文本允许使用更多宽度空间
-                height_multiplier = 1.2  # 超长文本允许使用更多高度空间
-            
-            return (actual_w + stroke_multiplier * stroke_width <= target_width * width_multiplier) and\
-                   (actual_h + adjusted_safety_margin + 2 * stroke_width <= target_height * height_multiplier)
+            return (actual_w + 2 * stroke_width <= target_width) and \
+                   (actual_h + 2 * stroke_width + base_safety_margin <= target_height)
 
-        # 更智能地计算初始字体大小范围
-        # 考虑目标区域尺寸和文本长度的综合因素
-        base_initial_high = max(user_initial_font_size, target_height, target_width, 200)
-        
-        # 根据文本长度和目标尺寸动态调整初始上限，更加灵活
-        # 当文本图像占比增加时，target_width/target_height也会增加，从而使字体大小相应增大
-        if text_length > 2000:
-            # 对于特别长的文本，不要过度限制上限，但根据文本长度做适度调整
-            text_factor = max(0.3, 1.0 - (text_length / 5000))
-            initial_high = min(base_initial_high, int(2000 * text_factor))
-        elif text_length > 1000:
-            text_factor = max(0.5, 1.0 - (text_length / 4000))
-            initial_high = min(base_initial_high, int(1500 * text_factor))
-        elif text_length > 500:
-            text_factor = max(0.7, 1.0 - (text_length / 3000))
-            initial_high = min(base_initial_high, int(1200 * text_factor))
-        else:
-            initial_high = base_initial_high  # 短文本保持原上限
-        
         low = 1
-        high = min(4096, initial_high)  # 最大上限不超过4096
-
-        # 对于小尺寸目标区域，适当调整初始范围
-        if target_width < 100 or target_height < 100:
-            size_factor = max(0.2, min(target_width, target_height) / 200)
-            high = min(high, int(high * size_factor))
+        high = min(4096, max(user_initial_font_size * 2, target_width, target_height, 500)) 
         
         best_fit_font_size = 1 
 
-        # 改进的二分查找算法，使用更精确的步骤
         while low <= high:
             mid = (low + high) // 2
             if mid == 0: 
@@ -963,54 +914,21 @@ class ZML_TextToImage:
             else:
                 high = mid - 1 
         
-        # 尝试进一步优化，稍微增加字体大小，确保充分利用空间
-        # 对于较长的文本，尝试幅度更大
-        increment = 1 if text_length < 100 else (3 if text_length < 500 else 5)
-        for i in range(1, increment + 1):
+        for i in range(1, 3):
             if check_fit(best_fit_font_size + i):
                 best_fit_font_size += i
             else:
                 break
-        
-        # 智能字体大小检查和调整
-        # 不再使用简单的长度阈值，而是考虑文本长度与目标区域的比例关系
-        # 确保当文本图像占比增加时，字体大小也会相应增加
-        area_factor = (target_width * target_height) / (text_length + 1)
-        max_font_based_on_area = int(area_factor * 0.01)  # 根据面积和文本长度的关系设置合理上限
-        
-        # 如果找到的字体明显小于根据面积计算的合理值，尝试使用更大的字体
-        if best_fit_font_size < max_font_based_on_area * 0.7 and best_fit_font_size < 500:
-            # 尝试使用更大的初始上限
-            new_high = min(max_font_based_on_area, 2000)
-            if new_high > best_fit_font_size:
-                low = best_fit_font_size + 1
-                high = new_high
-                
-                # 再次运行二分查找，寻找更大的合适字体
-                while low <= high:
-                    mid = (low + high) // 2
-                    if check_fit(mid):
-                        best_fit_font_size = mid
-                        low = mid + 1 
-                    else:
-                        high = mid - 1
-                
-                # 再次微调
-                for i in range(1, increment + 1):
-                    if check_fit(best_fit_font_size + i):
-                        best_fit_font_size += i
-                    else:
-                        break
 
         return best_fit_font_size
 
-    def generate_text_image(self, 文本, 字体, 字体大小, 颜色, 书写方向, 字符间距, 行间距, 文字描边宽度, 文字描边颜色, 背景颜色, 图像大小模式, 图像宽, 图像高, 文本图像占比, 输入图像=None, 图像拼接方向="下", 外边框宽度=30, 外边框颜色="#FFFFFF", 内边框宽度=10, 内边框颜色="#FFFFFF", 内边距=8):
+    def generate_text_image(self, 文本, 字体, 字体大小, 颜色, 书写方向, 字符间距, 行间距, 文字描边宽度, 文字描边颜色, 背景颜色, 图像大小模式, 图像宽, 图像高, 文本图像占比, 输入图像=None, 图像拼接方向="下", 外边框宽度=30, 外边框颜色="#FFFFFF", 内边框宽度=10, 内边框颜色="#FFFFFF"):
         node_execution_count = self.increment_counter()
         help_text = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共添加了{node_execution_count}次文本图像！！\n颜色代码那里输入‘ZML’代表随机颜色，留空代表透明。\n\n接入图像时会自动将文本图像拼接到输入图像的对应方向上，拼接方向为左右时排序方向为从上到下，拼接方向为上下时排序方向为从左到右。\n\n也可以输入多张图像，多图模式可以用‘#-#’分隔每张图的文本名称：例如‘输入图像#-#输出图像’，则第一张使用‘输入图像’，第二张使用‘输出图像’。\n如果某张没有对应名称，则使用自然数序号‘1、2、3…’作为名称。\n\n你可以使用‘统一图像分辨率’节点来输入并处理多个图像，再输入给这个‘文本图像’节点！也可以用‘多文本输入-五’节点来分开写提示词，并分隔符换成‘#-#’，这会让你的使用体验大大提升！\n祝你天天开心~"
 
         default_opacity = 1.0
-        default_h_margin = 内边距
-        default_v_margin = 内边距
+        default_h_margin = 0  # 内边距固定为0
+        default_v_margin = 0  # 内边距固定为0
 
         if not 背景颜色.strip():
             current_bg_color_rgba = (0, 0, 0, 0)
@@ -1068,7 +986,11 @@ class ZML_TextToImage:
         
         processed_combined_images_raw = []
         input_batch_size = 输入图像.shape[0] if 输入图像 is not None else 0 # Use 0 if no input images
-        names = [seg.strip() for seg in 文本.split(self.NAME_SEPARATOR)] if self.NAME_SEPARATOR in 文本 else [文本]
+        # 根据输入图像数量决定是否处理分隔符
+        if input_batch_size >= 2 and self.NAME_SEPARATOR in 文本:
+            names = [seg.strip() for seg in 文本.split(self.NAME_SEPARATOR)]
+        else:
+            names = [文本]
         num_texts = len(names)
 
         # Group images by text
@@ -1130,30 +1052,13 @@ class ZML_TextToImage:
                         final_img_width_iter = max(1, int(input_width * 文本图像占比))
                     final_img_height_iter = input_height
 
-                # 计算基础可绘制区域，考虑内边距
-                base_drawable_width = max(1, final_img_width_iter - (effective_h_margin * 2))
-                base_drawable_height = max(1, final_img_height_iter - (effective_v_margin * 2))
-                
-                # 根据文本长度和图像占比动态调整内容缩放比例
-                # 当文本图像占比较大时，允许使用更多空间
-                content_scale = 0.98
-                if 文本图像占比 > 1.0:
-                    # 占比越大，可使用空间越多
-                    content_scale = min(1.0, 0.98 + (文本图像占比 - 1.0) * 0.01)
-                
-                # 对于长文本，进一步提高内容缩放比例
-                if len(current_text_to_draw) > 500:
-                    content_scale = min(1.0, content_scale + 0.01)
-                if len(current_text_to_draw) > 1000:
-                    content_scale = min(1.0, content_scale + 0.01)
-                
-                # 计算最终可绘制区域
-                effective_target_drawable_w_for_text_content = int(base_drawable_width * content_scale)
-                effective_target_drawable_h_for_text_content = int(base_drawable_height * content_scale)
+                # The area where text content can actually be drawn, considering margins and stroke
+                drawable_area_width = max(1, final_img_width_iter - (effective_h_margin * 2) - (stroke_width_for_draw * 2))
+                drawable_area_height = max(1, final_img_height_iter - (effective_v_margin * 2) - (stroke_width_for_draw * 2))
 
                 final_font_size_iter = self._auto_adjust_font_size(
                     current_text_to_draw, 字体大小, 
-                    effective_target_drawable_w_for_text_content, effective_target_drawable_h_for_text_content,
+                    drawable_area_width, drawable_area_height, # Use the exact drawable area
                     adjusted_char_spacing, adjusted_line_spacing, 书写方向, stroke_width_for_draw,
                     self.font_dir, 字体
                 )
@@ -1167,34 +1072,19 @@ class ZML_TextToImage:
                     lines_for_sizing = self._prepare_lines(current_text_to_draw, font_for_sizing, adjusted_char_spacing, 书写方向)
                     text_block_width, text_block_height = self._get_text_block_size(lines_for_sizing, font_for_sizing, 字符间距, 行间距, 书写方向)
 
-                    # 计算包含上下内边距安全空间的最终图像尺寸
-                    # 左右各一个effective_h_margin，右边额外增加100%安全空间
-                    left_margin_total = effective_h_margin
-                    right_margin_total = effective_h_margin + int(effective_h_margin * 1.0)
+                    final_img_width_iter = max(1, text_block_width + 2 * effective_h_margin + 2 * stroke_width_for_draw)
+                    final_img_height_iter = max(1, text_block_height + 2 * effective_v_margin + 2 * stroke_width_for_draw)
                     
-                    # 上下各一个effective_v_margin，下边额外增加100%安全空间
-                    top_margin_total = effective_v_margin
-                    bottom_margin_total = effective_v_margin + int(effective_v_margin * 1.0)
-                    
-                    final_img_width_iter = max(1, text_block_width + left_margin_total + right_margin_total)
-                    final_img_height_iter = max(1, text_block_height + top_margin_total + bottom_margin_total)
-                    
-                elif 图像大小模式 == "根据图像尺寸决定字体大小":
-                    # 计算包含安全空间的可绘制区域
-                    left_margin_total = effective_h_margin
-                    right_margin_total = effective_h_margin + int(effective_h_margin * 1.0)
-                    top_margin_total = effective_v_margin
-                    bottom_margin_total = effective_v_margin + int(effective_v_margin * 1.0)
-                    
-                    base_drawable_width = max(1, 图像宽 - left_margin_total - right_margin_total)
-                    base_drawable_height = max(1, 图像高 - top_margin_total - bottom_margin_total)
+                    drawable_area_width = max(1, final_img_width_iter - (effective_h_margin * 2) - (stroke_width_for_draw * 2))
+                    drawable_area_height = max(1, final_img_height_iter - (effective_v_margin * 2) - (stroke_width_for_draw * 2))
 
-                    effective_target_drawable_w_for_text_content = int(base_drawable_width * self.TEXT_CONTENT_SCALE_PERCENTAGE)
-                    effective_target_drawable_h_for_text_content = int(base_drawable_height * self.TEXT_CONTENT_SCALE_PERCENTAGE)
+                elif 图像大小模式 == "根据图像尺寸决定字体大小":
+                    drawable_area_width = max(1, 图像宽 - (effective_h_margin * 2) - (stroke_width_for_draw * 2))
+                    drawable_area_height = max(1, 图像高 - (effective_v_margin * 2) - (stroke_width_for_draw * 2))
 
                     final_font_size_iter = self._auto_adjust_font_size(
                         current_text_to_draw, 字体大小, 
-                        effective_target_drawable_w_for_text_content, effective_target_drawable_h_for_text_content,
+                        drawable_area_width, drawable_area_height,
                         字符间距, 行间距, 书写方向, stroke_width_for_draw,
                         self.font_dir, 字体
                     )
@@ -1210,34 +1100,18 @@ class ZML_TextToImage:
             text_image_panel = Image.new('RGBA', (max(1, final_img_width_iter), max(1, final_img_height_iter)), current_bg_color_rgba)
             draw = ImageDraw.Draw(text_image_panel)
 
-            # 计算可绘制区域，确保左右和上下内边距都正确应用
-            # 对于水平方向，额外增加右内边距的安全空间
-            left_margin = effective_h_margin
-            # 增加右内边距的安全空间到100%，确保右边框显示正常
-            right_margin = effective_h_margin + int(effective_h_margin * 1.0)  # 右内边距增加100%
-            
-            # 对于垂直方向，也需要分开处理上下内边距
-            top_margin = effective_v_margin
-            # 增加下边距的安全空间到100%，确保下边框显示正常
-            bottom_margin = effective_v_margin + int(effective_v_margin * 1.0)  # 下边距增加100%
-            
-            # 计算可绘制区域的宽度和高度
-            drawable_content_w = max(1, final_img_width_iter - left_margin - right_margin)
-            drawable_content_h = max(1, final_img_height_iter - top_margin - bottom_margin)
-            
-            # 为自动换行添加额外的安全余量，避免文本太靠近边框
-            safety_factor = 0.95  # 使用95%的空间进行自动换行
+            # The max_dim for _prepare_lines should be the drawable_area_width/height
             if 书写方向 == "横排":
-                max_text_dim_for_drawing = int(drawable_content_w * safety_factor)
+                max_text_dim_for_drawing = drawable_area_width
             else:  # 竖排
-                max_text_dim_for_drawing = int(drawable_content_h * safety_factor)
+                max_text_dim_for_drawing = drawable_area_height
 
             final_lines_for_drawing = self._prepare_lines(current_text_to_draw, final_font_instance, adjusted_char_spacing, 书写方向, max_dim=max_text_dim_for_drawing)
             text_block_actual_width, text_block_actual_height = self._get_text_block_size(final_lines_for_drawing, final_font_instance, adjusted_char_spacing, adjusted_line_spacing, 书写方向)
             
-            # 使用正确的边距计算起始位置
-            start_x = left_margin + (max(0, (drawable_content_w - text_block_actual_width)) // 2)
-            start_y = top_margin + (max(0, (drawable_content_h - text_block_actual_height)) // 2)
+            # Text centered within the drawable area, relative to the panel's top-left
+            start_x = effective_h_margin + stroke_width_for_draw + (max(0, drawable_area_width - text_block_actual_width) // 2)
+            start_y = effective_v_margin + stroke_width_for_draw + (max(0, drawable_area_height - text_block_actual_height) // 2)
             
             start_x = max(0, start_x)
             start_y = max(0, start_y)
