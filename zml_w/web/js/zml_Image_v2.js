@@ -43,6 +43,7 @@ app.registerExtension({
                         }                        
                         .zml-v2-up-btn,
                         .zml-v2-refresh-btn,
+                        .zml-v2-style-btn,
                         .zml-v2-clear-btn {
                             padding: 6px 12px;
                             font-size: 14px;
@@ -53,6 +54,8 @@ app.registerExtension({
                             color: white;
                             white-space: nowrap;
                         }
+                        .zml-v2-style-btn { background-color: #5474d5ff; }
+                        .zml-v2-style-btn:hover { background-color: #555; }
                         .zml-v2-up-btn { background-color: #6c757d; }
                         .zml-v2-up-btn:hover { background-color: #5a6268; }
                         .zml-v2-refresh-btn { background-color: #4a90e2; }
@@ -94,6 +97,10 @@ app.registerExtension({
                             background: #222;
                             border-radius: 3px;
                             min-height: 110px;
+                            transition: grid-template-columns 0.3s ease;
+                        }
+                        .zml-v2-image-grid.medium {
+                            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
                         }
                         .zml-v2-image-item {
                             position: relative;
@@ -201,10 +208,12 @@ app.registerExtension({
                 }
 
                 const storageKey = `zml.v2.lastPath.${this.id}`;
+                const styleStorageKey = `zml.v2.style.${this.id}`;
 
                 let state = {
                     path: "",
                     files: [],
+                    viewStyle: localStorage.getItem(styleStorageKey) || 'thumbnail', // 'thumbnail' 或 'medium'
                 };
                 
                 const counterEl = $el("span.zml-v2-selection-counter", { textContent: "已选: 0 张" });
@@ -243,11 +252,26 @@ app.registerExtension({
                 imageGrid.appendChild(statusEl);
 
                 const refreshBtn = $el("button.zml-v2-refresh-btn", { textContent: "刷新" });
+                const styleBtn = $el("button.zml-v2-style-btn", { textContent: state.viewStyle === 'thumbnail' ? "缩略图" : "中图标" });
                 const upBtn = $el("button.zml-v2-up-btn", { textContent: "返回上级" });
                 const currentPathDisplay = $el("div.zml-v2-current-path");
 
                 const clearBtn = $el("button.zml-v2-clear-btn", { textContent: "清空" });
-
+                
+                // 样式切换按钮点击事件
+                styleBtn.addEventListener("click", () => {
+                    state.viewStyle = state.viewStyle === 'thumbnail' ? 'medium' : 'thumbnail';
+                    localStorage.setItem(styleStorageKey, state.viewStyle);
+                    styleBtn.textContent = state.viewStyle === 'thumbnail' ? "缩略图" : "中图标";
+                    
+                    // 应用样式到图像网格
+                    if (state.viewStyle === 'medium') {
+                        imageGrid.classList.add('medium');
+                    } else {
+                        imageGrid.classList.remove('medium');
+                    }
+                });
+                
                 clearBtn.addEventListener("click", () => {
                     if (state.files.length === 0) return;
 
@@ -263,8 +287,9 @@ app.registerExtension({
                 
                 const header = $el("div.zml-v2-loader-header", [
                     upBtn, 
-                    currentPathDisplay, 
-                    refreshBtn, 
+                    currentPathDisplay,
+                    styleBtn,
+                    refreshBtn,
                     clearBtn, 
                     counterEl
                 ]);
@@ -644,6 +669,13 @@ app.registerExtension({
                         imageGrid.appendChild(imageItem);
                     }
                     
+                    // 应用当前视图样式
+                    if (state.viewStyle === 'medium') {
+                        imageGrid.classList.add('medium');
+                    } else {
+                        imageGrid.classList.remove('medium');
+                    }
+                    
                     if (folders.length > 0 && imageFiles.length === 0) {
                         imageGrid.style.display = 'flex';
                         imageGrid.style.flexWrap = 'wrap';
@@ -678,6 +710,13 @@ app.registerExtension({
                     imageGrid.appendChild($el("div.zml-v2-loader-status", { textContent: "正在加载..." }));
                     imageGrid.style.display = 'grid';
                     imageGrid.style.minHeight = '110px';
+                    
+                    // 应用当前视图样式
+                    if (state.viewStyle === 'medium') {
+                        imageGrid.classList.add('medium');
+                    } else {
+                        imageGrid.classList.remove('medium');
+                    }
 
                     try {
                         const response = await api.fetchApi(`/zml/v2/list_images?path=${encodeURIComponent(pathToSend)}`);
@@ -710,6 +749,13 @@ app.registerExtension({
                     // 直接使用当前路径进行刷新
                     fetchImages(currentDisplayPath);
                 });
+                
+                // 初始应用视图样式
+                if (state.viewStyle === 'medium') {
+                    imageGrid.classList.add('medium');
+                } else {
+                    imageGrid.classList.remove('medium');
+                }
 
                 upBtn.addEventListener("click", () => {
                     // 优先从widget获取根目录路径

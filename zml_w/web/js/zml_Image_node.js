@@ -318,6 +318,38 @@ app.registerExtension({
                     max-height: 150px;
                     margin-bottom: 0;
                 }
+                
+                /* 大图标模式下的图像容器 */
+                .zml-image-container.large-icon-mode {
+                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                }
+                
+                /* 大图标模式下的图像按钮 */
+                .zml-img-btn.large-icon-mode {
+                    min-height: 280px;
+                }
+                
+                .zml-img-btn.large-icon-mode img {
+                    max-width: 100%;
+                    max-height: 250px;
+                    margin-bottom: 0;
+                }
+                
+                /* 超大图标模式下的图像容器 */
+                .zml-image-container.extra-large-icon-mode {
+                    grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+                }
+                
+                /* 超大图标模式下的图像按钮 */
+                .zml-img-btn.extra-large-icon-mode {
+                    min-height: 520px;
+                }
+                
+                .zml-img-btn.extra-large-icon-mode img {
+                    max-width: 100%;
+                    max-height: 455px;
+                    margin-bottom: 0;
+                }
                 .zml-img-btn span {
                     word-break: break-all;
                     font-size: 0.85em;
@@ -508,6 +540,8 @@ app.registerExtension({
                     TEXT_HOVER: "text_hover",
                     THUMBNAIL_ONLY: "thumbnail_only",
                     MEDIUM_ICON_ONLY: "medium_icon_only",
+                    LARGE_ICON_ONLY: "large_icon_only",
+                    EXTRA_LARGE_ICON_ONLY: "extra_large_icon_only",
                 };
 
                 const imageHost = $el("img.zml-image-preview");
@@ -633,6 +667,8 @@ app.registerExtension({
                         $el("option", { value: DISPLAY_MODES.TEXT_HOVER, textContent: "模式2: 名称+悬停预览" }),
                         $el("option", { value: DISPLAY_MODES.THUMBNAIL_ONLY, textContent: "模式3: 名称+缩略图" }),
                         $el("option", { value: DISPLAY_MODES.MEDIUM_ICON_ONLY, textContent: "模式4: 中图标" }),
+                        $el("option", { value: DISPLAY_MODES.LARGE_ICON_ONLY, textContent: "模式5: 大图标" }),
+                        $el("option", { value: DISPLAY_MODES.EXTRA_LARGE_ICON_ONLY, textContent: "模式6: 超大图标" }),
                     ]);
 
                     const undoBtn = $el("button.zml-action-btn.zml-undo-btn", { textContent: "撤回" });
@@ -1800,7 +1836,7 @@ app.registerExtension({
                                     
                                     // 如果有获取到文本块内容，则填充到输入框
                                     if (allTextBlocks.length > 0) {
-                                        const textContent = allTextBlocks.join("\n\n");
+                                        const textContent = allTextBlocks.join(",\n\n");
                                         textBlocksWidget.value = textContent;
                                         
                                         // 确保DOM元素也被更新
@@ -2171,7 +2207,7 @@ app.registerExtension({
                                                         break;
                                                           
                                                     case DISPLAY_MODES.MEDIUM_ICON_ONLY:
-                                                        // 清空现有子元素，不显示名称
+                                                        // 清空现有子元素，但保留名称显示
                                                         imgBtn.innerHTML = '';
                                                         // 为图像容器添加medium-icon-mode类
                                                         previewImageContainer.classList.add('medium-icon-mode');
@@ -2187,6 +2223,10 @@ app.registerExtension({
                                                             style: { width: '100%', maxHeight: '200px', objectFit: 'contain' }
                                                         });
                                                         imgBtn.appendChild(mediumImg);
+                                                        
+                                                        // 添加文件名显示（在图像下方）
+                                                        const mediumFileName = $el("span", { textContent: displayName, style: { marginTop: '8px', fontSize: '0.9em' } });
+                                                        imgBtn.appendChild(mediumFileName);
                                                          
                                                         // 添加编辑按钮
                                                         const mediumEditBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
@@ -2243,6 +2283,160 @@ app.registerExtension({
                                                         imgBtn.appendChild(mediumViewImageBtn);
                                                         break;
                                                          
+                                                    case DISPLAY_MODES.LARGE_ICON_ONLY:
+                                                        // 清空现有子元素，但保留名称显示
+                                                        imgBtn.innerHTML = '';
+                                                        // 为图像容器添加large-icon-mode类
+                                                        previewImageContainer.classList.add('large-icon-mode');
+                                                        imgBtn.classList.add('large-icon-mode');
+                                                         
+                                                        const largeParams = new URLSearchParams(baseQueryParams);
+                                                        // 使用view_image端点但调整尺寸参数为更大的值
+                                                        largeParams.append('width', '800');
+                                                        largeParams.append('height', '800');
+                                                        const largeImg = $el("img", {
+                                                            loading: "lazy",
+                                                            src: `${ZML_API_PREFIX}/view_image?${largeParams.toString()}`,
+                                                            style: { width: '100%', maxHeight: '250px', objectFit: 'contain' }
+                                                        });
+                                                        imgBtn.appendChild(largeImg);
+                                                        
+                                                        // 添加文件名显示（在图像下方）
+                                                        const largeFileName = $el("span", { textContent: displayName, style: { marginTop: '8px', fontSize: '0.9em' } });
+                                                        imgBtn.appendChild(largeFileName);
+                                                         
+                                                        // 添加编辑按钮
+                                                        const largeEditBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
+                                                        largeEditBtn.onclick = async (event) => {
+                                                            event.stopPropagation();
+                                                            const originalContent = largeEditBtn.innerHTML;
+                                                            largeEditBtn.innerHTML = '...';
+                                                            try {
+                                                                const getTextUrl = `${ZML_API_PREFIX}/get_single_text_block?${baseQueryParams.toString()}`;
+                                                                const res = await api.fetchApi(getTextUrl);
+                                                                if (!res.ok) throw new Error("获取文本块失败: " + await res.text());
+                                                                const data = await res.json();
+                                                                 
+                                                                const newText = await createEditModal(data.text_content || "");
+
+                                                                const writeData = {
+                                                                    custom_path: customPath,
+                                                                    ...fileInfo,
+                                                                    subfolder: fileInfo.fullSubfolder ? `${key}/${fileInfo.fullSubfolder}` : key,
+                                                                    text_content: newText
+                                                                };
+                                                                const writeRes = await api.fetchApi(`${ZML_API_PREFIX}/write_text_block`, {
+                                                                    method: 'POST',
+                                                                    headers: {'Content-Type': 'application/json'},
+                                                                    body: JSON.stringify(writeData)
+                                                                });
+                                                                 
+                                                                const writeResult = await writeRes.json();
+                                                                if (!writeRes.ok || writeResult.error) {
+                                                                    throw new Error(writeResult.error || "写入失败");
+                                                                }
+                                                                alert("写入成功！");
+
+                                                            } catch (err) {
+                                                                if (err.message !== "用户取消操作") {
+                                                                     alert(`操作失败: ${err.message}`);
+                                                                     console.error("编辑文本块失败:", err);
+                                                                }
+                                                            } finally {
+                                                                largeEditBtn.innerHTML = originalContent;
+                                                            }
+                                                        };
+                                                        imgBtn.appendChild(largeEditBtn);
+                                                         
+                                                        // 添加查看大图按钮
+                                                        const largeViewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                                        largeViewImageBtn.onclick = (event) => {
+                                                            event.stopPropagation();
+                                                            // 创建原始大小的图像URL，不设置宽度和高度限制
+                                                            const fullImageParams = new URLSearchParams(baseQueryParams);
+                                                            const fullImageUrl = `${ZML_API_PREFIX}/view_image?${fullImageParams.toString()}`;
+                                                            createImageViewerModal(fullImageUrl);
+                                                        };
+                                                        imgBtn.appendChild(largeViewImageBtn);
+                                                        break;
+                                                          
+                                                    case DISPLAY_MODES.EXTRA_LARGE_ICON_ONLY:
+                                                        // 清空现有子元素，但保留名称显示
+                                                        imgBtn.innerHTML = '';
+                                                        // 为图像容器添加extra-large-icon-mode类
+                                                        previewImageContainer.classList.add('extra-large-icon-mode');
+                                                        imgBtn.classList.add('extra-large-icon-mode');
+                                                          
+                                                        const extraLargeParams = new URLSearchParams(baseQueryParams);
+                                                        // 使用view_image端点但调整尺寸参数为超大尺寸
+                                                        extraLargeParams.append('width', '1000');
+                                                        extraLargeParams.append('height', '1000');
+                                                        const extraLargeImg = $el("img", {
+                                                            loading: "lazy",
+                                                            src: `${ZML_API_PREFIX}/view_image?${extraLargeParams.toString()}`,
+                                                            style: { width: '100%', maxHeight: '455px', objectFit: 'contain' }
+                                                        });
+                                                        imgBtn.appendChild(extraLargeImg);
+                                                         
+                                                        // 添加文件名显示（在图像下方）
+                                                        const extraLargeFileName = $el("span", { textContent: displayName, style: { marginTop: '8px', fontSize: '1.1em' } });
+                                                        imgBtn.appendChild(extraLargeFileName);
+                                                          
+                                                        // 添加编辑按钮
+                                                        const extraLargeEditBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
+                                                        extraLargeEditBtn.onclick = async (event) => {
+                                                            event.stopPropagation();
+                                                            const originalContent = extraLargeEditBtn.innerHTML;
+                                                            extraLargeEditBtn.innerHTML = '...';
+                                                            try {
+                                                                const getTextUrl = `${ZML_API_PREFIX}/get_single_text_block?${baseQueryParams.toString()}`;
+                                                                const res = await api.fetchApi(getTextUrl);
+                                                                if (!res.ok) throw new Error("获取文本块失败: " + await res.text());
+                                                                const data = await res.json();
+                                                                 
+                                                                const newText = await createEditModal(data.text_content || "");
+
+                                                                const writeData = {
+                                                                    custom_path: customPath,
+                                                                    ...fileInfo,
+                                                                    subfolder: fileInfo.fullSubfolder ? `${key}/${fileInfo.fullSubfolder}` : key,
+                                                                    text_content: newText
+                                                                };
+                                                                const writeRes = await api.fetchApi(`${ZML_API_PREFIX}/write_text_block`, {
+                                                                    method: 'POST',
+                                                                    headers: {'Content-Type': 'application/json'},
+                                                                    body: JSON.stringify(writeData)
+                                                                });
+                                                                 
+                                                                const writeResult = await writeRes.json();
+                                                                if (!writeRes.ok || writeResult.error) {
+                                                                    throw new Error(writeResult.error || "写入失败");
+                                                                }
+                                                                alert("写入成功！");
+
+                                                            } catch (err) {
+                                                                if (err.message !== "用户取消操作") {
+                                                                     alert(`操作失败: ${err.message}`);
+                                                                     console.error("编辑文本块失败:", err);
+                                                                }
+                                                            } finally {
+                                                                extraLargeEditBtn.innerHTML = originalContent;
+                                                            }
+                                                        };
+                                                        imgBtn.appendChild(extraLargeEditBtn);
+                                                          
+                                                        // 添加查看大图按钮
+                                                        const extraLargeViewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                                        extraLargeViewImageBtn.onclick = (event) => {
+                                                            event.stopPropagation();
+                                                            // 创建原始大小的图像URL，不设置宽度和高度限制
+                                                            const fullImageParams = new URLSearchParams(baseQueryParams);
+                                                            const fullImageUrl = `${ZML_API_PREFIX}/view_image?${fullImageParams.toString()}`;
+                                                            createImageViewerModal(fullImageUrl);
+                                                        };
+                                                        imgBtn.appendChild(extraLargeViewImageBtn);
+                                                        break;
+                                                          
                                                     case DISPLAY_MODES.TEXT_ONLY:
                                                     default:
                                                         break;
@@ -2350,8 +2544,8 @@ app.registerExtension({
                                 });
                                 if (customPath) baseQueryParams.append("custom_path", customPath);
 
-                                // 切换模式前先移除medium-icon-mode类
-                                imageContainer.classList.remove('medium-icon-mode');
+                                // 切换模式前先移除medium-icon-mode和large-icon-mode类
+                                imageContainer.classList.remove('medium-icon-mode', 'large-icon-mode');
                                 
                                 switch(currentDisplayMode) {
                                     case DISPLAY_MODES.TEXT_HOVER:
@@ -2423,7 +2617,7 @@ app.registerExtension({
                                         break;
                                          
                                     case DISPLAY_MODES.MEDIUM_ICON_ONLY:
-                                        // 清空现有子元素，不显示名称
+                                        // 清空现有子元素，但保留名称显示
                                         imgBtn.innerHTML = '';
                                         // 为图像容器添加medium-icon-mode类
                                         imageContainer.classList.add('medium-icon-mode');
@@ -2439,6 +2633,13 @@ app.registerExtension({
                                             style: { width: '100%', maxHeight: '200px', objectFit: 'contain' }
                                         });
                                         imgBtn.appendChild(mediumImg);
+                                        
+                                        // 添加文件名显示
+                                        const mediumNameSpan = $el("span", {
+                                            textContent: displayName,
+                                            style: { marginTop: '8px', fontSize: '0.9em' }
+                                        });
+                                        imgBtn.appendChild(mediumNameSpan);
                                         
                                         // 添加编辑按钮
                                         const mediumEditBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
@@ -2492,6 +2693,164 @@ app.registerExtension({
                                             createImageViewerModal(fullImageUrl);
                                         };
                                         imgBtn.appendChild(mediumViewImageBtn);
+                                        break;
+                                        
+                                    case DISPLAY_MODES.LARGE_ICON_ONLY:
+                                        // 清空现有子元素，但保留名称显示
+                                        imgBtn.innerHTML = '';
+                                        // 为图像容器添加large-icon-mode类
+                                        imageContainer.classList.add('large-icon-mode');
+                                        imgBtn.classList.add('large-icon-mode');
+                                        
+                                        const largeParams = new URLSearchParams(baseQueryParams);
+                                        // 使用view_image端点但调整尺寸参数为更大的尺寸
+                                        largeParams.append('width', '800');
+                                        largeParams.append('height', '800');
+                                        const largeImg = $el("img", {
+                                            loading: "lazy",
+                                            src: `${ZML_API_PREFIX}/view_image?${largeParams.toString()}`,
+                                            style: { width: '100%', maxHeight: '250px', objectFit: 'contain' }
+                                        });
+                                        imgBtn.appendChild(largeImg);
+                                        
+                                        // 添加文件名显示
+                                        const largeNameSpan = $el("span", {
+                                            textContent: displayName,
+                                            style: { marginTop: '8px', fontSize: '0.9em' }
+                                        });
+                                        imgBtn.appendChild(largeNameSpan);
+                                        
+                                        // 添加编辑按钮
+                                        const largeEditBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
+                                        largeEditBtn.onclick = async (event) => {
+                                            event.stopPropagation();
+                                            const originalContent = largeEditBtn.innerHTML;
+                                            largeEditBtn.innerHTML = '...';
+                                            try {
+                                                const getTextUrl = `${ZML_API_PREFIX}/get_single_text_block?${baseQueryParams.toString()}`;
+                                                const res = await api.fetchApi(getTextUrl);
+                                                if (!res.ok) throw new Error("获取文本块失败: " + await res.text());
+                                                const data = await res.json();
+                                                  
+                                                const newText = await createEditModal(data.text_content || "");
+
+                                                const writeData = {
+                                                    custom_path: customPath,
+                                                    ...fileInfo,
+                                                    text_content: newText
+                                                };
+                                                const writeRes = await api.fetchApi(`${ZML_API_PREFIX}/write_text_block`, {
+                                                    method: 'POST',
+                                                    headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify(writeData)
+                                                });
+                                                  
+                                                const writeResult = await writeRes.json();
+                                                if (!writeRes.ok || writeResult.error) {
+                                                    throw new Error(writeResult.error || "写入失败");
+                                                }
+                                                alert("写入成功！");
+
+                                            } catch (err) {
+                                                if (err.message !== "用户取消操作") {
+                                                     alert(`操作失败: ${err.message}`);
+                                                     console.error("编辑文本块失败:", err);
+                                                }
+                                            } finally {
+                                                largeEditBtn.innerHTML = originalContent;
+                                            }
+                                        };
+                                        imgBtn.appendChild(largeEditBtn);
+                                        
+                                        // 添加查看大图按钮
+                                        const largeViewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                        largeViewImageBtn.onclick = (event) => {
+                                            event.stopPropagation();
+                                            // 创建原始大小的图像URL，不设置宽度和高度限制
+                                            const fullImageParams = new URLSearchParams(baseQueryParams);
+                                            const fullImageUrl = `${ZML_API_PREFIX}/view_image?${fullImageParams.toString()}`;
+                                            createImageViewerModal(fullImageUrl);
+                                        };
+                                        imgBtn.appendChild(largeViewImageBtn);
+                                        break;
+                                    
+                                    case DISPLAY_MODES.EXTRA_LARGE_ICON_ONLY:
+                                        // 清空现有子元素，但保留名称显示
+                                        imgBtn.innerHTML = '';
+                                        // 为图像容器添加extra-large-icon-mode类
+                                        imageContainer.classList.add('extra-large-icon-mode');
+                                        imgBtn.classList.add('extra-large-icon-mode');
+                                        
+                                        const extraLargeParams = new URLSearchParams(baseQueryParams);
+                                        // 使用view_image端点但调整尺寸参数为超大尺寸
+                                        extraLargeParams.append('width', '1000');
+                                        extraLargeParams.append('height', '1000');
+                                        const extraLargeImg = $el("img", {
+                                            loading: "lazy",
+                                            src: `${ZML_API_PREFIX}/view_image?${extraLargeParams.toString()}`,
+                                            style: { width: '100%', maxHeight: '455px', objectFit: 'contain' }
+                                        });
+                                        imgBtn.appendChild(extraLargeImg);
+                                        
+                                        // 添加文件名显示
+                                        const extraLargeNameSpan = $el("span", {
+                                            textContent: displayName,
+                                            style: { marginTop: '8px', fontSize: '1.1em' }
+                                        });
+                                        imgBtn.appendChild(extraLargeNameSpan);
+                                        
+                                        // 添加编辑按钮
+                                        const extraLargeEditBtn = $el("button.zml-edit-btn", { innerHTML: pencilIconSVG, title: "编辑文本块" });
+                                        extraLargeEditBtn.onclick = async (event) => {
+                                            event.stopPropagation();
+                                            const originalContent = extraLargeEditBtn.innerHTML;
+                                            extraLargeEditBtn.innerHTML = '...';
+                                            try {
+                                                const getTextUrl = `${ZML_API_PREFIX}/get_single_text_block?${baseQueryParams.toString()}`;
+                                                const res = await api.fetchApi(getTextUrl);
+                                                if (!res.ok) throw new Error("获取文本块失败: " + await res.text());
+                                                const data = await res.json();
+                                                   
+                                                const newText = await createEditModal(data.text_content || "");
+
+                                                const writeData = {
+                                                    custom_path: customPath,
+                                                    ...fileInfo,
+                                                    text_content: newText
+                                                };
+                                                const writeRes = await api.fetchApi(`${ZML_API_PREFIX}/write_text_block`, {
+                                                    method: 'POST',
+                                                    headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify(writeData)
+                                                });
+                                                   
+                                                const writeResult = await writeRes.json();
+                                                if (!writeRes.ok || writeResult.error) {
+                                                    throw new Error(writeResult.error || "写入失败");
+                                                }
+                                                alert("写入成功！");
+
+                                            } catch (err) {
+                                                if (err.message !== "用户取消操作") {
+                                                     alert(`操作失败: ${err.message}`);
+                                                     console.error("编辑文本块失败:", err);
+                                                }
+                                            } finally {
+                                                extraLargeEditBtn.innerHTML = originalContent;
+                                            }
+                                        };
+                                        imgBtn.appendChild(extraLargeEditBtn);
+                                        
+                                        // 添加查看大图按钮
+                                        const extraLargeViewImageBtn = $el("button.zml-view-image-btn", { innerHTML: viewIconSVG, title: "查看大图" });
+                                        extraLargeViewImageBtn.onclick = (event) => {
+                                            event.stopPropagation();
+                                            // 创建原始大小的图像URL，不设置宽度和高度限制
+                                            const fullImageParams = new URLSearchParams(baseQueryParams);
+                                            const fullImageUrl = `${ZML_API_PREFIX}/view_image?${fullImageParams.toString()}`;
+                                            createImageViewerModal(fullImageUrl);
+                                        };
+                                        imgBtn.appendChild(extraLargeViewImageBtn);
                                         break;
                                     
                                     case DISPLAY_MODES.TEXT_ONLY:

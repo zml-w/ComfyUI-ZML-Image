@@ -1377,7 +1377,7 @@ app.registerExtension({
             const empty = textSlots.filter(s => !s.linked);
 
             // 没有空闲输入且未达到上限时，新增下一个“文本N”输入
-            if (empty.length === 0 && maxIdx < 10) {
+            if (empty.length === 0 && maxIdx < 20) {
                 const nextIdx = maxIdx + 1;
                 try { node.addInput(`文本${nextIdx}`, "STRING", { forceInput: true }); } catch {}
                 return ensureOneFreeTextInput(node, false);
