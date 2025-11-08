@@ -777,7 +777,7 @@ class ZML_DualIntegerV3:
                 "阈值": ("INT", {"default": 0, "min": 0, "max": 16384, "step": 1}),
                 "A小于B": ("STRING", {
                     "multiline": False,
-                    "default": "1216,832"
+                    "default": "832,1216"
                 }),
                 "A等于B": ("STRING", {
                     "multiline": False,
@@ -785,7 +785,7 @@ class ZML_DualIntegerV3:
                 }),
                 "A大于B": ("STRING", {
                     "multiline": False,
-                    "default": "832,1216"
+                    "default": "1216,832"
                 }),
             }
         }

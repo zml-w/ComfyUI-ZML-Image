@@ -1922,33 +1922,62 @@ async def edit_text_block(request):
             return web.json_response({"error": "仅支持PNG格式图像的文本块操作"}, status=400)
 
         # 保存临时文件路径（避免直接覆盖原文件）
-        temp_path = str(image_path) + ".tmp"
+        # 确保保留.png扩展名，否则PIL无法识别文件格式
+        temp_path = str(image_path) + f".tmp.{os.getpid()}.png"
         
         try:
-            # 读取原图并保留所有元数据
-            with Image.open(image_path) as img:
-                # 创建新的元数据对象
-                metadata = PngImagePlugin.PngInfo()
-                
-                # 保留所有现有元数据（除了要更新的文本块）
-                if hasattr(img, 'info'):
-                    for key, value in img.info.items():
-                        if key != DEFAULT_TEXT_BLOCK_KEY:
-                            try:
+            # 读取原图
+            img = Image.open(image_path)
+            
+            # 确保转换为RGB模式以避免潜在问题
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # 创建新的元数据对象
+            metadata = PngImagePlugin.PngInfo()
+            
+            # 保留所有现有元数据（除了要更新的文本块）
+            if hasattr(img, 'info'):
+                for key, value in img.info.items():
+                    if key != DEFAULT_TEXT_BLOCK_KEY:
+                        try:
+                            # 确保值是字符串类型
+                            if isinstance(value, bytes):
+                                # 尝试解码字节值
+                                try:
+                                    str_value = value.decode('utf-8', errors='replace')
+                                    metadata.add_text(key, str_value)
+                                except:
+                                    # 如果解码失败，跳过此元数据
+                                    pass
+                            elif isinstance(value, str):
                                 metadata.add_text(key, value)
-                            except:
-                                # 忽略无法添加的元数据
-                                pass
-                
-                # 添加或更新文本块
-                if new_text:
-                    metadata.add_text(DEFAULT_TEXT_BLOCK_KEY, new_text, zip=True)
-                
-                # 保存带有新元数据的图像到临时文件
-                img.save(temp_path, pnginfo=metadata, compress_level=4)
+                        except Exception as inner_e:
+                            # 忽略无法添加的元数据
+                            print(f"添加元数据时出错: {inner_e}")
+            
+            # 添加或更新文本块 - 不使用zip=True以避免潜在问题
+            if new_text:
+                metadata.add_text(DEFAULT_TEXT_BLOCK_KEY, new_text)
+            
+            # 确保图像文件已关闭，避免文件锁定问题
+            img.close()
+            
+            # 重新打开图像并保存
+            with Image.open(image_path) as img:
+                # 保存带有新元数据的图像到临时文件，显式指定格式为PNG
+                img.save(temp_path, format='PNG', pnginfo=metadata, compress_level=4)
+            
+            # 确保临时文件已完全写入
+            import time
+            time.sleep(0.1)  # 短暂延迟确保文件写入完成
             
             # 使用原子操作替换原文件（避免文件损坏）
             import shutil
+            # 在Windows上，确保目标文件不存在
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            # 直接将临时文件重命名为目标文件
             shutil.move(temp_path, image_path)
             
             return web.json_response({"success": True, "message": "文本块已成功更新"})
@@ -1956,14 +1985,22 @@ async def edit_text_block(request):
         except Exception as e:
             # 清理临时文件
             if os.path.exists(temp_path):
-                os.remove(temp_path)
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
             print(f"保存文本块时出错: {e}")
+            # 返回更详细的错误信息
+            import traceback
+            traceback.print_exc()
             return web.json_response({"error": f"保存失败: {str(e)}"}, status=500)
 
     except json.JSONDecodeError:
         return web.json_response({"error": "无效的JSON请求体"}, status=400)
     except Exception as e:
         print(f"处理文本块编辑请求时出错: {e}")
+        import traceback
+        traceback.print_exc()
         return web.json_response({"error": f"服务器错误: {str(e)}"}, status=500)
 
 # ============================== 节点注册==============================

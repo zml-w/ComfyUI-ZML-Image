@@ -168,7 +168,13 @@ class ZML_AutoCensorNode:
                 resized_overlay = overlay_pil.resize((new_width, new_height), Image.LANCZOS)
                 paste_x = (target_size - new_width) // 2
                 paste_y = (target_size - new_height) // 2
-                result_image.paste(resized_overlay, (paste_x, paste_y), resized_overlay)
+                # 确保使用正确的透明度掩码
+                if resized_overlay.mode == 'RGBA':
+                    # 如果有alpha通道，使用它作为掩码
+                    result_image.paste(resized_overlay, (paste_x, paste_y), resized_overlay.split()[-1])
+                else:
+                    # 如果没有alpha通道，直接粘贴（不使用透明度掩码）
+                    result_image.paste(resized_overlay, (paste_x, paste_y))
                 # 裁剪到原始图像尺寸
                 crop_x = (target_size - w) // 2
                 crop_y = (target_size - h) // 2

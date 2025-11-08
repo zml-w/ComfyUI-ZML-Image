@@ -214,7 +214,7 @@ class ZML_TextFormatter:
                     "placeholder": "输入要转换的文本"
                 }),
                 "权重转换": (["禁用", "NAI转SD（精确）", "NAI转SD（一位小数）", "清空权重"], {"default": "NAI转SD（精确）"}),
-                "文本格式化": (["禁用", "下划线转空格", "空格转下划线", "空格隔离标签", "逗号追加换行", "清空换行"], {"default": "下划线转空格"}),
+                "文本格式化": (["禁用", "下划线转空格", "空格转下划线", "空格隔离标签", "逗号追加换行", "清空换行", "括号转义"], {"default": "下划线转空格"}),
                 "格式化标点符号": ("BOOLEAN", {"default": True, "label_on": "启用", "label_off": "禁用"}),
                 "合并相同提示词": ("BOOLEAN", {"default": False, "label_on": "启用", "label_off": "禁用"}),
                 "合并白名单": ("STRING", {"default": " BREAK ", "multiline": False, "placeholder": "不合并的提示词，逗号分隔", "tooltip": "这里的提示词不会被合并，请使用逗号分隔"}),
@@ -459,6 +459,46 @@ class ZML_TextFormatter:
         elif 文本格式化 == "清空换行":
             # 将所有换行符替换为空格
             文本 = 文本.replace('\n', ' ').replace('\r', ' ').strip()
+        elif 文本格式化 == "括号转义":
+            # 括号转义功能：为非权重、非最外层的括号添加转义符
+            # 先找出所有需要保留的括号（权重表达式和最外层括号）
+            # 然后对剩余的括号进行转义
+            def escape_brackets(text):
+                # 匹配权重表达式 (content:weight)
+                weight_pattern = r'\(([^:]+):([\d.]+)\)'
+                # 匹配最外层括号（假设没有嵌套）
+                outer_bracket_pattern = r'^\([^()]*\)$'
+                
+                # 保存所有匹配到的权重表达式位置
+                weight_matches = list(re.finditer(weight_pattern, text))
+                
+                # 创建一个标记数组，标记哪些位置需要保留（不转义）
+                preserve_positions = set()
+                
+                # 标记权重表达式中的括号
+                for match in weight_matches:
+                    start, end = match.span()
+                    for i in range(start, end):
+                        preserve_positions.add(i)
+                
+                # 检查整个文本是否被括号包裹且不是权重表达式
+                if re.match(outer_bracket_pattern, text) and not re.match(weight_pattern, text):
+                    # 标记最外层括号位置
+                    preserve_positions.add(0)  # 开括号
+                    preserve_positions.add(len(text) - 1)  # 闭括号
+                
+                # 逐字符处理并转义未标记的括号
+                result = []
+                for i, char in enumerate(text):
+                    if (char == '(' or char == ')') and i not in preserve_positions:
+                        result.append('\\' + char)
+                    else:
+                        result.append(char)
+                
+                return ''.join(result)
+            
+            # 对文本进行括号转义处理
+            文本 = escape_brackets(文本)
         # 如果为 "禁用", 则不执行任何操作
 
         # 3. 处理合并相同提示词
