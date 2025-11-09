@@ -16,7 +16,7 @@
 
  `节点名称全部以“ZML_”开头，并且节点全部放在comfyui官方"图像"分类下的子分类"ZML_图像”里。`
 
- <details>
+<details>
 <summary>点击此处查看图像节点介绍</summary>
 
 > ### 最开始是为了方便管理图像和提示词而设计，将提示词以PNG文本块的方式保存在图像里：
@@ -65,6 +65,8 @@
 > ### 实时更改触发词和LoRA介绍：
 > <img width="1103" height="759" alt="356" src="https://github.com/user-attachments/assets/65a3e0b3-04df-46e3-afa9-a2ff173ba6d5" />
 > 
+> #### LoRA节点的信息文件，为了文件夹的整洁，我将其放在了子文件夹“zml”中，如果你需要和WebUI一致（放在LoRA的相同目录），那可以考虑试试[这个分支版本](https://github.com/zml-w/ComfyUI-ZML-Image/tree/modified-version)
+
 
 </details>
 
