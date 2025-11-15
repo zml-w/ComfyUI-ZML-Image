@@ -2065,6 +2065,7 @@ app.registerExtension({
                     // 初始化viewMode，优先使用viewMode，如果没有则根据compactView设置
                     this.viewMode = this.viewMode ?? (this.compactView ? 'compact' : 'normal');
                     this.isLocked = this.isLocked ?? false;
+                    this.lockMode = this.lockMode ?? 'none'; // 'none', 'lock_textbox', 'folder_select'
                     this.titleWidth = this.titleWidth ?? 80;
                     this.randomEnabled = this.randomEnabled ?? false; // 默认状态改为不随机
                     this.folderColor = this.folderColor ?? "#30353C"; // 深色背景
@@ -2150,6 +2151,13 @@ app.registerExtension({
                             titleInputs.forEach(input => {
                                 input.style.width = this.titleWidth + 'px';
                             });
+                            
+                            // 实时更新所有文本框选择器的宽度
+                            const textboxSelectors = entriesList.querySelectorAll(".zml-st3-textbox-selector");
+                            textboxSelectors.forEach(selector => {
+                                selector.style.width = `calc(${this.titleWidth}px + 35px)`;
+                            });
+                            
                             app.graph.setDirtyCanvas(true, true);
                         };
                     titleWidthInput.onblur = (e) => {
@@ -2414,27 +2422,173 @@ app.registerExtension({
                     // 添加到控件行
                     controlsRow.append(colorDropdown);
 
-                    const lockToggleButton = createEl("button", "zml-control-btn", { textContent: this.isLocked ? "🔒" : "🔓" });
-                    lockToggleButton.title = this.getText("lockDrag");
-                    // Add feedback
-                    lockToggleButton.style.cssText += `
+                    // 创建锁定模式下拉菜单容器
+                    const lockDropdown = createEl("div", "zml-dropdown");
+                    lockDropdown.style.cssText = `
+                        position: relative;
+                        display: inline-block;
+                        margin-right: 2px;
+                    `;
+                    
+                    // 创建下拉按钮
+                    const lockDropdownBtn = createEl("button", "zml-control-btn", { 
+                        textContent: this.lockMode === 'none' ? "🔓" : (this.lockMode === 'folder_select' ? "📁" : "🔒"),
+                        title: "锁定模式"
+                    });
+                    lockDropdownBtn.style.cssText += `
                         width: 26px; height: 26px; /* 恢复默认高度 */
-                        ${this.isLocked ? 'background: #644;' : 'background: #333;'} 
+                        background: ${this.lockMode === 'none' ? '#333' : (this.lockMode === 'folder_select' ? '#464' : '#644')};
                         transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
                         padding: 0;
                     `;
-                    lockToggleButton.onmouseenter = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; e.target.style.transform = 'translateY(-2px) scale(1.02)'; };
-                    lockToggleButton.onmouseleave = (e) => { e.target.style.background = this.isLocked ? '#644' : '#333'; e.target.style.boxShadow = 'none'; e.target.style.transform = 'translateY(0) scale(1)'; };
-                    lockToggleButton.onmousedown = (e) => { e.target.style.transform = 'translateY(2px) scale(0.97)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.4)'; };
-                    lockToggleButton.onmouseup = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; e.target.style.transform = 'translateY(0) scale(1)'; };
-                    lockToggleButton.onclick = () => {
-                        this.isLocked = !this.isLocked;
-                        lockToggleButton.textContent = this.isLocked ? "🔒" : "🔓";
-                        lockToggleButton.style.background = this.isLocked ? '#644' : '#333';
-                        this.renderSelectTextV3Entries();
-                        this.triggerSlotChanged();
+                    
+                    // 按钮交互效果
+                    lockDropdownBtn.onmouseenter = (e) => { 
+                        e.target.style.background = '#555'; 
+                        e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; 
+                        e.target.style.transform = 'translateY(-2px) scale(1.02)'; 
                     };
-                    controlsRow.appendChild(lockToggleButton);
+                    lockDropdownBtn.onmouseleave = (e) => { 
+                        e.target.style.background = this.lockMode === 'none' ? '#333' : (this.lockMode === 'folder_select' ? '#464' : '#644'); 
+                        e.target.style.boxShadow = 'none'; 
+                        e.target.style.transform = 'translateY(0) scale(1)'; 
+                    };
+                    lockDropdownBtn.onmousedown = (e) => { 
+                        e.target.style.transform = 'translateY(2px) scale(0.97)'; 
+                        e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.4)'; 
+                    };
+                    lockDropdownBtn.onmouseup = (e) => { 
+                        e.target.style.background = '#555'; 
+                        e.target.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)'; 
+                        e.target.style.transform = 'translateY(0) scale(1)'; 
+                    };
+                    
+                    // 创建下拉菜单内容
+                    const lockDropdownContent = createEl("div", "zml-dropdown-content");
+                    lockDropdownContent.style.cssText = `
+                        display: none;
+                        position: absolute;
+                        top: 100%;
+                        left: 0;
+                        background-color: #2a2a2a;
+                        min-width: 160px;
+                        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+                        z-index: 1000;
+                        border: 1px solid #444;
+                        border-radius: 4px;
+                        margin-top: 2px;
+                    `;
+                    
+                    // 添加下拉菜单项
+                    const lockOptions = [
+                        { value: 'lock_textbox', label: '锁定文本框' },
+                        { value: 'folder_select', label: '文件夹下拉选择' }
+                    ];
+                    
+                    lockOptions.forEach(option => {
+                        const optionItem = createEl("div", "zml-dropdown-item");
+                        optionItem.textContent = option.label;
+                        optionItem.style.cssText = `
+                            color: #ccc;
+                            padding: 8px 12px;
+                            text-decoration: none;
+                            display: block;
+                            cursor: pointer;
+                            transition: background-color 0.2s ease;
+                        `;
+                        
+                        // 选中状态高亮
+                        if (this.lockMode === option.value) {
+                            optionItem.style.background = '#444';
+                            optionItem.style.fontWeight = 'bold';
+                        }
+                        
+                        optionItem.onmouseenter = () => {
+                            if (this.lockMode !== option.value) {
+                                optionItem.style.background = '#3a3a3a';
+                            }
+                        };
+                        
+                        optionItem.onmouseleave = () => {
+                            if (this.lockMode !== option.value) {
+                                optionItem.style.background = 'transparent';
+                            }
+                        };
+                        
+                        optionItem.onclick = () => {
+                            // 如果点击当前选中的模式，则解锁（设为none）
+                            if (this.lockMode === option.value) {
+                                this.lockMode = 'none';
+                                this.isLocked = false;
+                            } else {
+                                this.lockMode = option.value;
+                                this.isLocked = true;
+                            }
+                            
+                            // 更新按钮状态
+                            lockDropdownBtn.textContent = this.lockMode === 'none' ? "🔓" : (this.lockMode === 'folder_select' ? "📁" : "🔒");
+                            lockDropdownBtn.style.background = this.lockMode === 'none' ? '#333' : (this.lockMode === 'folder_select' ? '#464' : '#644');
+                            
+                            // 更新下拉菜单项的选中状态
+                            lockDropdownContent.querySelectorAll('.zml-dropdown-item').forEach(item => {
+                                item.style.background = item.textContent === option.label && this.lockMode !== 'none' ? '#444' : 'transparent';
+                                item.style.fontWeight = item.textContent === option.label && this.lockMode !== 'none' ? 'bold' : 'normal';
+                            });
+                            
+                            // 隐藏下拉菜单
+                            lockDropdownContent.style.display = 'none';
+                            
+                            // 更新界面和触发变更
+                            this.renderSelectTextV3Entries();
+                            this.triggerSlotChanged();
+                        };
+                        
+                        lockDropdownContent.appendChild(optionItem);
+                    });
+                    
+                    // 点击按钮直接切换锁定状态
+                    lockDropdownBtn.onclick = (e) => {
+                        if (this.lockMode === 'none') {
+                            // 如果未锁定，显示下拉菜单选择锁定模式
+                            e.stopPropagation(); // 阻止冒泡
+                            lockDropdownContent.style.display = lockDropdownContent.style.display === 'block' ? 'none' : 'block';
+                        } else {
+                            // 如果已锁定，直接解锁
+                            this.lockMode = 'none';
+                            this.isLocked = false;
+                            lockDropdownBtn.textContent = "🔓";
+                            lockDropdownBtn.style.background = '#333';
+                            
+                            // 更新下拉菜单项的选中状态
+                            lockDropdownContent.querySelectorAll('.zml-dropdown-item').forEach(item => {
+                                item.style.background = 'transparent';
+                                item.style.fontWeight = 'normal';
+                            });
+                            
+                            // 更新界面和触发变更
+                            this.renderSelectTextV3Entries();
+                            this.triggerSlotChanged();
+                        }
+                    };
+                    
+                    // 添加到下拉菜单容器
+                    lockDropdown.appendChild(lockDropdownBtn);
+                    lockDropdown.appendChild(lockDropdownContent);
+                    
+                    // 添加到控件行
+                    controlsRow.appendChild(lockDropdown);
+                    
+                    // 点击页面其他地方关闭下拉菜单
+                    document.addEventListener('click', (e) => {
+                        if (!lockDropdown.contains(e.target)) {
+                            lockDropdownContent.style.display = 'none';
+                        }
+                    });
+                    
+                    // 阻止下拉菜单内部点击事件冒泡
+                    lockDropdownContent.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                    });
 
                     // 布局调节按钮 - 移到随机按钮左侧并更改图标为💕
                     const sizeToggleButton = createEl("button", "zml-control-btn", { textContent: "💕" });
@@ -2627,7 +2781,7 @@ app.registerExtension({
 
                         // 在锁定状态下，允许点击文本框切换开启/关闭状态
                         entryCard.onclick = (e) => {
-                            if (this.isLocked) {
+                            if (this.lockMode !== 'none') {
                                 // 切换enabled状态
                                 entry.enabled = !entry.enabled;
                                 this.renderSelectTextV3Entries();
@@ -2649,8 +2803,8 @@ app.registerExtension({
                         });
                         checkbox.onchange = (e) => { entry.enabled = e.target.checked; this.renderSelectTextV3Entries(); this.triggerSlotChanged(); };
 
-                        const dragHandle = createEl("div", "zml-st3-drag-handle", { textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; display: flex; align-items: center; justify-content: center; width: 20px; color: ${this.isLocked ? '#666' : '#888'}; flex-shrink: 0; user-select: none; font-size: ${parseInt(s.inputHeight) * 0.5}px;` });
-                        dragHandle.draggable = !this.isLocked;
+                        const dragHandle = createEl("div", "zml-st3-drag-handle", { textContent: "☰", style: `cursor: ${this.lockMode !== 'none' ? 'not-allowed' : 'grab'}; display: flex; align-items: center; justify-content: center; width: 20px; color: ${this.lockMode !== 'none' ? '#666' : '#888'}; flex-shrink: 0; user-select: none; font-size: ${parseInt(s.inputHeight) * 0.5}px;` });
+                        dragHandle.draggable = this.lockMode === 'none';
                         // 添加点击事件，阻止冒泡
                         dragHandle.onclick = (e) => {
                             e.stopPropagation();
@@ -2659,18 +2813,18 @@ app.registerExtension({
                         const baseInputStyle = `box-sizing: border-box; background: #2b2b2b; border: 1px solid #444; border-radius: 2px; color: #ccc; font-size: ${parseInt(s.inputHeight) * 0.55}px; margin-right: 4px; padding: ${s.inputPadding}; height: ${s.inputHeight};`;
 
                         const titleInput = createEl("input", "", { type: "text", value: entry.title, placeholder: this.getText("inputName"), style: `width: ${this.titleWidth}px; ${baseInputStyle}` });
-                        // 在锁定状态下使标题输入框只读
-                        titleInput.readOnly = this.isLocked;
-                        if (this.isLocked) {
+                        // 根据锁定模式控制标题输入框
+                        titleInput.readOnly = this.lockMode === 'lock_textbox' || this.lockMode === 'folder_select';
+                        if (this.lockMode === 'lock_textbox' || this.lockMode === 'folder_select') {
                             titleInput.style.cursor = 'not-allowed';
                         }
                         titleInput.oninput = (e) => {
-                            if (!this.isLocked) {
+                            if (this.lockMode === 'none') {
                                 entry.title = e.target.value;
                             }
                         };
                         titleInput.onblur = () => {
-                            if (!this.isLocked) {
+                            if (this.lockMode === 'none') {
                                 this.triggerSlotChanged(); 
                             }
                         };
@@ -2680,12 +2834,12 @@ app.registerExtension({
                             value: entry.content || "",
                             placeholder: this.getText("inputContent"),
                             readOnly: true,
-                            style: `flex: 1; min-width: 50px; ${baseInputStyle}${this.isLocked ? ' cursor: not-allowed;' : ''}`
+                            style: `flex: 1; min-width: 50px; ${baseInputStyle}${this.lockMode === 'lock_textbox' || this.lockMode === 'folder_select' ? ' cursor: not-allowed;' : ''}`
                         });
                         const currentNodeInstance = this;
                         contentInput.onclick = () => {
-                            // 在锁定状态下禁用内容编辑
-                            if (!this.isLocked) {
+                            // 在锁定模式下禁用内容编辑
+                            if (this.lockMode === 'none') {
                                 showEditContentModal(entry, currentNodeInstance);
                             }
                         };
@@ -2695,33 +2849,37 @@ app.registerExtension({
                         if (entry.parent_id) {
                             const moveOutBtn = createEl("button", "", {
                                 textContent: "⬆️", title: this.getText("moveOut"),
-                                style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #4a6a4a; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0; margin-right: 4px;
-                                        transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;`
+                                style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: ${this.lockMode !== 'none' ? '#3a3a3a' : '#4a6a4a'}; color: #ccc; cursor: ${this.lockMode !== 'none' ? 'not-allowed' : 'pointer'}; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0; margin-right: 4px;
+                                        transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;${this.lockMode !== 'none' ? ' opacity: 0.6;' : ''}`
                             });
-                            moveOutBtn.onmouseenter = (e) => { e.target.style.backgroundColor = '#5c8a5c'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(-1px) scale(1.02)'; };
-                            moveOutBtn.onmouseleave = (e) => { e.target.style.backgroundColor = '#4a6a4a'; e.target.style.boxShadow = 'none'; e.target.style.transform = 'translateY(0) scale(1)'; };
-                            moveOutBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(0.5px) scale(0.98)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; };
-                            moveOutBtn.onmouseup = (e) => { e.target.style.backgroundColor = '#5c8a5c'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(0) scale(1)'; }; 
+                            moveOutBtn.onmouseenter = (e) => { if (this.lockMode === 'none') { e.target.style.backgroundColor = '#5c8a5c'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(-1px) scale(1.02)'; } };
+                            moveOutBtn.onmouseleave = (e) => { if (this.lockMode === 'none') { e.target.style.backgroundColor = '#4a6a4a'; e.target.style.boxShadow = 'none'; e.target.style.transform = 'translateY(0) scale(1)'; } };
+                            moveOutBtn.onmousedown = (e) => { if (this.lockMode === 'none') { e.target.style.transform = 'translateY(0.5px) scale(0.98)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; } };
+                            moveOutBtn.onmouseup = (e) => { if (this.lockMode === 'none') { e.target.style.backgroundColor = '#5c8a5c'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(0) scale(1)'; } };
                             moveOutBtn.onclick = () => {
-                                entry.parent_id = null;
-                                this.renderSelectTextV3Entries();
-                                this.triggerSlotChanged();
+                                if (this.lockMode === 'none') {
+                                    entry.parent_id = null;
+                                    this.renderSelectTextV3Entries();
+                                    this.triggerSlotChanged();
+                                }
                             };
                             entryCard.appendChild(moveOutBtn);
                         }
 
-                        const deleteBtn = createEl("button", "", { textContent: "X", style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #444; color: #ccc; font-size: ${parseInt(s.inputHeight) * 0.6}px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;
-                            transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;` });
-                        deleteBtn.onmouseenter = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(-1px) scale(1.02)'; };
-                        deleteBtn.onmouseleave = (e) => { e.target.style.background = '#444'; e.target.style.boxShadow = 'none'; e.target.style.transform = 'translateY(0) scale(1)'; };
-                        deleteBtn.onmousedown = (e) => { e.target.style.transform = 'translateY(0.5px) scale(0.98)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; };
-                        deleteBtn.onmouseup = (e) => { e.target.style.background = '#555'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(0) scale(1)'; }; 
+                        const deleteBtn = createEl("button", "", { textContent: "X", style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: ${this.lockMode !== 'none' ? '#3a3a3a' : '#444'}; color: #ccc; font-size: ${parseInt(s.inputHeight) * 0.6}px; cursor: ${this.lockMode !== 'none' ? 'not-allowed' : 'pointer'}; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;
+                            transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;${this.lockMode !== 'none' ? ' opacity: 0.6;' : ''}` });
+                        deleteBtn.onmouseenter = (e) => { if (this.lockMode === 'none') { e.target.style.background = '#555'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(-1px) scale(1.02)'; } };
+                        deleteBtn.onmouseleave = (e) => { if (this.lockMode === 'none') { e.target.style.background = '#444'; e.target.style.boxShadow = 'none'; e.target.style.transform = 'translateY(0) scale(1)'; } };
+                        deleteBtn.onmousedown = (e) => { if (this.lockMode === 'none') { e.target.style.transform = 'translateY(0.5px) scale(0.98)'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'; } };
+                        deleteBtn.onmouseup = (e) => { if (this.lockMode === 'none') { e.target.style.background = '#555'; e.target.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)'; e.target.style.transform = 'translateY(0) scale(1)'; } };
                         deleteBtn.onclick = () => {
-                            const itemIndex = this.selectTextV3_data.entries.findIndex(it => it.id === entry.id);
-                            if (itemIndex > -1) {
-                                this.selectTextV3_data.entries.splice(itemIndex, 1);
-                                this.renderSelectTextV3Entries();
-                                this.triggerSlotChanged();
+                            if (this.lockMode === 'none') {
+                                const itemIndex = this.selectTextV3_data.entries.findIndex(it => it.id === entry.id);
+                                if (itemIndex > -1) {
+                                    this.selectTextV3_data.entries.splice(itemIndex, 1);
+                                    this.renderSelectTextV3Entries();
+                                    this.triggerSlotChanged();
+                                }
                             }
                         };
                         entryCard.appendChild(deleteBtn);
@@ -2845,8 +3003,126 @@ app.registerExtension({
                         // 在锁定状态下使文件夹名称输入框只读
                         nameInput.readOnly = this.isLocked;
                         
+                        // 文本框选择器 - 仅在folder_select模式下显示
+                        let textboxSelector = null;
+                        let selectedTextboxId = null;
+                        
+                        if (this.lockMode === 'folder_select') {
+                            // 获取该文件夹内已启用的文本框
+                            const enabledTextboxes = this.selectTextV3_data.entries.filter(
+                                it => it.parent_id === entry.id && it.item_type === 'text' && it.enabled
+                            );
+                            
+                            // 创建选择器容器
+                            textboxSelector = createEl("div", "zml-st3-textbox-selector", {
+                                style: `position: relative; box-sizing: border-box; background: #2b2b2b; border: 1px solid #444; border-radius: 2px; color: #ccc; font-size: ${parseInt(s.inputHeight) * 0.55}px; padding: ${s.inputPadding}; height: ${s.inputHeight}; width: calc(${this.titleWidth}px + 35px); margin-right: 5px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;`
+                            });
+                            
+                            // 尝试获取已保存的选中文本框ID
+                            const folderObj = this.selectTextV3_data.entries.find(f => f.id === entry.id);
+                            if (folderObj && folderObj.selectedTextboxId) {
+                                selectedTextboxId = folderObj.selectedTextboxId;
+                                // 验证保存的selectedTextboxId是否仍有效
+                                const selectedTextbox = enabledTextboxes.find(t => t.id === selectedTextboxId);
+                                if (!selectedTextbox && enabledTextboxes.length > 0) {
+                                    // 如果保存的ID无效，则使用第一个启用的文本框
+                                    selectedTextboxId = enabledTextboxes[0].id;
+                                    folderObj.selectedTextboxId = selectedTextboxId;
+                                }
+                            } else if (enabledTextboxes.length > 0) {
+                                // 如果没有保存的ID，则默认选中第一个启用的文本框
+                                selectedTextboxId = enabledTextboxes[0].id;
+                                if (folderObj) {
+                                    folderObj.selectedTextboxId = selectedTextboxId;
+                                }
+                            }
+                            
+                            // 获取当前选中的文本框
+                            const currentSelectedTextbox = enabledTextboxes.find(t => t.id === selectedTextboxId);
+                            const selectorContent = createEl("span", "", {
+                                textContent: currentSelectedTextbox ? currentSelectedTextbox.title || "未命名文本" : "无文本框",
+                                style: "white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; margin-right: 5px;"
+                            });
+                            
+                            const selectorArrow = createEl("span", "", {
+                                textContent: "▼",
+                                style: "font-size: 10px; color: #888; user-select: none;"
+                            });
+                            
+                            textboxSelector.appendChild(selectorContent);
+                            textboxSelector.appendChild(selectorArrow);
+                            
+                            // 点击选择器显示下拉列表
+                            textboxSelector.onclick = (e) => {
+                                e.stopPropagation();
+                                
+                                // 移除已存在的下拉列表
+                                document.querySelectorAll('.zml-st3-textbox-dropdown').forEach(el => el.remove());
+                                
+                                // 创建下拉列表
+                                const dropdown = createEl("div", "zml-st3-textbox-dropdown", {
+                                    style: `position: absolute; top: 100%; left: 0; right: 0; background: #2b2b2b; border: 1px solid #444; border-top: none; border-radius: 0 0 2px 2px; max-height: 200px; overflow-y: auto; z-index: 1000; margin-top: -1px;`
+                                });
+                                
+                                // 添加到选择器中
+                                textboxSelector.appendChild(dropdown);
+                                
+                                // 添加文本框选项
+                                if (enabledTextboxes.length === 0) {
+                                    const emptyOption = createEl("div", "", {
+                                        textContent: "无可用文本框",
+                                        style: "padding: 8px; color: #666; text-align: center;"
+                                    });
+                                    dropdown.appendChild(emptyOption);
+                                } else {
+                                    enabledTextboxes.forEach(textbox => {
+                                            // 确保使用当前选中的文本框ID来确定样式
+                                            const isSelected = textbox.id === selectedTextboxId;
+                                            const option = createEl("div", "", {
+                                                textContent: textbox.title || "未命名文本",
+                                                style: `padding: 8px; cursor: pointer; ${isSelected ? 'background: #3a3a3a;' : 'background: transparent;'}`
+                                            });
+                                            
+                                            option.onmouseenter = () => {
+                                                option.style.background = '#3a3a3a';
+                                            };
+                                            
+                                            option.onmouseleave = () => {
+                                                if (!isSelected) {
+                                                    option.style.background = 'transparent';
+                                                }
+                                            };
+                                        
+                                        option.onclick = (e) => {
+                                            e.stopPropagation();
+                                            selectedTextboxId = textbox.id;
+                                            selectorContent.textContent = textbox.title || "未命名文本";
+                                            // 保存选中的文本框ID到文件夹对象中
+                                            const folderObj = this.selectTextV3_data.entries.find(f => f.id === entry.id);
+                                            if (folderObj) {
+                                                folderObj.selectedTextboxId = textbox.id;
+                                            }
+                                            document.querySelectorAll('.zml-st3-textbox-dropdown').forEach(el => el.remove());
+                                            // 更新输出预览
+                                            this.triggerSlotChanged();
+                                        };
+                                        
+                                        dropdown.appendChild(option);
+                                    });
+                                }
+                            };
+                            
+                            // 点击外部关闭下拉列表
+                            document.addEventListener('click', function closeDropdown(e) {
+                                if (!textboxSelector.contains(e.target)) {
+                                    document.querySelectorAll('.zml-st3-textbox-dropdown').forEach(el => el.remove());
+                                    document.removeEventListener('click', closeDropdown);
+                                }
+                            });
+                        }
+                        
                         // 添加保存按钮到预设
-                        const saveBtn = createEl("button", "zml-st3-folder-save", { textContent: "💾", title: "保存到预设", style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #444; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0; margin-right: 5px;` });
+                        const saveBtn = createEl("button", "zml-st3-folder-save", { textContent: "💾", title: "保存到预设", style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #444; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0; margin-right: 5px;${this.lockMode === 'folder_select' ? ' display: none;' : ''}` });
                         
                         // 为保存按钮添加交互效果
                         saveBtn.style.cssText += `transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;`;
@@ -3080,7 +3356,7 @@ app.registerExtension({
                             }
                         };
                         
-                        const deleteBtn = createEl("button", "zml-st3-folder-delete", { textContent: "🗑️", title: this.getText("deleteFolder"), style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #444; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;` });
+                        const deleteBtn = createEl("button", "zml-st3-folder-delete", { textContent: "🗑️", title: this.getText("deleteFolder"), style: `padding: 0; border: 1px solid #666; border-radius: 2px; background: #444; color: #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0;${this.lockMode === 'folder_select' ? ' display: none;' : ''}` });
                         const dragHandle = createEl("div", "zml-st3-drag-handle", { textContent: "☰", style: `cursor: ${this.isLocked ? 'not-allowed' : 'grab'}; color: ${this.isLocked ? '#666' : '#ccc'}; user-select: none; font-size: ${parseInt(s.inputHeight) * 0.5}px; padding: 0 5px; margin-right: 5px; display: flex; align-items: center; justify-content: center;` });
                         dragHandle.draggable = !this.isLocked;
 
@@ -3089,10 +3365,29 @@ app.registerExtension({
                         });
 
                         header.style.cssText = `display: flex; align-items: center;`;
+                        
+                        // 添加元素到头部，根据用户要求调整顺序：将展开文件夹、拖动文件夹、一键开启三个按钮放到最左边
+                        const headerElements = [toggle, dragHandle, enableToggle, nameInput];
+                        
+                        // 在folder_select模式下添加文本框选择器
+                        if (this.lockMode === 'folder_select' && textboxSelector) {
+                            headerElements.push(textboxSelector);
+                        }
+                        
+                        // 添加其他按钮
+                        headerElements.push(saveBtn, deleteBtn);
+                        
+                        // 将所有元素添加到头部
+                        headerElements.forEach(el => header.appendChild(el));
 
                         header.onclick = (e) => {
-                            // 排除toggle按钮，因为它现在有自己的点击事件
-                            if (e.target === nameInput || e.target === deleteBtn || e.target === dragHandle || e.target === toggle) return;
+                            // 排除各个交互元素的点击事件
+                            if (e.target === nameInput || e.target === deleteBtn || e.target === dragHandle || e.target === toggle || e.target === enableToggle || e.target === saveBtn) return;
+                            
+                            // 排除文本框选择器及其子元素的点击事件
+                            if (textboxSelector && (e.target === textboxSelector || textboxSelector.contains(e.target))) return;
+                            
+                            // 处理头部点击事件
                             if (e.target === header || e.target.parentElement === header) {
                                 entry.is_collapsed = !entry.is_collapsed;
                                 toggle.textContent = entry.is_collapsed ? "▶" : "▼";
@@ -3145,7 +3440,7 @@ app.registerExtension({
                             }
                         };
 
-                        header.append(toggle, dragHandle, enableToggle, nameInput, saveBtn, deleteBtn);
+                        // 已通过headerElements添加所有元素，移除重复的append调用
                         folderCard.append(header, content);
                         this.addDragDropHandlers(folderCard, entry);
                         return folderCard;
@@ -3326,9 +3621,29 @@ app.registerExtension({
                         const topLevelItems = this.selectTextV3_data.entries.filter(e => !e.parent_id);
                         collectEnabledTextEntries(topLevelItems);
 
-                        // 根据随机开关决定使用哪些文本框
+                        // 根据模式决定使用哪些文本框
                         let entriesToUse = [];
-                        if (this.randomEnabled && allEnabledTextEntries.length > 0) {
+                        
+                        // 在folder_select模式下，只使用当前锁定的文件夹中选中的文本框
+                        if (this.lockMode === 'folder_select' && this.selectTextV3_data) {
+                            // 找出所有文件夹及其选中的文本框
+                            const folders = this.selectTextV3_data.entries.filter(e => e.item_type === 'folder');
+                            let selectedEntries = [];
+                            
+                            // 检查每个文件夹是否有选中的文本框
+                            for (const folder of folders) {
+                                if (folder.selectedTextboxId) {
+                                    const selectedEntry = this.selectTextV3_data.entries.find(
+                                        e => e.id === folder.selectedTextboxId && e.enabled
+                                    );
+                                    if (selectedEntry) {
+                                        selectedEntries.push(selectedEntry);
+                                    }
+                                }
+                            }
+                            
+                            entriesToUse = selectedEntries;
+                        } else if (this.randomEnabled && allEnabledTextEntries.length > 0) {
                             // 确保randomCount是整数
                             const count = Math.min(parseInt(this.randomCount || 1, 10), allEnabledTextEntries.length);
                             // 使用Fisher-Yates洗牌算法进行真正的随机排序
@@ -3401,6 +3716,20 @@ app.registerExtension({
                         // 确保randomEnabled和randomCount属性被包含在selectTextV3_data中
                         this.selectTextV3_data.randomEnabled = this.randomEnabled;
                         this.selectTextV3_data.randomCount = this.randomCount;
+                        // 确保lock_mode被包含在数据中
+                        this.selectTextV3_data.lock_mode = this.lockMode;
+                        
+                        // 确保所有文件夹的selectedTextboxId信息都被保留
+                        if (this.lockMode === 'folder_select') {
+                            const folders = this.selectTextV3_data.entries.filter(e => e.item_type === 'folder');
+                            folders.forEach(folder => {
+                                const folderObj = this.selectTextV3_data.entries.find(f => f.id === folder.id);
+                                if (folderObj && folderObj.selectedTextboxId) {
+                                    // 确保selectedTextboxId被正确保存到数据中
+                                    folder.selectedTextboxId = folderObj.selectedTextboxId;
+                                }
+                            });
+                        }
                         
                         dataWidget.value = JSON.stringify(this.selectTextV3_data);
                         this.updateOutputPreview();
@@ -3424,6 +3753,7 @@ app.registerExtension({
                 if (this.selectTextV3_data) obj.selectTextV3_data = this.selectTextV3_data;
                 obj.compactView = this.compactView;
                     obj.isLocked = this.isLocked;
+                    obj.lockMode = this.lockMode; // 保存锁定模式
                     obj.titleWidth = this.titleWidth;
                     obj.folderColor = this.folderColor;
                     obj.textboxColor = this.textboxColor;
@@ -3453,6 +3783,7 @@ app.registerExtension({
                 }
                 if (obj.compactView !== undefined) this.compactView = obj.compactView;
                 if (obj.isLocked !== undefined) this.isLocked = obj.isLocked;
+                if (obj.lockMode !== undefined) this.lockMode = obj.lockMode; // 恢复锁定模式
                 if (obj.titleWidth !== undefined) {
                     this.titleWidth = obj.titleWidth;
                 }
