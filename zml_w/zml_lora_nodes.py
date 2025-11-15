@@ -1072,6 +1072,91 @@ class ZmlNunchakuNameLoraLoader:
 
         return (ret_model,)
 
+
+# LoRA列表输出节点
+class ZmlLoraListOutput:
+    def __init__(self):
+        pass
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "文件夹路径": ("STRING", {"default": "", "multiline": False}),
+                "lora数量": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1}),
+                "权重": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                "索引": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1}),
+            },
+            "optional": {
+                "模型": ("MODEL",),
+                "CLIP": ("CLIP",),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING",)
+    RETURN_NAMES = ("模型", "CLIP", "当前lora", "全部lora",)
+    FUNCTION = "generate_lora_list"
+    CATEGORY = "image/ZML_图像/lora加载器"
+    COLOR = "#446699"  # 一个更柔和的蓝色
+    
+    def generate_lora_list(self, 文件夹路径, lora数量, 权重, 索引, 模型=None, CLIP=None):
+        # 获取文件夹中的LoRA文件
+        lora_files = []
+        if 文件夹路径 and os.path.exists(文件夹路径):
+            for file in os.listdir(文件夹路径):
+                if file.lower().endswith(('.safetensors', '.pt', '.bin', '.ckpt')):
+                    lora_files.append(file)
+        
+        # 限制LoRA数量
+        lora_files = lora_files[:lora数量] if lora_files else []
+        
+        # 获取当前索引指定的LoRA文件并加载
+        current_lora = ""
+        
+        # 确保模型不为None
+        if 模型 is None:
+            # 如果没有提供模型，创建一个空字典作为占位符
+            模型 = {}
+        else:
+            # 复制模型，避免修改原始模型
+            模型 = copy.deepcopy(模型)
+        
+        # 确保CLIP不为None
+        if CLIP is None:
+            # 如果没有提供CLIP，创建一个空字典作为占位符
+            CLIP = {}
+        else:
+            # 复制CLIP，避免修改原始CLIP
+            CLIP = copy.deepcopy(CLIP)
+        
+        # 如果有LoRA文件且索引有效，加载对应的LoRA
+        if lora_files and 0 <= 索引 < len(lora_files):
+            current_lora_file = lora_files[索引]
+            lora_file_path = os.path.join(文件夹路径, current_lora_file)
+            
+            # 实际加载LoRA到模型和CLIP
+            try:
+                # 加载LoRA文件数据
+                lora = comfy.utils.load_torch_file(lora_file_path, safe_load=True)
+                # 使用comfy.sd加载LoRA，需要传递模型权重和CLIP权重两个参数
+                模型, CLIP = comfy.sd.load_lora_for_models(模型, CLIP, lora, 权重, 权重)
+                current_lora = f"{os.path.splitext(current_lora_file)[0]} : {权重}"
+            except Exception as e:
+                # 如果加载失败，记录错误信息
+                current_lora = f"加载失败: {os.path.splitext(current_lora_file)[0]} - {str(e)}"
+        
+        # 生成完整的LoRA列表输出
+        output_lines = []
+        for lora_file in lora_files:
+            # 使用新的格式: 文件名 : 权重
+            lora_name_without_ext = os.path.splitext(lora_file)[0]
+            output_lines.append(f"{lora_name_without_ext} : {权重}")
+        
+        # 用换行符连接所有输出
+        full_output = "\n".join(output_lines)
+        
+        return (模型, CLIP, current_lora, full_output,)
+
 # 注册节点
 NODE_CLASS_MAPPINGS = {
     "ZmlLoraLoaderModelOnly": ZmlLoraLoaderModelOnly,
@@ -1080,6 +1165,7 @@ NODE_CLASS_MAPPINGS = {
     "ZmlPowerLoraLoader": ZmlPowerLoraLoader,
     "ZmlNameLoraLoader": ZmlNameLoraLoader,
     "ZmlNunchakuNameLoraLoader": ZmlNunchakuNameLoraLoader,
+    "ZmlLoraListOutput": ZmlLoraListOutput,
 }
 
 # 节点显示名称映射
@@ -1090,6 +1176,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZmlPowerLoraLoader": "ZML_强力lora加载器",
     "ZmlNameLoraLoader": "ZML_名称加载lora",
     "ZmlNunchakuNameLoraLoader": "ZML_名称加载lora(nunchaku)",
+    "ZmlLoraListOutput": "ZML_路径加载LoRA",
 }
 
 # 添加保存LoRA预设的API端点

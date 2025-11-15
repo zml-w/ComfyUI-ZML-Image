@@ -832,6 +832,26 @@ class ZML_PromptTokenBalancer:
 
         return (self._join_tags(pos), self._join_tags(neg))
 
+#==========================图像批次到整数==========================
+
+class ZML_ImageBatchToInt:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像批次": ("IMAGE", {"label": "图像批次"}),
+            }
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("图像数量",)
+    FUNCTION = "count_images"
+    CATEGORY = "image/ZML_图像/整数"
+
+    def count_images(self, 图像批次):
+        # 获取图像批次的长度，即图像数量
+        return (len(图像批次),)
+
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageTransition": ZML_ImageTransition,
     "ZML_ImageEncryption": ZML_ImageEncryption,
@@ -840,6 +860,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_PreviewImage": ZML_PreviewImage,
     "ZML_ImageMemory": ZML_ImageMemory,
     "ZML_PromptTokenBalancer": ZML_PromptTokenBalancer,
+    "ZML_ImageBatchToInt": ZML_ImageBatchToInt,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -850,4 +871,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_PreviewImage": "ZML_预览图像",
     "ZML_ImageMemory": "ZML_桥接预览图像",
     "ZML_PromptTokenBalancer": "ZML_提示词token统一",
+    "ZML_ImageBatchToInt": "ZML_图像批次到整数",
 }

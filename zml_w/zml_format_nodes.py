@@ -1226,32 +1226,56 @@ class ZML_SelectTextV3:
         entries = data.get("entries", [])
         
         final_parts = []
-
-        # 收集所有启用的文本条目
-        enabled_entries = []
-        for entry in entries:
-            if entry.get("enabled", False):
-                content = entry.get("content", "")
-                if content is not None and content != "":
-                    enabled_entries.append(content)
         
-        # 检查是否启用了随机选择
-        random_enabled = data.get("randomEnabled", False)
-        random_count = data.get("randomCount", 1)
+        # 检查是否是folder_select模式
+        lock_mode = data.get("lock_mode", "none")
         
-        if random_enabled and enabled_entries:
-            # 确保randomCount是整数
-            try:
-                count = max(1, min(int(random_count), len(enabled_entries)))
-                # 随机选择指定数量的条目
-                selected_entries = random.sample(enabled_entries, count)
-                final_parts = selected_entries
-            except (ValueError, TypeError):
-                # 如果转换失败，使用所有启用的条目
-                final_parts = enabled_entries
+        if lock_mode == "folder_select":
+            # 在folder_select模式下，只使用选中的文本框
+            selected_entries = []
+            for entry in entries:
+                # 检查是否是文件夹类型的条目（注意使用item_type而不是type）
+                if entry.get("item_type") == "folder" and entry.get("enabled", True):
+                    selected_id = entry.get("selectedTextboxId", None)
+                    # 查找对应的子文本框条目（使用parent_id而不是parentId）
+                    for sub_entry in entries:
+                        if sub_entry.get("parent_id") == entry.get("id") and sub_entry.get("enabled", True):
+                            # 如果有选中的ID，则只匹配选中的文本框；否则使用第一个启用的文本框
+                            if selected_id is None or sub_entry.get("id") == selected_id:
+                                content = sub_entry.get("content", "")
+                                if content is not None and content != "":
+                                    selected_entries.append(content)
+                                    # 如果有选中的ID，找到后就可以跳出循环
+                                    if selected_id is not None:
+                                        break
+            final_parts = selected_entries
         else:
-            # 不启用随机时，使用所有启用的文本条目
-            final_parts = enabled_entries
+            # 原始逻辑：收集所有启用的文本条目
+            enabled_entries = []
+            for entry in entries:
+                # 只处理非文件夹类型的条目
+                if entry.get("type") != "folder" and entry.get("enabled", False):
+                    content = entry.get("content", "")
+                    if content is not None and content != "":
+                        enabled_entries.append(content)
+            
+            # 检查是否启用了随机选择
+            random_enabled = data.get("randomEnabled", False)
+            random_count = data.get("randomCount", 1)
+            
+            if random_enabled and enabled_entries:
+                # 确保randomCount是整数
+                try:
+                    count = max(1, min(int(random_count), len(enabled_entries)))
+                    # 随机选择指定数量的条目
+                    selected_entries = random.sample(enabled_entries, count)
+                    final_parts = selected_entries
+                except (ValueError, TypeError):
+                    # 如果转换失败，使用所有启用的条目
+                    final_parts = enabled_entries
+            else:
+                # 不启用随机时，使用所有启用的文本条目
+                final_parts = enabled_entries
         
         # 如果有可选输入并且不为空，添加到结果中
         if 可选输入 and 可选输入.strip():

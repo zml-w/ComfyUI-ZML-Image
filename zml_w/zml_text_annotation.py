@@ -1019,6 +1019,13 @@ class ZML_TextToImage:
                     current_input_pil_image = self._stitch_images(image_group, stitch_direction_for_group, inner_border_width_for_draw, inner_border_color_actual)
                 else:
                     current_input_pil_image = image_group[0]
+            
+            # 如果有输入图像但没有文本内容，则直接输出带边框的图像
+            if current_input_pil_image is not None and not current_text_to_draw.strip():
+                # 直接使用输入图像并添加边框
+                combined_output_pil_raw = current_input_pil_image
+                processed_combined_images_raw.append(combined_output_pil_raw)
+                continue  # 跳过后续的文本处理逻辑
 
             final_font_size_iter = 字体大小
             final_img_width_iter = 图像宽
@@ -1124,48 +1131,53 @@ class ZML_TextToImage:
             
             combined_output_pil_raw = None
             if current_input_pil_image is not None:
-                input_width, input_height = current_input_pil_image.size
-                text_width, text_height = text_image_panel.size
-                
-                seam_size = inner_border_width_for_draw if inner_border_width_for_draw > 0 else 0
-
-                if 图像拼接方向 in ["左", "右"]:
-                    total_w = text_width + input_width + seam_size
-                    total_h = max(text_height, input_height)
-                    if 图像拼接方向 == "左":
-                        pos_text = (0, (total_h - text_height) // 2)
-                        pos_input = (text_width + seam_size, (total_h - input_height) // 2)
-                    else: # "右"
-                        pos_input = (0, (total_h - input_height) // 2)
-                        pos_text = (input_width + seam_size, (total_h - text_height) // 2)
-                else: # "上", "下"
-                    total_w = max(text_width, input_width)
-                    total_h = text_height + input_height + seam_size
-                    if 图像拼接方向 == "上":
-                        pos_text = ((total_w - text_width) // 2, 0)
-                        pos_input = ((total_w - input_width) // 2, text_height + seam_size)
-                    else: # "下"
-                        pos_input = ((total_w - input_width) // 2, 0)
-                        pos_text = ((total_w - text_width) // 2, input_height + seam_size)
-
-                canvas_bg_for_combined = (0, 0, 0, 0)
-                
-                combined_output_pil_raw = Image.new('RGBA', (total_w, total_h), canvas_bg_for_combined)
-                combined_output_pil_raw.paste(text_image_panel, pos_text, text_image_panel)
-                combined_output_pil_raw.paste(current_input_pil_image, pos_input, current_input_pil_image)
-
-                if seam_size > 0:
-                    draw = ImageDraw.Draw(combined_output_pil_raw)
-                    seam_color = inner_border_color_actual
+                # 只有当有文本内容时才进行拼接处理
+                if current_text_to_draw.strip():
+                    input_width, input_height = current_input_pil_image.size
+                    text_width, text_height = text_image_panel.size
                     
-                    if 图像拼接方向 == "左":
-                        draw.rectangle([(text_width, 0), (text_width + seam_size - 1, total_h - 1)], fill=seam_color)
-                    elif 图像拼接方向 == "右":
-                        draw.rectangle([(input_width, 0), (input_width + seam_size - 1, total_h - 1)], fill=seam_color)
-                    elif 图像拼接方向 == "上":
-                        draw.rectangle([(0, text_height), (total_w - 1, text_height + seam_size - 1)], fill=seam_color)
-                    else: # "下"
-                        draw.rectangle([(0, input_height), (total_w - 1, input_height + seam_size - 1)], fill=seam_color)
+                    seam_size = inner_border_width_for_draw if inner_border_width_for_draw > 0 else 0
+
+                    if 图像拼接方向 in ["左", "右"]:
+                        total_w = text_width + input_width + seam_size
+                        total_h = max(text_height, input_height)
+                        if 图像拼接方向 == "左":
+                            pos_text = (0, (total_h - text_height) // 2)
+                            pos_input = (text_width + seam_size, (total_h - input_height) // 2)
+                        else: # "右"
+                            pos_input = (0, (total_h - input_height) // 2)
+                            pos_text = (input_width + seam_size, (total_h - text_height) // 2)
+                    else: # "上", "下"
+                        total_w = max(text_width, input_width)
+                        total_h = text_height + input_height + seam_size
+                        if 图像拼接方向 == "上":
+                            pos_text = ((total_w - text_width) // 2, 0)
+                            pos_input = ((total_w - input_width) // 2, text_height + seam_size)
+                        else: # "下"
+                            pos_input = ((total_w - input_width) // 2, 0)
+                            pos_text = ((total_w - text_width) // 2, input_height + seam_size)
+
+                    canvas_bg_for_combined = (0, 0, 0, 0)
+                    
+                    combined_output_pil_raw = Image.new('RGBA', (total_w, total_h), canvas_bg_for_combined)
+                    combined_output_pil_raw.paste(text_image_panel, pos_text, text_image_panel)
+                    combined_output_pil_raw.paste(current_input_pil_image, pos_input, current_input_pil_image)
+
+                    if seam_size > 0:
+                        draw = ImageDraw.Draw(combined_output_pil_raw)
+                        seam_color = inner_border_color_actual
+                        
+                        if 图像拼接方向 == "左":
+                            draw.rectangle([(text_width, 0), (text_width + seam_size - 1, total_h - 1)], fill=seam_color)
+                        elif 图像拼接方向 == "右":
+                            draw.rectangle([(input_width, 0), (input_width + seam_size - 1, total_h - 1)], fill=seam_color)
+                        elif 图像拼接方向 == "上":
+                            draw.rectangle([(0, text_height), (total_w - 1, text_height + seam_size - 1)], fill=seam_color)
+                        else: # "下"
+                            draw.rectangle([(0, input_height), (total_w - 1, input_height + seam_size - 1)], fill=seam_color)
+                else:
+                    # 没有文本内容时，直接使用输入图像
+                    combined_output_pil_raw = current_input_pil_image
             else:
                 combined_output_pil_raw = text_image_panel
             
