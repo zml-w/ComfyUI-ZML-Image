@@ -3,31 +3,23 @@ import { api } from "/scripts/api.js";
 import { $el } from "/scripts/ui.js";
 
 // === 辅助函数：获取当前扩展的 basePath ===
-// 这个函数会从当前JS文件的URL自动推断出 /extensions/YourExtensionName/ 的路径
 function get_extension_base_path() {
-    // 获取当前JS文件的URL
     const scriptUrl = import.meta.url;
-    // 假设URL格式为 /extensions/YourExtensionName/js/zml_floating_ball.js
-    // 我们需要提取 /extensions/YourExtensionName/
     const parts = scriptUrl.split('/');
-    // 找到 "extensions" 的索引
     const extensionsIndex = parts.indexOf("extensions");
     if (extensionsIndex !== -1 && parts.length > extensionsIndex + 1) {
-        // 拼接路径到扩展名之后（包含斜杠）
         return "/" + parts.slice(extensionsIndex, extensionsIndex + 2).join('/') + "/";
     }
     console.error("ZML Floating Ball: 无法自动推断扩展基础路径。脚本URL:", scriptUrl);
-    // 尝试从全局变量获取，防止完全失败
     if (window.zmlExtensionBasePath) {
         return window.zmlExtensionBasePath;
     }
-    // 最后的回退方案，尽量避免使用硬编码
-    return "/extensions/ComfyUI-ZML-Image/"; // 回退到硬编码，以防万一
+    return "/extensions/ComfyUI-ZML-Image/"; 
 }
 // ===========================================
 
 app.registerExtension({
-	name: "ZML.FunFloatingBall.V36_SmartPath", // 更新版本号以示区别
+	name: "ZML.FunFloatingBall.V37_CopyOnly", 
 	async setup(app) {
 		// --- 设置项 ---
 		const visibilitySetting = app.ui.settings.addSetting({ id: "zml.floatingBall.show", name: "悬浮球 - 显示/隐藏", type: "boolean", defaultValue: true });
@@ -60,17 +52,16 @@ app.registerExtension({
 		const hoverEffectSetting = app.ui.settings.addSetting({ id: "zml.floatingBall.hoverEffect", name: "悬浮球 - 启用悬停呼吸效果", type: "boolean", defaultValue: true });
 		const gifDelaySetting = app.ui.settings.addSetting({ id: "zml.floatingBall.gifDelay", name: "悬浮球 - GIF延迟显示 (秒)", type: "slider", attrs: { min: 0, max: 3, step: 0.1 }, defaultValue: 0.5 });
 
-		// --- 资源路径 (使用智能推断的 basePath) ---
-		const extensionBasePath = get_extension_base_path(); // 获取 /extensions/YourExtensionName/
-		const baseImagePath = extensionBasePath + "images/"; // 拼接图片目录
+		// --- 资源路径 ---
+		const extensionBasePath = get_extension_base_path();
+		const baseImagePath = extensionBasePath + "images/"; 
 
-		// 注意：这里的 timerAudioPath 和 eatSubfolderPath 会继承 baseImagePath 的逻辑
 		const idleImagePath = baseImagePath + "ZML.png";
 		const runningGifPath = baseImagePath + "ZML.gif";
 		const audioPath = baseImagePath + "ZML.wav";
 		const animationImagePath = baseImagePath + "ZML2.png";
 		const aiAvatarPath = baseImagePath + "A.png";
-        const timerAudioPath = baseImagePath + "A.wav"; // 强烈建议这里改名，如 timer_alert.wav
+        const timerAudioPath = baseImagePath + "A.wav"; 
         const eatSubfolderPath = baseImagePath + "eat/";
         const eatGifPath = eatSubfolderPath + "eat.gif";
         const heartImagePath = eatSubfolderPath + "heart.png";
@@ -80,12 +71,11 @@ app.registerExtension({
             eatSubfolderPath + "B.wav",
             eatSubfolderPath + "C.wav"
         ];
-        // MODIFIED: 为音频添加时间戳以确保缓存失效和文件名不再冲突
         const eatSounds = eatSoundPaths.map(path => new Audio(path + "?t=" + new Date().getTime()));
 
 
 		const audio = new Audio(audioPath);
-        const timerAudio = new Audio(timerAudioPath + "?t=" + new Date().getTime()); // MODIFIED: 添加时间戳
+        const timerAudio = new Audio(timerAudioPath + "?t=" + new Date().getTime()); 
 		let animationTimeout = null;
 		let gifDisplayTimeout = null;
 
@@ -103,9 +93,7 @@ app.registerExtension({
 			}
 		}, [floatingImage]);
 
-		// ... (CSS 样式和其余功能代码保持不变) ...
-
-		// ================= CSS 样式 (FIX: 恢复动画时长硬编码，用于控制效果速度) =================
+		// ================= CSS 样式 =================
 		$el("style", {
 			textContent: `
 				/* 原有样式 */
@@ -113,14 +101,13 @@ app.registerExtension({
 				.zml-floating-ball.breathing-effect { animation: zml-breathing 2.5s ease-in-out infinite; }
 				@keyframes zml-breathing { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
 				
-                /* FIX: 重新为动画效果设置固定时长 (0.5s)，用于控制效果本身的播放速度 */
 				.zml-animation-fade, 
                 .zml-animation-pop, 
                 .zml-animation-slide, 
                 .zml-animation-shake, 
                 .zml-animation-pulse { 
-                    animation-duration: 0.5s; /* 动画效果本身的固定时长 */
-                    animation-timing-function: ease-out; /* 动画的速度曲线 */
+                    animation-duration: 0.5s; 
+                    animation-timing-function: ease-out; 
                 }
                 .zml-animation-fade { animation-name: zml-fade-in; } 
                 .zml-animation-pop { animation-name: zml-pop-in; } 
@@ -129,7 +116,7 @@ app.registerExtension({
                 @keyframes zml-pulse-effect { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
                 .zml-animation-pulse { animation-name: zml-pulse-effect; } 
 
-				/* 卡通可爱聊天窗口样式 */
+				/* 聊天窗口样式 */
                 .zml-chat-window {
                     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
                     width: 500px; max-width: 90vw; 
@@ -184,7 +171,7 @@ app.registerExtension({
                 .zml-chat-input-area button:hover { background-color: #ffca28; transform: translateY(-2px); box-shadow: 5px 5px 0px #444; }
 				.zml-chat-input-area button:active { transform: translateY(1px); box-shadow: 2px 2px 0px #444; }
 				.zml-chat-settings {
-                    width: 300px; /* 设置宽度 */
+                    width: 300px; 
                     position: absolute; top: 60px; left: 15px; background: rgba(255,255,255,0.98);
                     border: 2px solid #444; border-radius: 12px; padding: 15px;
                     box-shadow: 4px 4px 0px #444; backdrop-filter: blur(4px);
@@ -339,7 +326,7 @@ app.registerExtension({
                 }
                 .zml-eat-gif-container {
                     flex-grow: 1; display: flex; align-items: center; justify-content: center;
-                    position: relative; overflow: hidden; /* 隐藏溢出的元素 */
+                    position: relative; overflow: hidden; 
                 }
                 .zml-eat-gif-container img { max-width: 80%; max-height: 80%; }
                 .zml-inventory-bar {
@@ -381,7 +368,6 @@ app.registerExtension({
                     font-size: 20px; font-weight: bold; cursor: pointer;
                     display: flex; align-items: center; justify-content: center; line-height: 28px;
                 }
-                /* NEW: "+"按钮点击反馈动画 */
                 .zml-shop-item-add-btn.clicked {
                     animation: zml-plus-pop 0.2s ease-out;
                 }
@@ -389,7 +375,6 @@ app.registerExtension({
                     50% { transform: scale(1.4); }
                 }
                 
-                /* 爱心特效使用CSS变量，更灵活 */
                 .zml-heart-effect {
                     position: absolute; top: 50%; left: 50%;
                     pointer-events: none;
@@ -401,10 +386,9 @@ app.registerExtension({
                     100% { transform: translate(var(--start-x, -50%), calc(var(--end-y, -100%) - 50%)) scale(0.5); opacity: 0; }
                 }
 
-                /* NEW: 投喂字幕样式 */
                 .zml-feeding-subtitle {
                     position: absolute;
-                    top: 25%; /* 从GIF上方开始 */
+                    top: 25%;
                     left: 50%;
                     transform: translateX(-50%);
                     background-color: rgba(0, 0, 0, 0.6);
@@ -414,7 +398,7 @@ app.registerExtension({
                     font-size: 18px;
                     font-weight: bold;
                     text-shadow: 1px 1px 2px black;
-                    white-space: nowrap; /* 确保文字不换行 */
+                    white-space: nowrap; 
                     pointer-events: none;
                     animation: zml-subtitle-float 1.5s ease-out forwards;
                 }
@@ -449,7 +433,7 @@ app.registerExtension({
 			setTimeout(() => { const closeMenu = () => menu.remove(); document.addEventListener("click", closeMenu, { once: true }); document.addEventListener("contextmenu", closeMenu, { once: true }); }, 0);
 		};
 
-		// ================= BUG FIX: 优化窗口拖拽逻辑，防止事件冲突 =================
+		// ================= 拖拽逻辑 =================
         function setupDraggable(element, header) {
             let offsetX, offsetY;
             
@@ -467,7 +451,7 @@ app.registerExtension({
             };
         
             header.addEventListener("mousedown", (e) => {
-                if (e.target.closest('button, span, input, textarea, a, select, option, label')) return; // 排除可交互元素
+                if (e.target.closest('button, span, input, textarea, a, select, option, label')) return; 
                 
                 const rect = element.getBoundingClientRect();
                 offsetX = e.clientX - rect.left;
@@ -504,35 +488,57 @@ app.registerExtension({
 		};
 		function saveChatSetting(key, value) { chatSettings[key] = value; localStorage.setItem(`zml.chat.${key}`, value); }
 		function saveChatHistory() { localStorage.setItem("zml.chat.history", JSON.stringify(chatHistory)); }
+
+        // === 修改重点：移除了编辑按钮，只保留复制和删除 ===
 		function renderMessages() {
 			if (!messagesContainer) return;
 			messagesContainer.innerHTML = '';
 			chatDisplayHistory.forEach((msg) => {
 				const bubble = $el("div", { className: `zml-chat-bubble ${msg.role} ${msg.isError ? 'error' : ''}`, dataset: { messageId: msg.id } });
 				bubble.textContent = msg.text;
+				
 				const actionsDiv = $el("div.zml-chat-message-actions");
+
+                // 1. 复制按钮 (通用，所有消息和报错都可以复制)
+				const copyButton = $el("button.zml-chat-message-action-btn", { textContent: "📋", title: "复制" });
+				copyButton.onclick = (e) => {
+					e.stopPropagation();
+					const textToCopy = msg.text;
+
+                    // 兼容性复制逻辑
+                    const fallbackCopy = (text) => {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = text;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                            copyButton.textContent = '✓';
+                            setTimeout(() => { copyButton.textContent = '📋'; }, 1500);
+                        } catch (err) {
+                            console.error('复制失败', err);
+                        }
+                        document.body.removeChild(textArea);
+                    };
+
+					if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(textToCopy).then(() => {
+                            copyButton.textContent = '✓';
+                            setTimeout(() => { copyButton.textContent = '📋'; }, 1500);
+                        }).catch(() => fallbackCopy(textToCopy)); // API 失败则回退
+                    } else {
+                        fallbackCopy(textToCopy);
+                    }
+				};
+				actionsDiv.appendChild(copyButton);
+
+                // 2. 删除按钮 (通用)
 				const deleteButton = $el("button.zml-chat-message-action-btn", { textContent: "❌", title: "删除" });
 				deleteButton.onclick = (e) => { e.stopPropagation(); deleteMessage(msg.id); };
-				if (msg.role === "user") {
-					const editButton = $el("button.zml-chat-message-action-btn", { textContent: "✏️", title: "编辑" });
-					editButton.onclick = (e) => { e.stopPropagation(); editMessage(msg.id); };
-					actionsDiv.appendChild(editButton);
-				}
-				if (msg.role === "bot" && !msg.isError) {
-					const copyButton = $el("button.zml-chat-message-action-btn", { textContent: "📋", title: "复制" });
-					copyButton.onclick = (e) => {
-						e.stopPropagation();
-						navigator.clipboard.writeText(msg.text).then(() => {
-							copyButton.textContent = '✓';
-							setTimeout(() => { copyButton.textContent = '📋'; }, 1500);
-						});
-					};
-					actionsDiv.appendChild(copyButton);
-				}
 				actionsDiv.appendChild(deleteButton);
+
 				const wrapper = $el("div", { className: `zml-chat-message-wrapper ${msg.role}` });
 				if (msg.role === "bot") {
-                    // MODIFIED: 添加时间戳以破坏缓存
 					const avatar = $el("img.zml-chat-avatar", { src: aiAvatarPath + "?t=" + new Date().getTime() });
 					wrapper.append(avatar, bubble, actionsDiv);
 				} else { 
@@ -542,6 +548,7 @@ app.registerExtension({
 			});
 			messagesContainer.scrollTop = messagesContainer.scrollHeight;
 		}
+
 		function deleteMessage(messageId) {
 			const displayIndex = chatDisplayHistory.findIndex(msg => msg.id === messageId);
 			if (displayIndex !== -1) {
@@ -552,6 +559,7 @@ app.registerExtension({
 			}
 		}
 		function editMessage(messageId) {
+            // 保留函数定义但UI中不再调用
 			const msgToEdit = chatDisplayHistory.find(msg => msg.id === messageId);
 			if (msgToEdit && msgToEdit.role === "user") {
 				chatInput.value = msgToEdit.text;
@@ -825,7 +833,7 @@ app.registerExtension({
             document.body.appendChild(timerWindow);
         }
 
-		// ================= 喂养游戏功能区 (BUG FIX + 持久化重构) =================
+		// ================= 喂养游戏功能区 =================
         const foodData = [
             { name: "棒棒糖", fileName: "棒棒糖.png" }, { name: "爆米花", fileName: "爆米花.png" },
             { name: "冰淇淋", fileName: "冰淇淋.png" }, { name: "蛋糕", fileName: "蛋糕.png" },
@@ -839,9 +847,8 @@ app.registerExtension({
         const feedingSubtitles = [ "谢谢哥哥~", "好好吃~", "喜欢你！", "喜欢哥哥！", "好吃~好吃~" ];
 
         let feedingWindow = null;
-        let inventoryItems = []; // 存放物品栏中的食物对象
+        let inventoryItems = []; 
 
-        // NEW: 显示随机字幕的函数
         function showFeedingSubtitle() {
             const gifContainer = feedingWindow.querySelector('.zml-eat-gif-container');
             if (!gifContainer) return;
@@ -852,30 +859,26 @@ app.registerExtension({
             const subtitleEl = $el("div.zml-feeding-subtitle", { textContent: subtitleText });
             gifContainer.appendChild(subtitleEl);
 
-            setTimeout(() => subtitleEl.remove(), 1500); // 动画结束后移除
+            setTimeout(() => subtitleEl.remove(), 1500); 
         }
 
-        // MODIFIED: 增强爱心特效，生成多个随机大小的爱心
         function showHeartEffect() {
             const gifContainer = feedingWindow.querySelector('.zml-eat-gif-container');
             if (!gifContainer) return;
 
-            const heartCount = 5 + Math.floor(Math.random() * 3); // 产生5-7个爱心
+            const heartCount = 5 + Math.floor(Math.random() * 3); 
 
             for (let i = 0; i < heartCount; i++) {
-                // MODIFIED: 为图片添加时间戳以避免缓存问题
                 const heart = $el("img.zml-heart-effect", { src: heartImagePath + "?t=" + new Date().getTime() });
                 
-                // 随机化属性
-                const size = 20 + Math.random() * 40; // 尺寸范围 20px - 60px
-                const startXOffset = -50 + (Math.random() * 60 - 30); // 水平位置偏移
-                const endYOffset = -100 - (Math.random() * 50); // 最终漂浮高度
-                const duration = 0.7 + Math.random() * 0.5; // 动画时长
-                const delay = Math.random() * 0.4; // 动画延迟
+                const size = 20 + Math.random() * 40; 
+                const startXOffset = -50 + (Math.random() * 60 - 30); 
+                const endYOffset = -100 - (Math.random() * 50); 
+                const duration = 0.7 + Math.random() * 0.5; 
+                const delay = Math.random() * 0.4; 
 
                 heart.style.width = `${size}px`;
                 heart.style.height = `${size}px`;
-                // 通过CSS变量将随机值传递给CSS动画
                 heart.style.setProperty('--start-x', `${startXOffset}%`);
                 heart.style.setProperty('--end-y', `${endYOffset}%`);
                 heart.style.setProperty('--duration', `${duration}s`);
@@ -886,17 +889,15 @@ app.registerExtension({
             }
         }
 
-        // 初始化或更新物品栏显示
         function renderInventory() {
             const inventoryBar = feedingWindow.querySelector('.zml-inventory-bar');
-            inventoryBar.innerHTML = ''; // 清空现有物品
+            inventoryBar.innerHTML = ''; 
             
             inventoryItems.forEach((food, index) => {
                 const itemEl = $el("div.zml-inventory-item", {
                     draggable: true,
-                    dataset: { inventoryIndex: index } // 存储它在物品栏数组中的索引
+                    dataset: { inventoryIndex: index } 
                 }, [
-                    // MODIFIED: 添加时间戳以破坏缓存
                     $el("img", { src: eatSubfolderPath + food.fileName + "?t=" + new Date().getTime() })
                 ]);
 
@@ -913,7 +914,6 @@ app.registerExtension({
             });
         }
 
-        // 保存物品栏到 localStorage
         function saveInventory() {
             localStorage.setItem("zml.feeding.inventory", JSON.stringify(inventoryItems));
         }
@@ -925,13 +925,12 @@ app.registerExtension({
             }
             inventoryItems.push(foodItem);
             renderInventory();
-            saveInventory(); // 添加后保存
+            saveInventory(); 
         }
 
         function openFeedingWindow() {
             if (feedingWindow) {
                 feedingWindow.style.display = 'flex';
-                // 确保每次打开都从 localStorage 重新加载并渲染以确保最新状态
                 let storedItems = [];
                 try {
                     const storedString = localStorage.getItem("zml.feeding.inventory");
@@ -940,14 +939,13 @@ app.registerExtension({
                     }
                 } catch (e) {
                     console.error("Failed to parse inventory from localStorage", e);
-                    localStorage.removeItem("zml.feeding.inventory"); // 清除可能损坏的数据
+                    localStorage.removeItem("zml.feeding.inventory"); 
                 }
                 inventoryItems = [...storedItems];
                 renderInventory();
                 return;
             }
             
-            // 首次打开时，加载 localStorage
             let storedItems = [];
             try {
                 const storedString = localStorage.getItem("zml.feeding.inventory");
@@ -956,9 +954,9 @@ app.registerExtension({
                 }
             } catch (e) {
                 console.error("Failed to parse inventory from localStorage", e);
-                localStorage.removeItem("zml.feeding.inventory"); // 清除可能损坏的数据
+                localStorage.removeItem("zml.feeding.inventory"); 
             }
-            inventoryItems = [...storedItems]; // 初始化 inventoryItems
+            inventoryItems = [...storedItems]; 
 
             const shopPanel = $el("div.zml-food-shop");
             const shopGrid = $el("div.zml-shop-grid");
@@ -972,7 +970,6 @@ app.registerExtension({
                 };
 
                 const shopItem = $el("div.zml-shop-item", {}, [
-                    // MODIFIED: 添加时间戳以破坏缓存
                     $el("img", { src: eatSubfolderPath + food.fileName + "?t=" + new Date().getTime() }),
                     $el("p", { textContent: food.name }),
                     addItemBtn
@@ -982,26 +979,23 @@ app.registerExtension({
             shopPanel.append($el("h4", {textContent: "零食商店"}), shopGrid);
 
             const gifContainer = $el("div.zml-eat-gif-container", {}, [
-                // MODIFIED: 添加时间戳以破坏缓存
-                $el("img", { src: eatGifPath + "?t=" + new Date().getTime() }) // 破坏缓存
+                $el("img", { src: eatGifPath + "?t=" + new Date().getTime() }) 
             ]);
 
             gifContainer.addEventListener("dragover", (e) => e.preventDefault());
             gifContainer.addEventListener("drop", (e) => {
                 e.preventDefault();
                 const inventoryIndexStr = e.dataTransfer.getData("text/plain");
-                // BUG FIX: 确保从dataTransfer获取的是有效索引
                 if (inventoryIndexStr === null || inventoryIndexStr === "") return;
 
                 const inventoryIndex = parseInt(inventoryIndexStr, 10);
-                if (!isNaN(inventoryIndex) && inventoryIndex >= 0 && inventoryIndex < inventoryItems.length) { // 确保索引合法
-                    inventoryItems.splice(inventoryIndex, 1); // 从物品栏移除
-                    renderInventory(); // 重新渲染物品栏
-                    saveInventory(); // 移除后保存
-                    showHeartEffect(); // 显示爱心
-                    showFeedingSubtitle(); // NEW: 显示随机字幕
+                if (!isNaN(inventoryIndex) && inventoryIndex >= 0 && inventoryIndex < inventoryItems.length) { 
+                    inventoryItems.splice(inventoryIndex, 1); 
+                    renderInventory(); 
+                    saveInventory(); 
+                    showHeartEffect(); 
+                    showFeedingSubtitle(); 
 
-                    // NEW: 播放随机投喂音效
                     const randomSound = eatSounds[Math.floor(Math.random() * eatSounds.length)];
                     randomSound.currentTime = 0;
                     randomSound.play().catch(err => console.error("投喂音效播放失败", err));
@@ -1028,10 +1022,10 @@ app.registerExtension({
             
             setupDraggable(feedingWindow, header);
             document.body.appendChild(feedingWindow);
-            renderInventory(); // 初始渲染一次
+            renderInventory(); 
         }
 
-		// --- 原有悬浮球功能区 (FIX: 动画播放和图片显示时长分离) ---
+		// --- 悬浮球事件 ---
 		floatingBall.addEventListener("contextmenu", (e) => { e.preventDefault(); createContextMenu(e); });
 		floatingBall.addEventListener("dblclick", () => {
 			if (dblClickAudioSetting.value) { audio.currentTime = 0; audio.play().catch(err => console.error("音频播放失败:", err)); }
@@ -1040,43 +1034,37 @@ app.registerExtension({
 				floatingBall.classList.remove("breathing-effect");
 
 				const effect = animationEffectSetting.value;
-				const displayDurationMs = animationDurationSetting.value * 1000; // 这是 ZML2.png 图像应该显示的总体时长
+				const displayDurationMs = animationDurationSetting.value * 1000; 
 
 				const animationClasses = ["fade", "pop", "slide", "shake", "pulse"].map(c => `zml-animation-${c}`);
-				floatingBall.classList.remove(...animationClasses); // 移除所有可能的动画类
+				floatingBall.classList.remove(...animationClasses); 
 
-                // 封装图片和所有动画类的恢复逻辑
 				const revertToIdleState = () => {
 					const isCurrentlyIdle = app.ui.lastQueueSize === 0;
 					floatingImage.src = isCurrentlyIdle ? idleImagePath : runningGifPath;
-					floatingBall.classList.remove(...animationClasses); // 确保所有动画类都被移除
+					floatingBall.classList.remove(...animationClasses); 
 					if (isCurrentlyIdle && hoverEffectSetting.value) floatingBall.classList.add("breathing-effect");
-                    animationTimeout = null; // 清除定时器引用
+                    animationTimeout = null; 
 				};
 
 				if (effect === 'none') {
                     floatingImage.src = animationImagePath;
-                    // 无动画效果，直接显示 ZML2.png 图片，并在设定时长后恢复
                     animationTimeout = setTimeout(revertToIdleState, displayDurationMs);
 				} else {
 					const animationClass = `zml-animation-${effect}`;
-                    floatingImage.src = animationImagePath; // 切换到动画图像 (ZML2.png)
+                    floatingImage.src = animationImagePath; 
                     
-                    // 强制浏览器重绘，确保动画从头开始
                     void floatingBall.offsetWidth; 
-					floatingBall.classList.add(animationClass); // 添加动画效果类
+					floatingBall.classList.add(animationClass); 
 
-                    // 监听 CSS 动画效果结束事件，在效果完成后立即移除该效果类
-                    // 这里不调用 revertToIdleState，因为 ZML2.png 图片还需要显示一段时间
                     const onAnimationEffectEnd = (event) => {
                         if (event.target === floatingBall && event.animationName.startsWith('zml-')) {
                             floatingBall.removeEventListener('animationend', onAnimationEffectEnd);
-                            floatingBall.classList.remove(animationClass); // 仅移除动画效果类
+                            floatingBall.classList.remove(animationClass); 
                         }
                     };
                     floatingBall.addEventListener('animationend', onAnimationEffectEnd, { once: true });
                     
-                    // 设置一个定时器，控制 ZML2.png 图像的总显示时长，完成后恢复到正常状态
 					animationTimeout = setTimeout(revertToIdleState, displayDurationMs);
 				}
 			}
@@ -1127,4 +1115,3 @@ app.registerExtension({
 		floatingBall.ondragstart = () => false;
 	}
 });
-
