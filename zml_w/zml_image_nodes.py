@@ -2003,9 +2003,313 @@ async def edit_text_block(request):
         traceback.print_exc()
         return web.json_response({"error": f"服务器错误: {str(e)}"}, status=500)
 
+# ============================== 保存图像节点 V2 (多格式/无文本块) ==============================
+class ZML_SaveImageV2:
+    """ZML 图像保存节点 V2（支持多格式、质量控制，移除文本块和TXT保存）"""
+    
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+        self.type = "output"
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # 复用原节点的计数器目录，保持计数统一（如果需要独立计数，可修改此处文件名）
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "counter.txt")
+        self.total_counter_file = os.path.join(self.counter_dir, "总次数.txt")
+        
+        self.ensure_counter_files()
+    
+    def ensure_counter_files(self):
+        """确保计数器文件存在"""
+        try:
+            if not os.path.exists(self.counter_file):
+                with open(self.counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+            
+            if not os.path.exists(self.total_counter_file):
+                with open(self.total_counter_file, "w", encoding="utf-8") as f:
+                    f.write("0")
+        except Exception:
+            pass
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "图像": ("IMAGE", {}), 
+            },
+            "required": {
+                "操作模式": (["保存图像", "仅预览图像"], {"default": "保存图像"}),
+                "存储格式": (["png", "jpg", "jpeg", "webp", "bmp", "tiff"], {"default": "png", "tooltip": "仅有png格式会存储元数据"}),
+                "图像质量": ("INT", {"default": 80, "min": 1, "max": 100, "step": 1, "tooltip": "仅对jpg/webp等有损格式有效"}),
+                "保存路径": ("STRING", {"default": "output/ZML_v2/%Y-%m-%d", "placeholder": "相对/绝对路径 (留空使用output)"}),
+                "文件名前缀": ("STRING", {"default": "", "placeholder": "文件名前缀"}),
+                "文件名后缀": ("STRING", {"default": "", "placeholder": "可选后缀"}),
+                "使用时间戳": ("BOOLEAN", {"default": True}),
+                "使用计数器": ("BOOLEAN", {"default": False}),
+                "生成预览": (["启用", "禁用"], {"default": "启用"}),
+                "限制图像大小": (["禁用", "启用"], {"default": "禁用"}), 
+                "最大分辨率": ("INT", {"default": 1024, "min": 8, "max": 8888, "step": 8}),
+                "清除元数据": (["禁用", "启用"], {"default": "禁用", "tooltip": "仅有png格式会存储元数据"}),
+            },
+            "hidden": {
+                "prompt": "PROMPT", 
+                "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+    
+    RETURN_TYPES = ("IMAGE", "STRING",)
+    RETURN_NAMES = ("图像", "Help",)
+    FUNCTION = "save_images_v2"
+    OUTPUT_NODE = True
+    CATEGORY = "image/ZML_图像/图像"
+    
+    def sanitize_filename(self, name):
+        if not name: return ""
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '', name).strip()
+        return name.replace(' ', '-')
+    
+    def format_path(self, path):
+        if not path: return self.output_dir
+        path = path.strip().strip('"').strip("'")
+        if path.startswith("./"): path = path[2:]
+        if not path: return self.output_dir
+        if os.path.isabs(path): return path
+        comfyui_root = os.path.dirname(self.output_dir)
+        return os.path.join(comfyui_root, path)
+    
+    def ensure_directory(self, path):
+        try:
+            os.makedirs(path, exist_ok=True)
+            return path
+        except Exception:
+            return self.output_dir
+    
+    def get_next_counter(self):
+        try:
+            if os.path.exists(self.counter_file):
+                with open(self.counter_file, "r", encoding="utf-8") as f:
+                    counter = int(f.read().strip()) + 1
+            else:
+                counter = 1
+            with open(self.counter_file, "w", encoding="utf-8") as f:
+                f.write(str(counter))
+            return counter
+        except Exception:
+            return int(time.time())
+    
+    def increment_total_counter(self):
+        try:
+            if os.path.exists(self.total_counter_file):
+                with open(self.total_counter_file, "r", encoding="utf-8") as f:
+                    total_count = int(f.read().strip()) + 1
+            else:
+                total_count = 1
+            with open(self.total_counter_file, "w", encoding="utf-8") as f:
+                f.write(str(total_count))
+            return total_count
+        except Exception:
+            return 0
+    
+    def get_unique_filepath(self, filepath):
+        base, ext = os.path.splitext(filepath)
+        counter = 1
+        new_path = filepath
+        while os.path.exists(new_path):
+            new_path = f"{base} ({counter}){ext}"
+            counter += 1
+        return new_path
+
+    def save_images_v2(self, 图像=None, **kwargs):
+        操作模式 = kwargs.get("操作模式", "保存图像")
+        存储格式 = kwargs.get("存储格式", "png")
+        图像质量 = kwargs.get("图像质量", 100)
+        保存路径 = kwargs.get("保存路径", "")
+        保存路径 = datetime.datetime.now().strftime(保存路径)
+        文件名前缀 = kwargs.get("文件名前缀", "")
+        文件名后缀 = kwargs.get("文件名后缀", "")
+        使用时间戳 = kwargs.get("使用时间戳", True)
+        使用计数器 = kwargs.get("使用计数器", False)
+        生成预览 = kwargs.get("生成预览", "启用")
+        限制图像大小 = kwargs.get("限制图像大小", "禁用")
+        最大分辨率 = kwargs.get("最大分辨率", 1024)
+        清除元数据 = kwargs.get("清除元数据", "禁用")
+        prompt = kwargs.get("prompt", None)
+        extra_pnginfo = kwargs.get("extra_pnginfo", None)
+        unique_id = kwargs.get("unique_id", None)
+
+        total_count = 0
+        if 操作模式 == "保存图像":
+            total_count = self.increment_total_counter()
+        else:
+            try:
+                 if os.path.exists(self.total_counter_file):
+                    with open(self.total_counter_file, "r", encoding="utf-8") as f:
+                        total_count = int(f.read().strip())
+            except Exception:
+                total_count = 0
+
+        help_output = f"你好，欢迎使用ZML节点~到目前为止，你通过此节点总共保存了{total_count}次图像！此节点相较于V1节点多了存储格式和图像质量的选项，并删掉了文本块的储存功能，该节点更侧重于降低图像的占用空间。"
+        placeholder_image = torch.ones((1, 1, 1, 3), dtype=torch.float32)
+
+        # 检查是否应该跳过保存
+        skip_save = False
+        if 图像 is None or 图像.size(0) == 0:
+            skip_save = True
+        elif 图像.shape[1] == 1 and 图像.shape[2] == 1:
+            skip_save = True
+        elif 图像.shape[1] == 64 and 图像.shape[2] == 64:
+            if torch.all(torch.abs(图像 - 0.0) < 1e-6):
+                skip_save = True
+
+        if skip_save:
+            return {"result": (placeholder_image, help_output), "node_id": unique_id} if unique_id else {"result": (placeholder_image, help_output)}
+        
+        filename_prefix = self.sanitize_filename(文件名前缀)
+        filename_suffix = self.sanitize_filename(文件名后缀)
+        
+        if 操作模式 == "仅预览图像":
+            save_path = folder_paths.get_temp_directory()
+            ui_type = "temp"
+        else:
+            save_path = self.ensure_directory(self.format_path(保存路径))
+            ui_type = "output"
+
+        result_paths = []
+        components = []
+        
+        if filename_prefix: components.append(filename_prefix)
+        if 使用时间戳: components.append(datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
+        if 使用计数器 and 操作模式 == "保存图像":
+            components.append(f"{self.get_next_counter():05d}")
+        if filename_suffix: components.append(filename_suffix)
+        
+        # 确定文件扩展名
+        file_ext = f".{存储格式}"
+        if 存储格式 == "jpeg": file_ext = ".jpg"
+        
+        if components:
+            base_filename = "#-#".join(components)
+        else:
+            base_filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            
+        full_filename = base_filename + file_ext
+        
+        for index, image_tensor in enumerate(图像):
+            if len(图像) > 1:
+                batch_filename = f"{base_filename}#{index+1:03d}{file_ext}"
+            else:
+                batch_filename = full_filename
+            
+            full_path = os.path.join(save_path, batch_filename)
+            final_image_path = self.get_unique_filepath(full_path)
+            
+            image_array = 255. * image_tensor.cpu().numpy()
+            pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
+
+            # 图像缩放
+            if 限制图像大小 == "启用" and 最大分辨率 > 0:
+                max_dim = max(pil_image.width, pil_image.height)
+                if max_dim > 最大分辨率:
+                    scale_factor = 最大分辨率 / max_dim
+                    new_width = int(pil_image.width * scale_factor)
+                    new_height = int(pil_image.height * scale_factor)
+                    if 存储格式 == "png": # 仅PNG保持8倍数习惯，其他随意
+                        new_width = (new_width // 8) * 8
+                        new_height = (new_height // 8) * 8
+                    pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+            
+            # 处理不支持Alpha通道的格式 (JPG, BMP等)
+            if 存储格式 in ["jpg", "jpeg", "bmp"] and pil_image.mode == "RGBA":
+                # 创建黑色背景
+                background = Image.new("RGB", pil_image.size, (0, 0, 0))
+                background.paste(pil_image, mask=pil_image.split()[3]) # 3 is alpha channel
+                pil_image = background
+            elif pil_image.mode == "RGBA" and 存储格式 not in ["png", "webp", "tiff"]:
+                 pil_image = pil_image.convert("RGB")
+
+            # 准备元数据 (仅对PNG有效且未清除元数据时)
+            metadata = None
+            if 存储格式 == "png" and 清除元数据 == "禁用":
+                metadata = PngImagePlugin.PngInfo()
+                if prompt is not None:
+                    try: metadata.add_text("prompt", json.dumps(prompt))
+                    except: pass
+                if extra_pnginfo is not None:
+                    if "workflow" in extra_pnginfo:
+                        try: metadata.add_text("workflow", json.dumps(extra_pnginfo["workflow"]))
+                        except: pass
+                    for key, value in extra_pnginfo.items():
+                        if key != "workflow":
+                            try: metadata.add_text(key, json.dumps(value))
+                            except: pass
+
+            try:
+                # 保存参数配置
+                save_args = {}
+                # 质量参数 (JPG, WEBP)
+                if 存储格式 in ["jpg", "jpeg", "webp"]:
+                    save_args["quality"] = 图像质量
+                
+                # 格式映射
+                save_format = 存储格式.upper()
+                if save_format == "JPG": save_format = "JPEG"
+
+                # 执行保存
+                if metadata and save_format == "PNG":
+                    pil_image.save(final_image_path, format=save_format, pnginfo=metadata, compress_level=4, **save_args)
+                else:
+                    pil_image.save(final_image_path, format=save_format, **save_args)
+                
+                # 计算预览路径
+                try:
+                    file_basename = os.path.basename(final_image_path)
+                    file_dir = os.path.dirname(final_image_path)
+                    base_dir_for_relpath = self.output_dir if ui_type == "output" else folder_paths.get_temp_directory()
+                    abs_file_dir = os.path.abspath(file_dir)
+                    abs_base_dir = os.path.abspath(base_dir_for_relpath)
+                    rel_dir = ""
+                    if abs_file_dir.startswith(abs_base_dir):
+                        rel_dir = os.path.relpath(abs_file_dir, abs_base_dir)
+                    rel_dir = rel_dir.replace("\\", "/")
+                    if rel_dir == ".": rel_dir = ""
+                    
+                    result_paths.append({
+                        "filename": file_basename,
+                        "subfolder": rel_dir,
+                        "type": ui_type
+                    })
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"ZML Save V2 Error: {e}")
+                pass
+        
+        # 返回结果
+        if 生成预览 == "启用" and result_paths:
+            ui_output = {
+                "images": [
+                    {
+                        "filename": p["filename"],
+                        "subfolder": p["subfolder"],
+                        "type": p["type"]
+                    } for p in result_paths
+                ]
+            }
+            if unique_id:
+                return {"ui": ui_output, "result": (图像, help_output), "node_id": unique_id}
+            return {"ui": ui_output, "result": (图像, help_output)}
+        else:
+            if unique_id:
+                return {"result": (图像, help_output), "node_id": unique_id}
+            return {"result": (图像, help_output)}
+
 # ============================== 节点注册==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_SaveImage": ZML_SaveImage,
+    "ZML_SaveImageV2": ZML_SaveImageV2,
     "ZML_SimpleSaveImage": ZML_SimpleSaveImage,
     "ZML_LoadImage": ZML_LoadImage,
     "ZML_LoadImageFromPath": ZML_LoadImageFromPath,
@@ -2017,6 +2321,7 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SaveImage": "ZML_保存图像",
+    "ZML_SaveImageV2": "ZML_保存图像_V2",
     "ZML_SimpleSaveImage": "ZML_简易_保存图像",
     "ZML_LoadImage": "ZML_加载图像",
     "ZML_LoadImageFromPath": "ZML_从路径加载图像",

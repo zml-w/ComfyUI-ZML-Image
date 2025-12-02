@@ -153,32 +153,9 @@ class ZML_AutoCensorNode:
         has_detections = len(results[0]) > 0
         
         if has_detections and 检测模式 and 覆盖模式 == "图像":
-            # 当检测到目标且检测模式开启时，直接返回覆盖图像（调整大小到原始图像尺寸）
+            # 当检测到目标且检测模式开启时，直接返回覆盖图像的原始尺寸
             overlay_pil = self.tensor_to_pil(覆盖图)
-            if 拉伸图像:
-                # 拉伸到原始图像尺寸
-                overlay_pil = overlay_pil.resize((w, h), Image.LANCZOS)
-            else:
-                # 保持比例，居中放置，透明背景
-                target_size = max(w, h)
-                result_image = Image.new('RGBA', (target_size, target_size), (0, 0, 0, 0))
-                overlay_ratio = min(target_size / overlay_pil.width, target_size / overlay_pil.height)
-                new_width = int(overlay_pil.width * overlay_ratio)
-                new_height = int(overlay_pil.height * overlay_ratio)
-                resized_overlay = overlay_pil.resize((new_width, new_height), Image.LANCZOS)
-                paste_x = (target_size - new_width) // 2
-                paste_y = (target_size - new_height) // 2
-                # 确保使用正确的透明度掩码
-                if resized_overlay.mode == 'RGBA':
-                    # 如果有alpha通道，使用它作为掩码
-                    result_image.paste(resized_overlay, (paste_x, paste_y), resized_overlay.split()[-1])
-                else:
-                    # 如果没有alpha通道，直接粘贴（不使用透明度掩码）
-                    result_image.paste(resized_overlay, (paste_x, paste_y))
-                # 裁剪到原始图像尺寸
-                crop_x = (target_size - w) // 2
-                crop_y = (target_size - h) // 2
-                overlay_pil = result_image.crop((crop_x, crop_y, crop_x + w, crop_y + h))
+            # 不再调整覆盖图大小，直接使用原始尺寸
             # 转换为OpenCV格式
             source_cv2 = cv2.cvtColor(np.array(overlay_pil.convert('RGB')), cv2.COLOR_RGB2BGR)
         elif has_detections:
@@ -336,6 +313,14 @@ class ZML_ImageSelectorNode:
     RETURN_NAMES = ("选择的图像",)
     FUNCTION = "select_image"
     CATEGORY = "image/ZML_图像/图像"
+    
+    @classmethod
+    def IS_CHANGED(cls, 随机选择, **kwargs):
+        # 当启用随机选择时，返回float("nan")以绕过缓存机制
+        if 随机选择:
+            return float("nan")
+        # 其他情况下，使用默认的缓存行为
+        return (随机选择,)
     
     def select_image(self, 图像1, 索引选择, 随机选择, 图像2=None, 图像3=None, 图像4=None, 图像5=None):
         # 创建图像列表，确保第一个图像总是存在
@@ -1588,7 +1573,6 @@ class ZML_LimitImageAspect:
                 "图像": ("IMAGE",),
                 "目标比例": (["1：1", "16：9", "9：16", "3：2", "2：3", "4：3", "3：4", "21：9", "9：21", "5：4", "4：5"], {"default": "1：1"}),
                 "模式": (["填充白", "填充黑", "裁剪", "拉伸"],),
-                "限制分辨率": ("BOOLEAN", {"default": False, "tooltip": "如果启用，最终图像的宽度和高度将不会超过原始输入图像的宽度和高度。如果目标比例和模式导致尺寸变大，将等比缩小。"}),
             }
         }
 
@@ -1618,7 +1602,7 @@ class ZML_LimitImageAspect:
             pil_image = pil_image.convert('RGBA')
         return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
-    def adjust_aspect_ratio(self, 图像: torch.Tensor, 目标比例: str, 模式: str, 限制分辨率: bool):
+    def adjust_aspect_ratio(self, 图像: torch.Tensor, 目标比例: str, 模式: str):
         pil_image = self._tensor_to_pil(图像)
         original_width, original_height = pil_image.size
 
@@ -1723,21 +1707,20 @@ class ZML_LimitImageAspect:
             intermediate_result_pil = pil_image.crop((left, top, right, bottom))
 
 
-        # 2. 应用 `限制分辨率` 开关 (仅当开关为 True 且结果超出原始尺寸时才生效)
+        # 应用默认的分辨率限制：确保最终图像不超出原始图像尺寸
         final_pil_image = intermediate_result_pil # 先假设 intermediate_result_pil 就是最终结果
 
-        # 检查是否需要应用分辨率限制: 只有当限制分辨率为True 并且 (计算出的宽度大于原始宽度 或 计算出的高度大于原始高度)
-        if 限制分辨率:
-            current_width, current_height = final_pil_image.size
-            if current_width > original_width or current_height > original_height:
-                scale_factor = min(float(original_width) / current_width, float(original_height) / current_height)
-                
-                # 计算缩放后的尺寸，确保不为0
-                new_limit_width = max(1, int(current_width * scale_factor))
-                new_limit_height = max(1, int(current_height * scale_factor))
-                
-                # 执行缩放
-                final_pil_image = final_pil_image.resize((new_limit_width, new_limit_height), resample=Image.Resampling.LANCZOS)
+        # 检查并应用分辨率限制：如果计算出的宽度大于原始宽度或高度大于原始高度，则等比缩小
+        current_width, current_height = final_pil_image.size
+        if current_width > original_width or current_height > original_height:
+            scale_factor = min(float(original_width) / current_width, float(original_height) / current_height)
+            
+            # 计算缩放后的尺寸，确保不为0
+            new_limit_width = max(1, int(current_width * scale_factor))
+            new_limit_height = max(1, int(current_height * scale_factor))
+            
+            # 执行缩放
+            final_pil_image = final_pil_image.resize((new_limit_width, new_limit_height), resample=Image.Resampling.LANCZOS)
 
         # 3. 确保最终图像尺寸不为0（极端情况下可能出现）
         if final_pil_image.width == 0 or final_pil_image.height == 0:

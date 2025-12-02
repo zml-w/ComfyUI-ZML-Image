@@ -179,7 +179,7 @@ class ZML_AddTextWatermark:
                         # 检查当前单词是否包含标点加空格的组合，或者前一个单词以标点结尾且当前单词是空格
                         has_punctuation_space_combination = False
                         for i in range(len(word) - 1):
-                            if word[i] in chinese_punctuation and word[i+1].isspace():
+                            if word[i] in self.chinese_punctuation and word[i+1].isspace():
                                 has_punctuation_space_combination = True
                                 break
                         
@@ -431,7 +431,7 @@ class ZML_AddTextWatermark:
                 except Exception:
                     current_font_for_sizing = ImageFont.load_default(字体大小)
                 
-                tw, th = self._get_text_block_size(lines, current_font_for_sizing, adjusted_char_spacing, adjusted_line_spacing, 书写方向)
+                tw, th = self._get_text_block_size(lines, current_font_for_sizing, 字符间距, 行间距, 书写方向)
                 
                 if tw == 0 or th == 0:
                     processed_images.append(self.pil_to_tensor(pil_image)); continue

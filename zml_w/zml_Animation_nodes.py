@@ -832,6 +832,206 @@ class ZML_PromptTokenBalancer:
 
         return (self._join_tags(pos), self._join_tags(neg))
 
+#==========================图像批次联结==========================
+
+class ZML_ImageBatchConcat:
+    """
+    图像批次联结节点
+    
+    功能：将单个图像批次中的所有图像按照指定方向拼接成一个大图像
+    支持的拼接方向：左、右、上、下
+    支持设置单行拼接上限，超出上限时自动换行
+    支持为每个图像添加内边框
+    支持为拼接后的整个图像添加外边框
+    
+    输入参数：
+    - 图像批次：包含多个图像的批次
+    - 拼接方向：拼接的主要方向
+    - 单行上限：每行最多拼接的图像数量，0表示不限制
+    - 内边框大小：图像之间的内边框像素数，0表示无边框
+    - 内边框颜色：内边框的颜色，ZML表示随机颜色，留空表示透明
+    - 外边框大小：拼接后图像的外边框像素数，0表示无边框
+    - 外边框颜色：外边框的颜色，ZML表示随机颜色，留空表示透明
+    
+    返回值：
+    - 拼接后图像：拼接完成的单个图像
+    
+    颜色规则说明：
+    1. 输入"ZML"（不区分大小写）将生成随机颜色
+    2. 留空将使用透明像素
+    3. 其他情况请输入十六进制RGB颜色值，如"#FF0000"
+    """
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像批次": ("IMAGE", {"label": "图像批次"}),
+                "拼接方向": (["左", "右", "上", "下"], {"default": "右"}),
+                "单行上限": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "display": "number", "tooltip": "0表示不限制"}),
+                "内边框大小": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "display": "number", "tooltip": "图像之间的内边框像素数，0表示无边框"}),
+                "内边框颜色": ("STRING", {"default": "#000000", "display": "color", "tooltip": "内边框的颜色，ZML表示随机颜色，留空表示透明"}),
+                "外边框大小": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "display": "number", "tooltip": "拼接后图像的外边框像素数，0表示无边框"}),
+                "外边框颜色": ("STRING", {"default": "#000000", "display": "color", "tooltip": "外边框的颜色，ZML表示随机颜色，留空表示透明"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("拼接后图像",)
+    FUNCTION = "concat_images"
+    CATEGORY = "image/ZML_图像/图像"
+    
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # 返回nan强制ComfyUI每次都重新计算，解决随机颜色缓存问题
+        return float("nan")
+
+    def _tensor_to_pil(self, image_tensor):
+        """将ComfyUI的图像张量转换为PIL图像"""
+        img_np = image_tensor.cpu().numpy()
+        # 如果张量有批次维度，且维度为1，则移除批次维度
+        if len(img_np.shape) == 4 and img_np.shape[0] == 1:
+            img_np = img_np.squeeze(0)
+        img_np = np.clip(255. * img_np, 0, 255).astype(np.uint8)
+        if img_np.ndim == 3 and img_np.shape[2] == 4:
+            return Image.fromarray(img_np, 'RGBA')
+        elif img_np.ndim == 3 and img_np.shape[2] == 3:
+            return Image.fromarray(img_np, 'RGB').convert('RGBA')
+        elif img_np.ndim == 2:
+            return Image.fromarray(img_np, 'L').convert('RGBA')
+        raise ValueError(f"不支持的图像维度: {img_np.ndim}")
+        
+    def _parse_color(self, color_str):
+        """解析颜色字符串
+        ZML表示随机颜色，留空表示透明，其他为十六进制颜色"""
+        if not color_str or color_str.strip() == "":
+            return (0, 0, 0, 0)  # 透明
+        elif color_str.lower() == "zml":
+            # 生成随机颜色，alpha为255（不透明）
+            r = random.randint(0, 255)
+            g = random.randint(0, 255)
+            b = random.randint(0, 255)
+            return (r, g, b, 255)
+        else:
+            # 解析十六进制颜色
+            hex_color = color_str.lstrip('#')
+            if len(hex_color) == 6:
+                r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                return (r, g, b, 255)  # RGBA格式，A为255（不透明）
+            else:
+                return (0, 0, 0, 255)  # 默认黑色
+                
+    def _add_border(self, image, border_size, border_color):
+        """为单个图像添加边框"""
+        if border_size <= 0:
+            return image
+        
+        width, height = image.size
+        # 创建新图像，尺寸增加边框大小
+        new_width = width + 2 * border_size
+        new_height = height + 2 * border_size
+        new_image = Image.new('RGBA', (new_width, new_height))
+        
+        # 绘制边框
+        draw = ImageDraw.Draw(new_image)
+        draw.rectangle([0, 0, new_width - 1, new_height - 1], fill=border_color)
+        
+        # 将原图粘贴到中心
+        new_image.paste(image, (border_size, border_size))
+        return new_image
+
+    def _pil_to_tensor(self, pil_image):
+        """将PIL图像转换为ComfyUI的图像张量"""
+        if pil_image.mode != 'RGBA':
+            pil_image = pil_image.convert('RGBA')
+        # 转换为numpy数组并归一化到0-1范围
+        img_np = np.array(pil_image).astype(np.float32) / 255.0
+        # 添加批次维度，确保输出格式与ComfyUI的IMAGE类型一致
+        return torch.from_numpy(img_np).unsqueeze(0)
+
+    def _concat_horizontally(self, images):
+        """水平拼接图像"""
+        widths, heights = zip(*(img.size for img in images))
+        total_width = sum(widths)
+        max_height = max(heights)
+        new_img = Image.new('RGBA', (total_width, max_height))
+        x_offset = 0
+        for img in images:
+            new_img.paste(img, (x_offset, (max_height - img.size[1]) // 2))
+            x_offset += img.size[0]
+        return new_img
+
+    def _concat_vertically(self, images):
+        """垂直拼接图像"""
+        widths, heights = zip(*(img.size for img in images))
+        max_width = max(widths)
+        total_height = sum(heights)
+        new_img = Image.new('RGBA', (max_width, total_height))
+        y_offset = 0
+        for img in images:
+            new_img.paste(img, ((max_width - img.size[0]) // 2, y_offset))
+            y_offset += img.size[1]
+        return new_img
+
+    def _concat_with_limit(self, images, direction, limit):
+        """根据方向和上限拼接图像"""
+        if limit <= 0 or len(images) <= limit:
+            if direction in ["左", "右"]:
+                return self._concat_horizontally(images)
+            else:
+                return self._concat_vertically(images)
+        
+        # 如果需要多行拼接
+        rows = []
+        for i in range(0, len(images), limit):
+            row_images = images[i:i+limit]
+            if direction in ["左", "右"]:
+                # 横向为主方向，超出上限时下移
+                rows.append(self._concat_horizontally(row_images))
+            else:
+                # 纵向为主方向，超出上限时右移
+                rows.append(self._concat_vertically(row_images))
+        
+        # 拼接所有行
+        if direction in ["左", "右"]:
+            # 横向拼接后纵向拼接
+            return self._concat_vertically(rows)
+        else:
+            # 纵向拼接后横向拼接
+            return self._concat_horizontally(rows)
+
+    def concat_images(self, 图像批次, 拼接方向="右", 单行上限=0, 内边框大小=0, 内边框颜色="#000000", 外边框大小=0, 外边框颜色="#000000"):
+        """拼接图像批次中的所有图像，支持内边框和外边框"""
+        # 将图像批次中的所有图像转换为PIL图像
+        all_images = []
+        for img_tensor in 图像批次:
+            all_images.append(self._tensor_to_pil(img_tensor))
+        
+        if not all_images:
+            raise ValueError("没有图像可以拼接")
+        
+        # 解析内边框颜色
+        inner_border_color = self._parse_color(内边框颜色)
+        
+        # 为每个图像添加内边框
+        bordered_images = []
+        for img in all_images:
+            bordered_img = self._add_border(img, 内边框大小, inner_border_color)
+            bordered_images.append(bordered_img)
+        
+        # 根据方向和上限进行拼接
+        result_image = self._concat_with_limit(bordered_images, 拼接方向, 单行上限)
+        
+        # 解析外边框颜色
+        outer_border_color = self._parse_color(外边框颜色)
+        
+        # 为拼接后的图像添加外边框
+        if 外边框大小 > 0:
+            result_image = self._add_border(result_image, 外边框大小, outer_border_color)
+        
+        # 转换回张量
+        result_tensor = self._pil_to_tensor(result_image)
+        return (result_tensor,)
+
 #==========================图像批次到整数==========================
 
 class ZML_ImageBatchToInt:
@@ -852,6 +1052,79 @@ class ZML_ImageBatchToInt:
         # 获取图像批次的长度，即图像数量
         return (len(图像批次),)
 
+#==========================图像裁剪节点==========================
+
+class ZML_ImageCrop:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE",),
+                "裁剪比例": (["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"], {"default": "1:1"}),
+                "裁剪方向": (["居中", "顶部", "底部", "左侧", "右侧"], {"default": "居中"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("裁剪后图像",)
+    FUNCTION = "crop_image"
+    CATEGORY = "image/ZML_图像/图像"
+
+    def crop_image(self, 图像, 裁剪比例, 裁剪方向):
+        # 解析比例
+        if 裁剪比例 == "自定义":
+            # 如果需要自定义，默认回退到1:1，或者这里可以扩展逻辑
+            target_ratio = 1.0
+        else:
+            try:
+                w_ratio, h_ratio = map(float, 裁剪比例.split(":"))
+                target_ratio = w_ratio / h_ratio
+            except:
+                target_ratio = 1.0
+
+        # 获取输入图像尺寸 (Batch, Height, Width, Channels)
+        batch_size, height, width, channels = 图像.shape
+        current_ratio = width / height
+
+        # 计算新的尺寸
+        if current_ratio > target_ratio:
+            # 图像太宽，需要裁剪宽度 (高度保持不变)
+            new_height = height
+            new_width = int(height * target_ratio)
+        else:
+            # 图像太高，需要裁剪高度 (宽度保持不变)
+            new_width = width
+            new_height = int(width / target_ratio)
+
+        # 初始化裁剪坐标（默认为居中）
+        x_start = (width - new_width) // 2
+        y_start = (height - new_height) // 2
+
+        # 根据方向调整坐标
+        # 注意：如果裁剪的是宽度，"顶部/底部"选项不起作用（因为高度没变，y_start已经是0），依然保持垂直居中(0)
+        # 同理，如果裁剪的是高度，"左侧/右侧"选项不起作用，依然保持水平居中(0)
+        
+        if 裁剪方向 == "顶部":
+            y_start = 0
+        elif 裁剪方向 == "底部":
+            y_start = height - new_height
+        elif 裁剪方向 == "左侧":
+            x_start = 0
+        elif 裁剪方向 == "右侧":
+            x_start = width - new_width
+        # "居中" 已经在初始化时计算过了
+
+        # 确保坐标不越界 (虽然计算逻辑上不应该越界，但做个保险)
+        x_start = max(0, min(x_start, width - new_width))
+        y_start = max(0, min(y_start, height - new_height))
+
+        # 执行裁剪 (切片操作: Batch, Y, X, Channels)
+        cropped_image = 图像[:, y_start:y_start + new_height, x_start:x_start + new_width, :]
+
+        return (cropped_image,)
+
+#====================================================
+
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageTransition": ZML_ImageTransition,
     "ZML_ImageEncryption": ZML_ImageEncryption,
@@ -861,6 +1134,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageMemory": ZML_ImageMemory,
     "ZML_PromptTokenBalancer": ZML_PromptTokenBalancer,
     "ZML_ImageBatchToInt": ZML_ImageBatchToInt,
+    "ZML_ImageBatchConcat": ZML_ImageBatchConcat,
+    "ZML_ImageCrop": ZML_ImageCrop, 
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -872,4 +1147,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageMemory": "ZML_桥接预览图像",
     "ZML_PromptTokenBalancer": "ZML_提示词token统一",
     "ZML_ImageBatchToInt": "ZML_图像批次到整数",
+    "ZML_ImageBatchConcat": "ZML_批次图像拼接",
+    "ZML_ImageCrop": "ZML_图像裁剪",
 }
