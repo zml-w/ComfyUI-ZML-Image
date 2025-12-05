@@ -204,12 +204,13 @@ class ZML_LLM_Chat:
             return (f"请求发生异常: {str(e)}",)
 
 # ==========================================
-# 节点 6: JSON 提取器 (支持 7 个输出)
+# 节点 6: JSON 提取器
 # ==========================================
 class ZML_JsonExtractor:
     """
     从 LLM 输出的 JSON 字符串中提取指定 Key 的值。
     支持最多输出 7 个值。
+    更新：针对数组类型，会自动将内部元素用换行符拼接。
     """
     @classmethod
     def INPUT_TYPES(cls):
@@ -251,8 +252,23 @@ class ZML_JsonExtractor:
             if i < len(key_list):
                 key = key_list[i]
                 val = data.get(key, default_value)
-                if not isinstance(val, str):
+                
+                if isinstance(val, list):
+                    # 如果是数组，处理内部的每一个元素
+                    formatted_items = []
+                    for item in val:
+                        if isinstance(item, str):
+                            formatted_items.append(item)
+                        else:
+                            # 如果数组里包含的是对象或数字，转为字符串形式
+                            formatted_items.append(json.dumps(item, ensure_ascii=False))
+                    # 用回车符拼接
+                    val = "\n".join(formatted_items)
+                
+                elif not isinstance(val, str):
+                    # 如果不是数组，也不是字符串（比如单个字典或数字），转 JSON 字符串
                     val = json.dumps(val, ensure_ascii=False)
+
                 results.append(val)
             else:
                 results.append(default_value)
