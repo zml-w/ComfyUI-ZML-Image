@@ -3429,6 +3429,7 @@ app.registerExtension({
                             custom_text: "",
                             lora_name: loraPath,
                             weight: 1.0,
+                            clip_weight: 1.0,
                             enabled: true,
                             parent_id: null,
                         };
@@ -4120,7 +4121,7 @@ app.registerExtension({
                          { id: 'normal', label: '常规布局' },
                          { id: 'simple', label: '精简布局' }
                      ];
-                     
+                      
                      modes.forEach(mode => {
                          const menuItem = zmlCreateEl("div", {
                              style: `padding: 6px 12px; cursor: pointer; color: #ccc; ${this.viewMode === mode.id ? 'background: #555;' : ''}`,
@@ -4138,6 +4139,21 @@ app.registerExtension({
                          };
                          dropdownMenu.appendChild(menuItem);
                      });
+                      
+                     // 添加分离权重选项
+                     const separateWeightsItem = zmlCreateEl("div", {
+                         style: `padding: 6px 12px; cursor: pointer; color: #ccc; ${this.separateWeights ? 'background: #555;' : ''}`,
+                         textContent: '分离权重'
+                     });
+                     separateWeightsItem.onclick = () => {
+                         this.separateWeights = !this.separateWeights;
+                         this.renderLoraEntries();
+                         this.triggerSlotChanged();
+                         // 更新菜单项高亮
+                         separateWeightsItem.style.background = this.separateWeights ? '#555' : 'transparent';
+                         dropdownMenu.style.display = 'none';
+                     };
+                     dropdownMenu.appendChild(separateWeightsItem);
                      
                      sizeToggleButton.appendChild(dropdownMenu);
                      
@@ -4793,6 +4809,7 @@ app.registerExtension({
                                      lora_name: loraData.name || "",
                                      display_name: loraData.display_name || "",
                                      weight: loraData.weight || 1.0,
+                                     clip_weight: loraData.clip_weight || (loraData.weight || 1.0),
                                      custom_text: loraData.custom_text || "",
                                      enabled: loraData.enabled !== undefined ? loraData.enabled : true,
                                      order: this.powerLoraLoader_data.entries.length
@@ -4916,6 +4933,7 @@ app.registerExtension({
                             custom_text: "",
                             lora_name: "None",
                             weight: 1.0,
+                            clip_weight: 1.0,
                             enabled: true,
                             parent_id: null, // New Lora are always top-level by default
                         });
@@ -5048,6 +5066,134 @@ app.registerExtension({
                          }
 
                          const weightWidget = zmlCreateEl("div", { style: `display: flex; align-items: center; background: #222; border: 1px solid #555; border-radius: 2px; height: ${s.inputHeight};` });// <-- 这里会调用到局部定义的 zmlCreateEl
+                          
+                         // 分离权重模式
+                         if (this.separateWeights) {
+                             // 模型权重
+                             const modelWeightContainer = zmlCreateEl("div", { style: `display: flex; align-items: center;` });
+                             const modelDecBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
+                                 className: "zml-weight-btn", // New class
+                                 style: `background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%; display: flex; align-items: center; justify-content: center;`
+                             }, "◀");
+                             const modelIncBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
+                                 className: "zml-weight-btn", // New class
+                                 style: `background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%; display: flex; align-items: center; justify-content: center;`
+                             }, "▶");
+
+                             // 模型权重输入框
+                             const modelWeightInput = zmlCreateEl("input", { // 使用 zmlCreateEl
+                                className: "zml-lora-weight-input",
+                                type: "text", // 改为文本输入，允许任意字符，失去焦点时再校验
+                                value: entry.weight.toFixed(2),
+                                title: "模型权重",
+                                style: `width: 25px;` // 恢复默认宽度
+                             });
+                              
+                             modelWeightInput.onfocus = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 e.target.select(); // 选中全部内容方便修改
+                             };
+                             modelWeightInput.onblur = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 let val = parseFloat(e.target.value);
+                                 if (isNaN(val)) {
+                                     val = 1.0; // 非法输入恢复默认值1
+                                     console.warn("LoRA 权重输入无效，已重置为 1.0");
+                                 }
+                                 // 限制范围
+                                 val = Math.max(-10, Math.min(10, val));
+                                 entry.weight = val;
+                                 e.target.value = val.toFixed(2);
+                                 this.triggerSlotChanged();
+                             };
+                             modelWeightInput.onkeydown = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 if (e.key === "Enter") {
+                                     e.target.blur(); // 按下回车键时失去焦点，触发校验
+                                 }
+                             };
+
+                             modelDecBtn.onclick = (e) => { 
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 entry.weight = parseFloat((entry.weight - 0.05).toFixed(2)); 
+                                 entry.weight = Math.max(-10, entry.weight);
+                                 modelWeightInput.value = entry.weight.toFixed(2); 
+                                 this.triggerSlotChanged(); 
+                             };
+                             modelIncBtn.onclick = (e) => { 
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 entry.weight = parseFloat((entry.weight + 0.05).toFixed(2)); 
+                                 entry.weight = Math.min(10, entry.weight);
+                                 modelWeightInput.value = entry.weight.toFixed(2); 
+                                 this.triggerSlotChanged(); 
+                             };
+                             
+                             // CLIP权重
+                             const clipWeightContainer = zmlCreateEl("div", { style: `display: flex; align-items: center; margin-left: 5px;` });
+                             const clipDecBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
+                                 className: "zml-weight-btn", // New class
+                                 style: `background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%; display: flex; align-items: center; justify-content: center;`
+                             }, "◀");
+                             const clipIncBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
+                                 className: "zml-weight-btn", // New class
+                                 style: `background: none; border: none; color: #ccc; cursor: pointer; padding: 0 2px; height: 100%; display: flex; align-items: center; justify-content: center;`
+                             }, "▶");
+
+                             // CLIP权重输入框
+                             const clipWeightInput = zmlCreateEl("input", { // 使用 zmlCreateEl
+                                className: "zml-lora-weight-input",
+                                type: "text", // 改为文本输入，允许任意字符，失去焦点时再校验
+                                value: (entry.clip_weight || entry.weight).toFixed(2),
+                                title: "CLIP权重",
+                                style: `width: 25px;` // 恢复默认宽度
+                             });
+                              
+                             clipWeightInput.onfocus = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 e.target.select(); // 选中全部内容方便修改
+                             };
+                             clipWeightInput.onblur = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 let val = parseFloat(e.target.value);
+                                 if (isNaN(val)) {
+                                     val = 1.0; // 非法输入恢复默认值1
+                                     console.warn("CLIP 权重输入无效，已重置为 1.0");
+                                 }
+                                 // 限制范围
+                                 val = Math.max(-10, Math.min(10, val));
+                                 entry.clip_weight = val;
+                                 e.target.value = val.toFixed(2);
+                                 this.triggerSlotChanged();
+                             };
+                             clipWeightInput.onkeydown = (e) => {
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 if (e.key === "Enter") {
+                                     e.target.blur(); // 按下回车键时失去焦点，触发校验
+                                 }
+                             };
+
+                             clipDecBtn.onclick = (e) => { 
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 entry.clip_weight = parseFloat(((entry.clip_weight || entry.weight) - 0.05).toFixed(2)); 
+                                 entry.clip_weight = Math.max(-10, entry.clip_weight);
+                                 clipWeightInput.value = entry.clip_weight.toFixed(2); 
+                                 this.triggerSlotChanged(); 
+                             };
+                             clipIncBtn.onclick = (e) => { 
+                                 e.stopPropagation(); // 阻止事件冒泡
+                                 entry.clip_weight = parseFloat(((entry.clip_weight || entry.weight) + 0.05).toFixed(2)); 
+                                 entry.clip_weight = Math.min(10, entry.clip_weight);
+                                 clipWeightInput.value = entry.clip_weight.toFixed(2); 
+                                 this.triggerSlotChanged(); 
+                             };
+                             
+                             // 组装模型权重
+                             modelWeightContainer.append(modelDecBtn, modelWeightInput, modelIncBtn);
+                             // 组装CLIP权重
+                             clipWeightContainer.append(clipDecBtn, clipWeightInput, clipIncBtn);
+                             // 组装整个权重部件
+                             weightWidget.append(modelWeightContainer, zmlCreateEl("span", { style: `color: #888; margin: 0 5px;` }, "/"), clipWeightContainer);
+                         } else {
                          
                          // 实心三角形按钮 (新增 class)
                          const decBtn = zmlCreateEl("button", { // 使用 zmlCreateEl
@@ -5107,6 +5253,7 @@ app.registerExtension({
                              this.triggerSlotChanged(); 
                          };
                          weightWidget.append(decBtn, weightInput, incBtn);
+                         }
 
 
                          const customTextInput = zmlCreateEl("textarea", { // <-- 这里会调用到局部定义的 zmlCreateEl
@@ -6221,6 +6368,7 @@ app.registerExtension({
                 obj.folderColor = this.folderColor; // Save folder color
                 obj.loraEntryColor = this.loraEntryColor; // Save LoRA entry color
                 obj.enabledStateColor = this.enabledStateColor; // Save enabled state color
+                obj.separateWeights = this.separateWeights; // Save separate weights option
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
@@ -6234,6 +6382,7 @@ app.registerExtension({
                         if (e.parent_id === undefined && e.item_type === 'lora') e.parent_id = null; // Default to top-level for lora if missing
                         if (e.item_type === 'lora' && e.display_name === undefined) e.display_name = "";
                         if (e.item_type === 'lora' && e.custom_text === undefined) e.custom_text = "";
+                        if (e.item_type === 'lora' && e.clip_weight === undefined) e.clip_weight = e.weight || 1.0;
                         // 确保加载旧工作流时存在 is_collapsed, name 字段
                         if (e.item_type === 'folder' && e.is_collapsed === undefined) e.is_collapsed = false;
                         if (e.item_type === 'folder' && e.name === undefined) e.name = "新建文件夹";
@@ -6255,6 +6404,7 @@ app.registerExtension({
                 this.folderColor = obj.folderColor ?? "#30353c"; // Load folder color, or use default
                 this.loraEntryColor = obj.loraEntryColor ?? "#3a3a3a"; // Load LoRA entry color, or use default
                 this.enabledStateColor = obj.enabledStateColor ?? "#4CAF50"; // Load enabled state color, or use default
+                this.separateWeights = obj.separateWeights ?? false; // Load separate weights option, default to false
 
             };
         }
