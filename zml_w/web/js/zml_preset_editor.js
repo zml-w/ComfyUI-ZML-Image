@@ -1304,6 +1304,31 @@ app.registerExtension({
                 createResolutionManageDialog(currentResolutions);
             });
         }
+        
+        // --- 新增：为 ZML_BufferNode 添加“继续/提前结束”按钮 ---
+        if (node.comfyClass === "ZML_BufferNode") {
+            // 添加一个按钮控件
+            node.addWidget("button", "立刻继续 (Skip Wait)", null, async () => {
+                try {
+                    // 调用后端API发送继续信号
+                    const response = await api.fetchApi("/zml/buffer_continue", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ node_id: node.id }),
+                    });
+
+                    if (response.status === 200) {
+                        // 可以选择给个轻微的视觉反馈，比如在控制台打印
+                        console.log("ZML Buffer Node skipped.");
+                    } else {
+                        alert("无法发送继续信号: " + await response.text());
+                    }
+                } catch (error) {
+                    console.error("ZML Buffer Node Error:", error);
+                }
+            });
+        }
+        // --------------------------------------------------------
     }
 });
 
