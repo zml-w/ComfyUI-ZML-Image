@@ -909,12 +909,10 @@ class ZML_LoadImageFromPath:
         return files
 
     def load_image(self, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
-        current_time = time.time()
-        # 优化缓存逻辑: 只有当路径改变或缓存过期时才重新扫描
-        if (文件夹路径 != self.cached_path or current_time - self.cache_time > 60):
-            self.cached_files = self.scan_directory(文件夹路径)
-            self.cached_path = 文件夹路径
-            self.cache_time = current_time
+        # 禁用缓存逻辑，每次都重新扫描文件夹，确保能检测到新创建的文件
+        self.cached_files = self.scan_directory(文件夹路径)
+        self.cached_path = 文件夹路径
+        self.cache_time = time.time()
         
         num_files = len(self.cached_files) # 获取图像总数量
 
@@ -985,13 +983,9 @@ class ZML_LoadImageFromPath:
     
     @classmethod
     def IS_CHANGED(cls, 文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块, unique_id, prompt):
-        # 确保每次运行时都更新文件列表，因为文件夹内容可能变化。
-        # 依赖于 load_image 内部的缓存机制来避免频繁的磁盘扫描。
-        # 对于 "顺序" 或 "随机索引" 模式，每次执行都返回 nan 强制执行
-        if 索引模式 == "顺序" or 索引模式 == "随机索引":
-            return float("nan")
-        # 对于其他模式，只要路径或索引改变，就重新加载
-        return (文件夹路径, 索引模式, 图像索引, 正规化, 读取文本块)
+        # 对于所有模式，每次执行都返回 nan 强制执行重新加载
+        # 这样可以确保每次运行时都能检测到新创建的文件
+        return float("nan")
 
 
 

@@ -2,9 +2,44 @@ import json
 import requests
 import re
 import server
+import torch
+import base64
+import numpy as np
+import os
+from io import BytesIO
+from PIL import Image
+from aiohttp import web
 
 # ==========================================
-# 节点 1: 模型加载器
+# 工具函数
+# ==========================================
+
+def tensor2pil(image):
+    """
+    将单张 Tensor 图像 (H, W, C) 转为 PIL Image
+    """
+    return Image.fromarray(np.clip(255. * image.cpu().numpy(), 0, 255).astype(np.uint8))
+
+def pil2base64(image):
+    """
+    将 PIL Image 转为 base64 字符串 (JPEG 格式)
+    """
+    try:
+        buffered = BytesIO()
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        image.save(buffered, format="JPEG", quality=95)
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+    except Exception as e:
+        print(f"[ZML] 图像转 base64 失败: {e}")
+        return None
+
+def create_placeholder_image():
+    # 创建 1x1 黑色占位图 [1, 1, 1, 3]
+    return torch.zeros((1, 1, 1, 3), dtype=torch.float32)
+
+# ==========================================
+# 模型加载器 (参数在工作流中)
 # ==========================================
 class ZML_LLM_ModelLoader:
     def __init__(self): pass
@@ -12,17 +47,88 @@ class ZML_LLM_ModelLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "api_url": ("STRING", {"default": "", "multiline": False, "tooltip": "LLM API 的基础地址 (Base URL)，例如 https://api.openai.com/v1"}),
-                "api_key": ("STRING", {"default": "", "multiline": False, "tooltip": "API 授权密钥 (sk-...)"}),
-                "model_id": ("STRING", {"default": "", "multiline": False, "tooltip": "模型名称 ID，例如 gpt-4o, deepseek-chat"}),
+                # 这里的参数直接显示，供用户填写
+                "api_url": ("STRING", {"default": "https://api.deepseek.com", "multiline": False, "tooltip": "LLM API Base URL"}),
+                "api_key": ("STRING", {"default": "", "multiline": False, "tooltip": "sk-..."}),
+                "model_id": ("STRING", {"default": "deepseek-chat", "multiline": False, "tooltip": "model id"}),
             }
         }
     RETURN_TYPES = ("LLM_MODEL_CONFIG",)
     RETURN_NAMES = ("模型配置",)
     FUNCTION = "load_model"
     CATEGORY = "image/ZML_图像/LLM"
+    
     def load_model(self, api_url, api_key, model_id):
-        return ({"api_url": api_url, "api_key": api_key, "model_id": model_id},)
+        return ({"api_url": api_url, "api_key": api_key, "model_id": model_id, "preset_name": "Custom"},)
+
+# ==========================================
+# 节点 1 模型加载器 (读取本地JSON)
+# ==========================================
+class ZML_LLM_ModelLoaderV2:
+    def __init__(self): pass
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                # 1. 预设名称：告诉 Python 要读 JSON 里的哪一项
+                "preset_name": ("STRING", {"default": "未选择", "multiline": False}),
+                # 2. 文件夹路径：告诉 Python 去哪里找 zml_model_key.json
+                #    虽然这个路径会保存在工作流里，但这只是你本地的路径，不包含 Key，是安全的。
+                "config_folder": ("STRING", {"default": "", "multiline": False}),
+            },
+            "optional": {
+                # 3. 模型ID：作为可选覆盖。
+                #    如果这里填了，就用这里的；如果这里为空，就用 JSON 预设里的 model。
+                "model_override": ("STRING", {"default": "", "multiline": False, "tooltip": "如果填写，将覆盖预设里的模型ID"}),
+            }
+        }
+
+    RETURN_TYPES = ("LLM_MODEL_CONFIG",)
+    RETURN_NAMES = ("模型配置",)
+    FUNCTION = "load_model_from_file"
+    CATEGORY = "image/ZML_图像/LLM"
+    
+    def load_model_from_file(self, preset_name, config_folder, model_override=""):
+        # 初始化空配置
+        api_url = ""
+        api_key = ""
+        model_id = "error_loading"
+
+        # 1. 检查文件是否存在
+        file_path = os.path.join(config_folder, "zml_model_key.json")
+        
+        if not os.path.exists(file_path):
+            print(f"[ZML] 错误: 找不到配置文件 {file_path}")
+            return ({"api_url": "", "api_key": "", "model_id": "Error: Config file not found"},)
+
+        # 2. 读取 JSON
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                presets = data.get("presets", [])
+                
+                # 3. 查找匹配的预设
+                target_preset = next((p for p in presets if p.get("name") == preset_name), None)
+                
+                if target_preset:
+                    api_url = target_preset.get("url", "")
+                    api_key = target_preset.get("key", "")
+                    # 优先使用 override，如果没有则使用预设里的 model
+                    if model_override and model_override.strip():
+                        model_id = model_override
+                    else:
+                        model_id = target_preset.get("model", "")
+                else:
+                    print(f"[ZML] 错误: 在配置中找不到预设 '{preset_name}'")
+                    model_id = f"Error: Preset '{preset_name}' not found"
+
+        except Exception as e:
+            print(f"[ZML] 读取配置文件出错: {e}")
+            model_id = f"Error: {str(e)}"
+
+        # 返回配置 (Key 和 URL 是刚刚从硬盘读取的，没有保存在工作流中)
+        return ({"api_url": api_url, "api_key": api_key, "model_id": model_id, "preset_name": preset_name},)
 
 # ==========================================
 # 节点 2: 系统提示词
@@ -32,11 +138,7 @@ class ZML_LLM_SystemPrompt:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "system_prompt": ("STRING", {
-                    "default": "你是一个猫娘。", 
-                    "multiline": True,
-                    "tooltip": "设定 AI 的角色、性格、行为准则和背景故事 (System Prompt)"
-                }),
+                "system_prompt": ("STRING", {"default": "你是一只猫娘", "multiline": True}),
             }
         }
     RETURN_TYPES = ("STRING",)
@@ -47,28 +149,30 @@ class ZML_LLM_SystemPrompt:
         return (system_prompt,)
 
 # ==========================================
-# 节点 3: 参数设置 (全中文 + Tooltip)
+# 节点 3: 参数设置
 # ==========================================
 class ZML_LLM_Parameters:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "温度": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.01, "tooltip": "Temperature: 控制随机性。值越高越有创造力/发散，值越低越严谨/保守。"}),
-                "最大Token数": ("INT", {"default": 2048, "min": 128, "max": 32768, "step": 1, "tooltip": "Max Tokens: 限制 AI 单次回复生成的最大长度。"}),
-                "核采样": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Top P: 另一种控制随机性的参数。建议保持 1.0 或与温度只调节其中一个。"}),
-                "频率惩罚": ("FLOAT", {"default": 0.0, "min": -2.0, "max": 2.0, "step": 0.01, "tooltip": "Frequency Penalty: 正值会减少模型逐字重复同样内容的倾向。"}),
-                "存在惩罚": ("FLOAT", {"default": 0.0, "min": -2.0, "max": 2.0, "step": 0.01, "tooltip": "Presence Penalty: 正值会鼓励模型谈论新的话题。"}),
+                "温度": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.01}),
+                "最大Token数": ("INT", {"default": -1, "min": -1, "max": 32768, "step": 1}),
+                "核采样": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "频率惩罚": ("FLOAT", {"default": 0.0, "min": -2.0, "max": 2.0, "step": 0.01}),
+                "存在惩罚": ("FLOAT", {"default": 0.0, "min": -2.0, "max": 2.0, "step": 0.01}),
+                "超时时间": ("INT", {"default": 120, "min": 10, "max": 3600, "step": 10}),
             }
         }
     RETURN_TYPES = ("LLM_PARAMS",)
     RETURN_NAMES = ("参数包",)
     FUNCTION = "get_params"
     CATEGORY = "image/ZML_图像/LLM"
-    def get_params(self, 温度, 最大Token数, 核采样, 频率惩罚, 存在惩罚):
+    def get_params(self, 温度, 最大Token数, 核采样, 频率惩罚, 存在惩罚, 超时时间):
         return ({
             "temperature": 温度, "max_tokens": 最大Token数, "top_p": 核采样,
-            "frequency_penalty": 频率惩罚, "presence_penalty": 存在惩罚
+            "frequency_penalty": 频率惩罚, "presence_penalty": 存在惩罚,
+            "timeout": 超时时间
         },)
 
 # ==========================================
@@ -77,18 +181,13 @@ class ZML_LLM_Parameters:
 class ZML_LLM_JsonSchema:
     @classmethod
     def INPUT_TYPES(cls):
-        # 更新为用户要求的默认结构 (转换为 Schema 格式)
         default_schema = """{
 	"回复内容": "在此输入",
-	"情绪": "在此输入"
+	"状态": ["心情", "手部动作", "表情细节"]
 }"""
         return {
             "required": {
-                "schema_string": ("STRING", {
-                    "default": default_schema, 
-                    "multiline": True,
-                    "tooltip": "在此定义 JSON Schema。AI 将严格（或尽可能）按照此结构输出 JSON 数据。"
-                }),
+                "schema_string": ("STRING", {"default": default_schema, "multiline": True}),
             }
         }
     RETURN_TYPES = ("JSON_SCHEMA",)
@@ -102,37 +201,34 @@ class ZML_LLM_JsonSchema:
             return ({"error": "Invalid JSON"},)
 
 # ==========================================
-# 节点 5: LLM 对话执行
+# 节点 5: LLM 对话执行 (支持多批次图像)
 # ==========================================
 class ZML_LLM_Chat:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "user_input": ("STRING", {
-                    "multiline": True, "default": "", 
-                    "tooltip": "用户的提问内容，或者上一环的 Prompt。"
-                }),
-                "model_config": ("LLM_MODEL_CONFIG", {"tooltip": "连接【模型加载器】节点。"}),
-                "system_prompt": ("STRING", {"tooltip": "连接【系统提示词】节点，或直接输入字符串。"}), 
-                "params": ("LLM_PARAMS", {"tooltip": "连接【参数设置】节点。"}),
+                "user_input": ("STRING", {"multiline": True, "default": ""}),
+                "model_config": ("LLM_MODEL_CONFIG",),
+                "system_prompt": ("STRING",), 
+                "params": ("LLM_PARAMS",),
                 "json_strategy": (["DeepSeek/通用模式 (json_object)", "OpenAI严格模式 (json_schema)", "仅提示词 (不强求)"], {
-                    "default": "DeepSeek/通用模式 (json_object)",
-                    "tooltip": "选择结构化输出的策略。\nDeepSeek/通用: 适用于大多数模型，通过提示词+json_object实现。\nOpenAI严格: 仅 GPT-4o 等支持，通过 response_format 强制约束。"
+                    "default": "DeepSeek/通用模式 (json_object)"
                 }),
             },
             "optional": {
-                "json_schema": ("JSON_SCHEMA", {"tooltip": "可选：连接【JSON结构定义】节点。如果不连接，则进行普通文本对话。"}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "随机种子。固定种子有助于在相同参数下复现结果。"}), 
+                "json_schema": ("JSON_SCHEMA",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}), 
+                "input_image": ("IMAGE", {"tooltip": "支持 Batch 批量图像输入"}),
             }
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("回复内容",)
+    RETURN_TYPES = ("STRING", "IMAGE")
+    RETURN_NAMES = ("回复内容", "图像")
     FUNCTION = "chat_completions"
     CATEGORY = "image/ZML_图像/LLM"
 
-    def chat_completions(self, user_input, model_config, system_prompt, params, json_strategy, seed=0, json_schema=None):
+    def chat_completions(self, user_input, model_config, system_prompt, params, json_strategy, seed=0, json_schema=None, input_image=None):
         api_url = model_config.get("api_url", "").rstrip('/')
         api_key = model_config.get("api_key", "")
         model_id = model_config.get("model_id", "")
@@ -142,154 +238,269 @@ class ZML_LLM_Chat:
 
         headers = { "Content-Type": "application/json", "Authorization": f"Bearer {api_key}" }
 
-        final_system_prompt = system_prompt
+        # --- 1. 准备文本指令 (合并 System Prompt) ---
+        full_text_instruction = ""
+        if system_prompt and system_prompt.strip():
+            full_text_instruction += f"{system_prompt}\n\n"
+
         response_format_payload = None
-
-        if json_schema is not None:
-            if "error" in json_schema:
-                return (f"配置错误: JSON Schema 格式不正确。",)
-            
+        if json_schema is not None and "error" not in json_schema:
             schema_str = json.dumps(json_schema, ensure_ascii=False, indent=2)
-
             if json_strategy == "DeepSeek/通用模式 (json_object)":
                 response_format_payload = { "type": "json_object" }
-                final_system_prompt += f"\n\n【输出格式要求】\n请严格按照以下 JSON 格式输出，不要包含 Markdown 标记或额外文字：\n{schema_str}"
-
+                full_text_instruction += f"\n\n【输出格式要求】\n请严格按照以下 JSON 格式输出，不要包含 Markdown 标记：\n{schema_str}"
             elif json_strategy == "OpenAI严格模式 (json_schema)":
                 response_format_payload = {
                     "type": "json_schema",
-                    "json_schema": {
-                        "name": "structured_output",
-                        "strict": True,
-                        "schema": json_schema
-                    }
+                    "json_schema": {"name": "structured_output", "strict": True, "schema": json_schema}
                 }
-            
             else:
-                response_format_payload = None
-                final_system_prompt += f"\n\n请输出以下 JSON 格式：\n{schema_str}"
+                full_text_instruction += f"\n\n请输出以下 JSON 格式：\n{schema_str}"
 
-        messages = [
-            {"role": "system", "content": final_system_prompt},
-            {"role": "user", "content": user_input}
-        ]
+        full_text_instruction += f"\n\n{user_input}"
 
+        # --- 2. 构建 User 消息 (支持多批次图像) ---
+        user_message_content = []
+        
+        # 添加文本
+        user_message_content.append({"type": "text", "text": full_text_instruction})
+        
+        # 添加图像 (循环处理 Batch 中的每一张)
+        if input_image is not None:
+            try:
+                # ComfyUI Image Shape: [Batch, Height, Width, Channel]
+                batch_count = input_image.shape[0]
+                
+                for i in range(batch_count):
+                    # 获取单张图片 Tensor [H, W, C]
+                    single_image = input_image[i]
+                    pil_image = tensor2pil(single_image)
+                    base64_str = pil2base64(pil_image)
+                    
+                    if base64_str:
+                        user_message_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_str}"}
+                        })
+            except Exception as e:
+                print(f"[ZML] 批量图片处理出错: {e}")
+
+        # --- 3. 组装 Messages ---
+        messages = [{"role": "user", "content": user_message_content}]
+
+        # --- 4. 构建 Payload ---
         payload = {
             "model": model_id,
             "messages": messages,
             "stream": False,
-            **params
         }
+        
+        req_timeout = params.get("timeout", 120)
+        for key, value in params.items():
+            if (key == "max_tokens" and value == -1) or key == "timeout": continue
+            payload[key] = value
         
         if seed > 0: payload["seed"] = seed
         if response_format_payload: payload["response_format"] = response_format_payload
 
+        # --- 5. 准备输出图像 (直通) ---
+        output_image_tensor = input_image if input_image is not None else create_placeholder_image()
+
+        # --- 6. 发送请求 ---
         try:
-            response = requests.post(api_url, json=payload, headers=headers, timeout=120)
+            response = requests.post(api_url, json=payload, headers=headers, timeout=req_timeout)
             
             if response.status_code != 200:
-                err_text = response.text
-                if "unavailable" in err_text or "not supported" in err_text:
-                    return (f"API 错误 ({response.status_code}): 模型不支持当前的 JSON 策略。\nDeepSeek 请务必选择 'DeepSeek/通用模式'。\n\n原始错误: {err_text}",)
-                return (f"API 错误 ({response.status_code}): {err_text}",)
+                return (f"API 错误 ({response.status_code}): {response.text}", output_image_tensor)
             
-            result = response.json()
             try:
+                result = response.json()
+            except json.JSONDecodeError:
+                return (f"API 返回了无效数据 (非 JSON): {response.text[:800]}...", output_image_tensor)
+
+            if "choices" in result and len(result["choices"]) > 0:
                 content = result["choices"][0]["message"]["content"]
-                return (content,)
-            except (KeyError, IndexError):
-                return (json.dumps(result, indent=2, ensure_ascii=False),)
+                if content.strip() == "INVALID_ARGUMENT":
+                    return ("API 拒绝处理：收到 'INVALID_ARGUMENT'。请检查 API Key 权限或图片大小。", output_image_tensor)
+                return (content, output_image_tensor)
+            else:
+                return (f"API 返回结构异常: {json.dumps(result, ensure_ascii=False)}", output_image_tensor)
 
         except Exception as e:
-            return (f"请求发生异常: {str(e)}",)
+            return (f"请求发生异常: {str(e)}", output_image_tensor)
+
 
 # ==========================================
 # 节点 6: JSON 提取器
 # ==========================================
 class ZML_JsonExtractor:
-    """
-    从 LLM 输出的 JSON 字符串中提取指定 Key 的值。
-    支持最多输出 7 个值。
-    更新：针对数组类型，会自动将内部元素用换行符拼接。
-    """
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "json_string": ("STRING", {"forceInput": True, "multiline": True, "default": "", "tooltip": "连接 LLM 输出的 JSON 文本字符串。"}),
-                "keys": ("STRING", {"default": "回复内容, 情绪", "multiline": False, "placeholder": "key1, key2, key3...", "tooltip": "输入要提取的 Key (键名)，用英文逗号分隔。顺序对应下方的输出接口。"}),
+                "json_string": ("STRING", {"forceInput": True, "multiline": True, "default": ""}),
+                "keys": ("STRING", {"default": "回复内容,状态"}),
+                "array_mode": (["换行连接 (NewLine)", "文本列表 (List)", "原样列表 (JSON)"], {"default": "换行连接 (NewLine)"}),
             },
             "optional": {
-                "default_value": ("STRING", {"default": "", "placeholder": "默认值", "tooltip": "当 JSON 解析失败或找不到对应 Key 时，输出此默认值，防止报错。"}),
+                "default_value": ("STRING", {"default": ""}),
             }
         }
 
-    # 定义 7 个输出口
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("值1 (Key1)", "值2 (Key2)", "值3 (Key3)", "值4 (Key4)", "值5 (Key5)", "值6 (Key6)", "值7 (Key7)")
+    RETURN_NAMES = ("值1", "值2", "值3", "值4", "值5", "值6", "值7")
     FUNCTION = "extract_json"
     CATEGORY = "image/ZML_图像/LLM"
+    
+    # 启用列表输出
+    OUTPUT_IS_LIST = (True, True, True, True, True, True, True)
 
-    def extract_json(self, json_string, keys, default_value=""):
+    def extract_json(self, json_string, keys, array_mode, default_value=""):
         clean_json = json_string.strip()
-        # 清洗 markdown
         match = re.search(r"```(?:json)?\s*(.*?)\s*```", clean_json, re.DOTALL | re.IGNORECASE)
-        if match:
-            clean_json = match.group(1)
-        
+        if match: clean_json = match.group(1).strip()
+            
+        try:
+            start_obj = clean_json.find('{')
+            start_arr = clean_json.find('[')
+            if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+                end_index = clean_json.rfind('}') + 1
+                if end_index > start_obj: clean_json = clean_json[start_obj:end_index]
+            elif start_arr != -1:
+                end_index = clean_json.rfind(']') + 1
+                if end_index > start_arr: clean_json = clean_json[start_arr:end_index]
+        except: pass
+
         try:
             data = json.loads(clean_json)
-        except json.JSONDecodeError:
-            print(f"[ZML JsonExtractor] JSON 解析失败，源文本: {clean_json[:100]}...")
-            # 返回 7 个默认值
-            return tuple([default_value] * 7)
+        except:
+            print(f"[ZML] JSON 解析失败: {clean_json[:50]}...")
+            return tuple([[default_value]] * 7)
 
         key_list = [k.strip() for k in keys.replace("，", ",").split(",") if k.strip()]
-
         results = []
-        # 遍历 7 个输出槽位
+        
         for i in range(7):
             if i < len(key_list):
-                key = key_list[i]
-                val = data.get(key, default_value)
+                val = data.get(key_list[i], default_value)
+                final_output = []
                 
                 if isinstance(val, list):
-                    # 如果是数组，处理内部的每一个元素
-                    formatted_items = []
-                    for item in val:
-                        if isinstance(item, str):
-                            formatted_items.append(item)
-                        else:
-                            # 如果数组里包含的是对象或数字，转为字符串形式
-                            formatted_items.append(json.dumps(item, ensure_ascii=False))
-                    # 用回车符拼接
-                    val = "\n".join(formatted_items)
+                    if "文本列表" in array_mode:
+                        final_output = [json.dumps(x, ensure_ascii=False) if not isinstance(x, str) else x for x in val]
+                    elif "原样列表" in array_mode:
+                         final_output = [json.dumps(val, ensure_ascii=False)]
+                    else:
+                        merged_str = "\n".join([json.dumps(x, ensure_ascii=False) if not isinstance(x, str) else x for x in val])
+                        final_output = [merged_str]
+                else:
+                    if not isinstance(val, str):
+                        val = json.dumps(val, ensure_ascii=False)
+                    final_output = [val]
                 
-                elif not isinstance(val, str):
-                    # 如果不是数组，也不是字符串（比如单个字典或数字），转 JSON 字符串
-                    val = json.dumps(val, ensure_ascii=False)
-
-                results.append(val)
+                results.append(final_output)
             else:
-                results.append(default_value)
-
+                results.append([default_value])
+        
         return tuple(results)
+
+# ==========================================
+# 节点 7: 过滤思考
+# ==========================================
+class ZML_LLM_ThoughtFilter:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {"input_text": ("STRING", {"multiline": False})},
+        }
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("过滤后文本",)
+    FUNCTION = "filter_thoughts"
+    CATEGORY = "image/ZML_图像/LLM"
+    
+    def filter_thoughts(self, input_text):
+        return (re.sub(r'<think>.*?</think>', '', input_text, flags=re.DOTALL | re.IGNORECASE),)
+
+
+# ==========================================
+# API 路由: 配置文件读写
+# ==========================================
+@server.PromptServer.instance.routes.post("/zml/llm/load_config")
+async def load_llm_config(request):
+    try:
+        data = await request.json()
+        folder_path = data.get("path", "")
+        
+        if not folder_path or not os.path.exists(folder_path):
+            return web.json_response({"success": False, "error": "路径不存在或为空"})
+            
+        file_path = os.path.join(folder_path, "zml_model_key.json")
+        
+        if not os.path.exists(file_path):
+            return web.json_response({"success": True, "presets": [], "message": "文件不存在"})
+            
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = json.load(f)
+            presets = content.get("presets", []) if isinstance(content, dict) else []
+            
+        return web.json_response({"success": True, "presets": presets})
+        
+    except Exception as e:
+        print(f"[ZML] Load Config Error: {e}")
+        return web.json_response({"success": False, "error": str(e)})
+
+@server.PromptServer.instance.routes.post("/zml/llm/save_config")
+async def save_llm_config(request):
+    try:
+        data = await request.json()
+        folder_path = data.get("path", "")
+        presets = data.get("presets", [])
+        
+        if not folder_path:
+            return web.json_response({"success": False, "error": "路径为空"})
+            
+        if not os.path.exists(folder_path):
+            try:
+                os.makedirs(folder_path, exist_ok=True)
+            except Exception as e:
+                return web.json_response({"success": False, "error": f"无法创建目录: {str(e)}"})
+
+        file_path = os.path.join(folder_path, "zml_model_key.json")
+        
+        save_data = {
+            "version": 1,
+            "presets": presets
+        }
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(save_data, f, ensure_ascii=False, indent=4)
+            
+        return web.json_response({"success": True})
+        
+    except Exception as e:
+        print(f"[ZML] Save Config Error: {e}")
+        return web.json_response({"success": False, "error": str(e)})
+
 
 # 注册节点
 NODE_CLASS_MAPPINGS = {
-    "ZML_LLM_ModelLoader": ZML_LLM_ModelLoader,
+    "ZML_LLM_ModelLoader": ZML_LLM_ModelLoader,      # V1 基础版
+    "ZML_LLM_ModelLoaderV2": ZML_LLM_ModelLoaderV2,  # V2 高级版
     "ZML_LLM_SystemPrompt": ZML_LLM_SystemPrompt,
     "ZML_LLM_Parameters": ZML_LLM_Parameters,
     "ZML_LLM_JsonSchema": ZML_LLM_JsonSchema,
     "ZML_LLM_Chat": ZML_LLM_Chat,
-    "ZML_JsonExtractor": ZML_JsonExtractor
+    "ZML_JsonExtractor": ZML_JsonExtractor,
+    "ZML_LLM_ThoughtFilter": ZML_LLM_ThoughtFilter
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ZML_LLM_ModelLoader": "ZML_LLM 模型加载器",
+    "ZML_LLM_ModelLoader": "ZML_LLM 模型加载器",   
+    "ZML_LLM_ModelLoaderV2": "ZML_LLM 模型加载器V2", 
     "ZML_LLM_SystemPrompt": "ZML_LLM 系统提示词",
     "ZML_LLM_Parameters": "ZML_LLM 参数设置",
     "ZML_LLM_JsonSchema": "ZML_LLM JSON结构定义",
     "ZML_LLM_Chat": "ZML_LLM 对话主程序",
-    "ZML_JsonExtractor": "ZML_LLM JSON提取器"
+    "ZML_JsonExtractor": "ZML_LLM JSON提取器",
+    "ZML_LLM_ThoughtFilter": "ZML_LLM 过滤思考"
 }

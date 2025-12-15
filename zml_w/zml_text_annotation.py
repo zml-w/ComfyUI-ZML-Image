@@ -25,7 +25,7 @@ def find_font_files(directory):
 class ZML_AddTextWatermark:
     def __init__(self):
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        self.font_dir = os.path.join(self.node_dir, "Text")
+        self.font_dir = os.path.join(self.node_dir, "Font")
         self.counter_dir = os.path.join(self.node_dir, "counter")
         os.makedirs(self.counter_dir, exist_ok=True)
         self.counter_file = os.path.join(self.counter_dir, "Watermark.txt")
@@ -59,7 +59,7 @@ class ZML_AddTextWatermark:
 
     @classmethod
     def INPUT_TYPES(cls):
-        font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Text")
+        font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Font")
         if not os.path.exists(font_dir):
             os.makedirs(font_dir)
         fonts = find_font_files(font_dir)
@@ -490,7 +490,7 @@ class ZML_TextToImage:
 
     def __init__(self):
         self.node_dir = os.path.dirname(os.path.abspath(__file__))
-        self.font_dir = os.path.join(self.node_dir, "Text")
+        self.font_dir = os.path.join(self.node_dir, "Font")
         self.counter_dir = os.path.join(self.node_dir, "counter")
         os.makedirs(self.font_dir, exist_ok=True)
         os.makedirs(self.counter_dir, exist_ok=True)
@@ -524,7 +524,7 @@ class ZML_TextToImage:
 
     @classmethod
     def INPUT_TYPES(cls):
-        font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Text")
+        font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Font")
         if not os.path.exists(font_dir):
             os.makedirs(font_dir)
         fonts = find_font_files(font_dir)

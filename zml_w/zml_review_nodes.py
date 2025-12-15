@@ -8,6 +8,7 @@ import time
 import uuid
 import json
 from scipy.spatial.distance import cdist
+import comfy.model_management # 新增：用于检测系统中断信号
 
 
 # 全局字典，用于存储节点ID和预览图像路径的映射
@@ -78,6 +79,26 @@ async def unpause_node(request):
             with open(signal_file, "w", encoding="utf-8") as f:
                 f.write(content)
             return web.Response(status=200, text="Unpaused")
+        else:
+            return web.Response(status=400, text="Node ID not provided")
+    except Exception as e:
+        return web.Response(status=500, text=f"Error: {e}")
+
+# --- API Endpoint (For Buffer Node) ---
+@server.PromptServer.instance.routes.post("/zml/buffer_continue")
+async def buffer_continue(request):
+    try:
+        data = await request.json()
+        node_id = data.get("node_id")
+        
+        if node_id is not None:
+            temp_dir = folder_paths.get_temp_directory()
+            # 创建一个信号文件，用于通知节点结束等待
+            signal_file = os.path.join(temp_dir, f"zml_buffer_{node_id}.signal")
+            
+            with open(signal_file, "w", encoding="utf-8") as f:
+                f.write("CONTINUE")
+            return web.Response(status=200, text="Buffer skipped")
         else:
             return web.Response(status=400, text="Node ID not provided")
     except Exception as e:
@@ -996,6 +1017,63 @@ class ZML_AudioPlayerNode:
         # 返回结果，可以连接到其他任何节点
         return (output,)
 
+
+# ============================== 缓冲节点 ==============================
+class ZML_BufferNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "缓冲时间": ("FLOAT", {"default": 60.0, "min": 0.0, "max": 3600.0, "step": 1, "display": "number"}),
+            },
+            "optional": {
+                "任意输入": (any_type, {}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = (any_type,)
+    RETURN_NAMES = ("任意输出",)
+    FUNCTION = "wait_and_pass"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def wait_and_pass(self, 缓冲时间, unique_id, 任意输入=None):
+        temp_dir = folder_paths.get_temp_directory()
+        signal_file = os.path.join(temp_dir, f"zml_buffer_{unique_id}.signal")
+
+        # 1. 清理旧的信号文件
+        if os.path.exists(signal_file):
+            try:
+                os.remove(signal_file)
+            except:
+                pass
+
+        start_time = time.time()
+
+        # 2. 开始循环等待
+        while (time.time() - start_time) < 缓冲时间:
+            
+            # --- 检测 A: 是否有【Skip按钮】信号 ---
+            if os.path.exists(signal_file):
+                try:
+                    os.remove(signal_file)
+                except:
+                    pass
+                break # 跳出循环，继续执行后续工作流
+            
+            # --- 检测 B: 是否有【ComfyUI全局取消】信号 ---
+            # 这是检测 Cancel 按钮的正确且安全的方法
+            if comfy.model_management.processing_interrupted():
+                # 抛出这个异常会通知 ComfyUI 立即终止工作流，不再运行后续节点
+                raise comfy.model_management.InterruptProcessingException()
+
+            time.sleep(0.1)
+
+        # 3. 时间到或跳过，返回数据
+        output = 任意输入 if 任意输入 is not None else tuple()
+        return (output,)
+
+
 # ============================== 遮罩分离-2 节点 ==============================
 class ZML_MaskSeparateDistance:
     @classmethod
@@ -1747,6 +1825,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_LimitImageAspect": ZML_LimitImageAspect,
     "ZML_MaskCropNode": ZML_MaskCropNode,
     "ZML_ImageSelectorNode": ZML_ImageSelectorNode,
+    "ZML_BufferNode": ZML_BufferNode, # 新增
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1765,4 +1844,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LimitImageAspect": "ZML_限制图像比例",
     "ZML_MaskCropNode": "ZML_遮罩裁剪",
     "ZML_ImageSelectorNode": "ZML_多图选择",
+    "ZML_BufferNode": "ZML_缓冲节点", # 新增
 }

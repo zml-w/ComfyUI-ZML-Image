@@ -4,10 +4,7 @@ import time
 import random
 import json
 import math
-
-# 导入 ComfyUI 的 server 模块
 import server
-# 从 aiohttp 导入 web 用于 JSON 响应
 from aiohttp import web 
 
 # 获取当前文件所在目录
@@ -967,7 +964,7 @@ class ZML_MultiTextInput5:
 
 # ============================== 多文本输入_五V2 节点 ==============================
 class ZML_MultiTextInput5V2:
-    """ZML 多文本输入_五V2 节点：提供五个单行文本输入和五个独立文本输出。"""
+    """ZML 多文本输入_五V2 节点：提供五个单行文本输入和五个独立文本输出，以及合并文本和文本列表输出。"""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1007,12 +1004,18 @@ class ZML_MultiTextInput5V2:
         }
 
     CATEGORY = "image/ZML_图像/文本"
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING",)
-    RETURN_NAMES = ("文本1", "文本2", "文本3", "文本4", "文本5", "合并文本",)
+    
+    # 7个输出端口
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("文本1", "文本2", "文本3", "文本4", "文本5", "合并文本", "文本列表")
+    
+    # 前6个是 False (单值)，第7个是 True (列表/批次)
+    OUTPUT_IS_LIST = (False, False, False, False, False, False, True)
+    
     FUNCTION = "passthrough_texts"
 
     def passthrough_texts(self, 分隔符, 文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入):
-        """将五个输入文本作为五个独立输出返回，并使用分隔符合并文本输出。"""
+        """将五个输入文本作为五个独立输出返回，并使用分隔符合并文本输出，同时输出原始列表。"""
         # 安全地将所有文本放入列表
         texts = [
             文本1_输入,
@@ -1022,7 +1025,7 @@ class ZML_MultiTextInput5V2:
             文本5_输入
         ]
         
-        # 过滤掉空文本
+        # 过滤掉空文本 (这就是我们需要的列表，不带分隔符)
         non_empty_texts = [t for t in texts if t.strip()]
 
         # 处理分隔符中的换行符写法
@@ -1031,7 +1034,8 @@ class ZML_MultiTextInput5V2:
         # 使用分隔符合并文本
         merged_text = processed_separator.join(non_empty_texts)
             
-        return (文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入, merged_text,)
+        # 返回值：前6个是字符串，第7个是列表
+        return (文本1_输入, 文本2_输入, 文本3_输入, 文本4_输入, 文本5_输入, merged_text, non_empty_texts)
 
 # ============================== 多文本输入节点（三个输入框）==============================
 class ZML_MultiTextInput3:
@@ -1447,15 +1451,15 @@ class ZML_AppendTextByKeyword:
 
 # ============================== 合并文本（动态）节点 ==============================
 class ZML_MergeText:
-    """ZML 合并文本（动态输入）节点：支持动态字符串输入、分隔符、标签化提示词。
-    标签化提示词启用时，会将所有输入拆分为标签（按逗号、中文逗号、空格、换行等分隔），去重后以分隔符连接。
+    """ZML 合并文本（动态输入）节点：支持动态字符串输入、分隔符。
+    支持最多20个输入，并提供文本列表输出。
     """
 
     @classmethod
     def INPUT_TYPES(cls):
-        # 预定义最多10个文本输入名称，供前端按需动态添加/移除
+        # 预定义最多20个文本输入名称，供前端按需动态添加/移除
         optional_inputs = {}
-        for i in range(1, 11):
+        for i in range(1, 21): # 修改：范围扩大到 20
             optional_inputs[f"文本{i}"] = ("STRING", {"forceInput": True})
         return {
             "required": {
@@ -1465,36 +1469,41 @@ class ZML_MergeText:
         }
 
     CATEGORY = "image/ZML_图像/文本"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("文本",)
+    
+    # 修改1: 增加第二个输出类型
+    RETURN_TYPES = ("STRING", "STRING")
+    # 修改2: 增加第二个输出名称
+    RETURN_NAMES = ("合并文本", "文本列表")
+    
+    # 修改3: 声明第二个输出为列表 (True)，第一个为单值 (False)
+    OUTPUT_IS_LIST = (False, True)
+    
     FUNCTION = "merge_text"
 
-    def _split_to_tags(self, text):
-        # 以常见分隔符拆分为标签：英文逗号、中文逗号、顿号、分号、空白、换行
-        if not text:
-            return []
-        parts = [p.strip() for p in re.split(r"[\s,，、；;\n\r]+", text) if p and p.strip()]
-        return parts
-
-    def merge_text(self, 分隔符,
-                   文本1=None, 文本2=None, 文本3=None, 文本4=None, 文本5=None,
-                   文本6=None, 文本7=None, 文本8=None, 文本9=None, 文本10=None):
-        # 收集所有非空文本
-        texts = [
-            文本1 or "", 文本2 or "", 文本3 or "", 文本4 or "", 文本5 or "",
-            文本6 or "", 文本7 or "", 文本8 or "", 文本9 or "", 文本10 or "",
-        ]
+    def merge_text(self, 分隔符, **kwargs):
+        # 收集所有非空文本 (遍历 1 到 20)
+        texts = []
+        for i in range(1, 21):
+            key = f"文本{i}"
+            # 从 kwargs 中获取输入，如果没有则为空字符串
+            val = kwargs.get(key, "")
+            # 处理可能的 None 值
+            texts.append(val or "")
+            
+        # 过滤掉空文本 (这就是输出的文本列表，无分隔符)
         non_empty_texts = [t for t in texts if t.strip()]
 
         # 处理分隔符中的换行符写法
         processed_separator = 分隔符.replace("\\n", "\n")
 
-        # 原样合并
+        # 原样合并 (合并文本输出)
         combined = processed_separator.join(non_empty_texts)
 
-        # 标点格式化清理
+        # 标点格式化清理 (调用同文件中的全局函数)
         combined = format_punctuation_global(combined)
-        return (combined,)
+        
+        # 返回: (合并后的单字符串, 原始列表)
+        return (combined, non_empty_texts)
 
 # ============================== 筛选提示词V2节点 ==============================
 class ZML_TextFilterV2:

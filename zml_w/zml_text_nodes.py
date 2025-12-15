@@ -1464,9 +1464,181 @@ class ZML_IntegerBooleanConverter:
         
         return (bool_result, int_result)
 
+# ============================== 文本列表节点  ==============================
+class ZML_TextList:
+    """
+    ZML 文本列表节点
+    将多行文本或输入的列表转换为 ComfyUI 的 List 输出。
+    重要：这将触发下游节点的批量/循环执行（每行文本执行一次）。
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "多行文本": ("STRING", {
+                    "multiline": True, 
+                    "default": "",
+                    "placeholder": "在此输入文本，每一行都会触发一次单独的执行流程。\n例如输入5行，连接的节点就会运行5次。"
+                }),
+                "起始索引": ("INT", {"default": 0, "min": 0, "step": 1, "tooltip": "从第几行开始执行（0为第一行）"}),
+                "执行上限": ("INT", {"default": 0, "min": 0, "max": 9999, "step": 1, "tooltip": "最多执行多少行，0表示不限制"}),
+            },
+            "optional": {
+                # 允许从其他节点（如JSON提取器）接收列表
+                "列表输入": ("STRING", {"forceInput": True, "tooltip": "可连接其他节点的列表输出，将与多行文本合并"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("文本",)
+    FUNCTION = "process_list"
+    
+    # 核心设置：声明输出为列表
+    # ComfyUI 会遍历这个列表，对列表中的每一项单独运行一次后续工作流
+    OUTPUT_IS_LIST = (True,) 
+    
+    def process_list(self, 多行文本, 起始索引, 执行上限, 列表输入=None):
+        final_list = []
+
+        # 1. 处理手动输入的多行文本
+        if 多行文本:
+            # 按换行符分割
+            lines = 多行文本.split('\n')
+            for line in lines:
+                # 去除首尾空格，如果想保留空行可以去掉 if line.strip() 判断
+                if line.strip(): 
+                    final_list.append(line)
+
+        # 2. 处理外部输入的列表
+        if 列表输入 is not None:
+            if isinstance(列表输入, list):
+                # 如果是列表，直接追加
+                final_list.extend([str(item) for item in 列表输入])
+            else:
+                # 如果是单个字符串，作为一项追加
+                final_list.append(str(列表输入))
+
+        # 3. 没有任何内容时的处理
+        if not final_list:
+            # 返回空列表，后续节点将不会执行
+            return ([],)
+
+        # 4. 应用起始索引
+        total_len = len(final_list)
+        if 起始索引 >= total_len:
+            print(f"[ZML] 警告: 起始索引 ({起始索引}) 超出了列表长度 ({total_len})")
+            return ([],)
+        
+        final_list = final_list[起始索引:]
+
+        # 5. 应用执行上限
+        if 执行上限 > 0:
+            final_list = final_list[:执行上限]
+
+        # 返回列表，ComfyUI 会自动将其拆解为多次执行
+        return (final_list,)
+
+# ============================== 文本计数节点 ==============================
+class ZML_TextCounter:
+    """
+    ZML 文本计数节点
+    读取指定txt文件中的数值，根据设置进行增减操作，然后写回文件
+    """
+    
+    def __init__(self):
+        self.type = "output"
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        self.default_counter_file = os.path.join(self.node_dir, "计数器.txt")
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "txt路径": ("STRING", {"default": "", "placeholder": "txt文件路径 (留空使用默认路径)"}),
+                "增加": ("BOOLEAN", {"default": True, "tooltip": "True=增加，False=减少"}),
+                "执行操作": ("BOOLEAN", {"default": True, "tooltip": "True=执行加减操作，False=不执行"}),
+                "清零": ("BOOLEAN", {"default": False, "tooltip": "True=直接清零计数，优先级高于增减操作"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/文本"
+    RETURN_TYPES = ("INT", "STRING")
+    RETURN_NAMES = ("当前计数", "状态信息")
+    FUNCTION = "count"
+    OUTPUT_NODE = True
+    
+    def count(self, txt路径, 增加, 执行操作, 清零):
+        """执行计数操作"""
+        # 如果不执行操作，直接返回当前值
+        if not 执行操作:
+            # 读取当前值但不修改
+            try:
+                file_path = self._get_file_path(txt路径)
+                if os.path.exists(file_path):
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        current_value = int(content) if content else 0
+                else:
+                    current_value = 0
+                return (current_value, f"未执行操作，当前值：{current_value}")
+            except Exception as e:
+                return (0, f"读取错误：{str(e)}")
+        
+        # 执行操作
+        try:
+            file_path = self._get_file_path(txt路径)
+            
+            # 优先处理清零操作
+            if 清零:
+                # 直接清零
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write("0")
+                return (0, f"清零成功\n文件：{file_path}\n当前值：0")
+            
+            # 读取当前值
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    current_value = int(content) if content else 0
+            else:
+                current_value = 0
+            
+            # 计算新值
+            if 增加:
+                new_value = current_value + 1
+            else:
+                new_value = current_value - 1
+            
+            # 写入新值
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(str(new_value))
+            
+            status_msg = f"{'增加' if 增加 else '减少'}成功\n文件：{file_path}\n当前值：{new_value}"
+            return (new_value, status_msg)
+            
+        except Exception as e:
+            return (0, f"操作错误：{str(e)}")
+    
+    def _get_file_path(self, user_path):
+        """获取文件路径"""
+        if not user_path.strip():
+            return self.default_counter_file
+        
+        path = user_path.strip().strip('"').strip("'")
+        if not path.lower().endswith(".txt"):
+            path += ".txt"
+        
+        return path
+
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextInput": ZML_TextInput,
+    "ZML_TextList": ZML_TextList,
     "ZML_WriteText": ZML_WriteText,
     "ZML_PresetText": ZML_PresetText,
     "ZML_ImageToHTML": ZML_ImageToHTML,
@@ -1478,11 +1650,13 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SequentialIntegerLoader": ZML_SequentialIntegerLoader, 
     "ZML_IntegerStringConverter": ZML_IntegerStringConverter,
     "ZML_IntegerFloatConverter": ZML_IntegerFloatConverter,
-    "ZML_IntegerBooleanConverter": ZML_IntegerBooleanConverter
+    "ZML_IntegerBooleanConverter": ZML_IntegerBooleanConverter,
+    "ZML_TextCounter": ZML_TextCounter
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_TextInput": "ZML_文本输入",
+    "ZML_TextList": "ZML_文本列表",
     "ZML_WriteText": "ZML_写入文本",
     "ZML_PresetText": "ZML_预设文本",
     "ZML_ImageToHTML": "ZML_图片转HTML",
@@ -1494,5 +1668,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SequentialIntegerLoader": "ZML_顺序加载整数", 
     "ZML_IntegerStringConverter": "ZML_整数字符串互转",
     "ZML_IntegerFloatConverter": "ZML_整数浮点互转",
-    "ZML_IntegerBooleanConverter": "ZML_整数布尔互转"
+    "ZML_IntegerBooleanConverter": "ZML_整数布尔互转",
+    "ZML_TextCounter": "ZML_文本计数"
 }

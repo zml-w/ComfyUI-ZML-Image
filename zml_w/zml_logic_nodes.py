@@ -448,6 +448,69 @@ class ZML_DownstreamNodeSwitch:
         
         return (output, current_count)
 
+# ============================== 文本条件节点 ==============================
+class ZML_TextCondition:
+    """
+    ZML 文本条件节点
+    根据指定的判断方式检查输入文本中是否包含检测文本
+    符合条件时从"真"接口输出，否则从"假"接口输出
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "输入文本": (any_type, {"description": "要检查的输入文本"}),
+                "判断方式": (["存在", "不存在", "开头有", "开头无", "结尾有", "结尾无", "为空", "不为空"], {"default": "存在"}),
+                "检测文本": ("STRING", {"default": "", "description": "要检测的文本内容"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/逻辑"
+    RETURN_TYPES = (any_type, any_type, "BOOLEAN")
+    RETURN_NAMES = ("真", "假", "布尔结果")
+    FUNCTION = "evaluate_text_condition"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
+    
+    def evaluate_text_condition(self, 输入文本="", 判断方式="存在", 检测文本=""):
+        """
+        根据判断方式检查输入文本是否符合条件
+        """
+        # 导入ExecutionBlocker用于阻止未使用的输出执行
+        from comfy_execution.graph import ExecutionBlocker
+        
+        # 确保输入是字符串类型
+        input_text = str(输入文本) if 输入文本 is not None else ""
+        check_text = str(检测文本) if 检测文本 is not None else ""
+        
+        # 根据判断方式计算结果
+        condition_met = False
+        
+        if 判断方式 == "存在":
+            condition_met = check_text in input_text
+        elif 判断方式 == "不存在":
+            condition_met = check_text not in input_text
+        elif 判断方式 == "开头有":
+            condition_met = input_text.startswith(check_text)
+        elif 判断方式 == "开头无":
+            condition_met = not input_text.startswith(check_text)
+        elif 判断方式 == "结尾有":
+            condition_met = input_text.endswith(check_text)
+        elif 判断方式 == "结尾无":
+            condition_met = not input_text.endswith(check_text)
+        elif 判断方式 == "为空":
+            condition_met = input_text.strip() == ""
+        elif 判断方式 == "不为空":
+            condition_met = input_text.strip() != ""
+        
+        # 根据条件结果决定输出
+        if condition_met:
+            # 条件满足，从"真"接口输出，"假"接口阻止执行
+            return (输入文本, ExecutionBlocker(None), condition_met)
+        else:
+            # 条件不满足，从"假"接口输出，"真"接口阻止执行
+            return (ExecutionBlocker(None), 输入文本, condition_met)
+
 # ============================== 运算判断节点 ==============================
 class ZML_ArithmeticComparison:
     """
@@ -547,6 +610,99 @@ class ZML_ArithmeticComparison:
         output = 任意输入 if result else ExecutionBlocker(None)
         return (output, result)
 
+# ============================== 任意开关-五V2节点 ==============================
+class ZML_AnyTypeSwitchFiveBooleanV2:
+    """
+    ZML 任意开关-五V2节点
+    输入任意五个值，根据索引判断文本框指定的索引输出对应的输入值
+    支持False处理方式选择：空值或不执行下游节点
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "输入1": (any_type, lazy_options),
+                "输入2": (any_type, lazy_options),
+                "输入3": (any_type, lazy_options),
+                "输入4": (any_type, lazy_options),
+                "输入5": (any_type, lazy_options),
+            },
+            "required": {
+                "索引判断": ("STRING", {"default": "1", "description": "指定输出的索引，如1,2,4"}),
+                "False处理方式": (["空值", "不执行下游节点"], {"default": "空值"}),
+            }
+        }
+    
+    CATEGORY = "image/ZML_图像/逻辑"
+    RETURN_TYPES = (any_type, any_type, any_type, any_type, any_type)
+    RETURN_NAMES = ("输出1", "输出2", "输出3", "输出4", "输出5")
+    FUNCTION = "switch_outputs"
+    OUTPUT_NODE = True  # 标记为输出节点，用于控制执行流程
+    
+    def check_lazy_status(self, 索引判断="1", **kwargs):
+        """告诉系统只需要哪些输入值"""
+        # 解析索引字符串
+        try:
+            indices = [int(idx.strip()) for idx in 索引判断.split(",") if idx.strip().isdigit()]
+            # 确保索引在有效范围内
+            valid_indices = [i for i in indices if 1 <= i <= 5]
+        except Exception:
+            valid_indices = [1]  # 默认使用索引1
+        
+        # 收集需要的输入键
+        active_inputs = []
+        for idx in valid_indices:
+            input_key = f"输入{idx}"
+            if input_key in kwargs:
+                active_inputs.append(input_key)
+        
+        return active_inputs if active_inputs else None
+    
+    def switch_outputs(self, 输入1=None, 输入2=None, 输入3=None, 输入4=None, 输入5=None,
+                      索引判断="1", False处理方式="空值"):
+        """
+        根据索引判断文本框指定的索引输出对应的输入值
+        """
+        # 导入ExecutionBlocker用于阻止未使用的输出执行
+        from comfy_execution.graph import ExecutionBlocker
+        
+        # 解析索引字符串
+        try:
+            indices = [int(idx.strip()) for idx in 索引判断.split(",") if idx.strip().isdigit()]
+            # 确保索引在有效范围内
+            valid_indices = [i for i in indices if 1 <= i <= 5]
+        except Exception:
+            valid_indices = [1]  # 默认使用索引1
+        
+        # 准备输入和输出列表
+        inputs = [输入1, 输入2, 输入3, 输入4, 输入5]
+        outputs = []
+        
+        # 根据False处理方式和索引生成输出
+        for i in range(5):
+            output_idx = i + 1
+            if output_idx in valid_indices and inputs[i] is not None:
+                # 索引匹配且有输入值，输出对应输入
+                outputs.append(inputs[i])
+            else:
+                # 索引不匹配或无输入值，根据处理方式决定输出
+                if False处理方式 == "空值":
+                    # 输出空值，根据输入类型决定空值类型
+                    if inputs[i] is not None:
+                        if isinstance(inputs[i], int):
+                            outputs.append(0)
+                        elif isinstance(inputs[i], str):
+                            outputs.append("")
+                        else:
+                            outputs.append(None)
+                    else:
+                        outputs.append(None)
+                else:  # 不执行下游节点
+                    outputs.append(ExecutionBlocker(None))
+        
+        return tuple(outputs)
+
 # ============================== 双布尔节点 ==============================
 class ZML_DualBoolean:
     """
@@ -585,6 +741,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_DownstreamNodeSwitch": ZML_DownstreamNodeSwitch,
     "ZML_ArithmeticComparison": ZML_ArithmeticComparison,
     "ZML_DualBoolean": ZML_DualBoolean,
+    "ZML_TextCondition": ZML_TextCondition,
+    "ZML_AnyTypeSwitchFiveBooleanV2": ZML_AnyTypeSwitchFiveBooleanV2,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -598,4 +756,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_DownstreamNodeSwitch": "ZML_下游节点开关",
     "ZML_ArithmeticComparison": "ZML_运算判断",
     "ZML_DualBoolean": "ZML_双布尔开关",
+    "ZML_TextCondition": "ZML_文本条件",
+    "ZML_AnyTypeSwitchFiveBooleanV2": "ZML_任意开关-五V2",
 }
