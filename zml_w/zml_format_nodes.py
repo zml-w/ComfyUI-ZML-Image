@@ -1704,6 +1704,117 @@ class ZML_TextFilterV2:
         
         return (result, filtered_text, translation_text)
 
+
+# ============================== 通用 Any 类型定义 ==============================
+class AnyType(str):
+    """一个特殊的类，用于让 ComfyUI 认为它可以匹配任何类型"""
+    def __ne__(self, __value: object) -> bool:
+        return False
+
+# 实例化一个通配符对象
+ANY_TYPE = AnyType("*")
+
+# ============================== 合并到列表节点 ==============================
+class ZML_MergeToList:
+    """
+    ZML 合并到列表节点
+    功能：通过 Widget 手动控制输入数量 (1-10)，将输入合并为列表输出。
+    逻辑：输入类型任意，但为了保证列表安全性，后续输入必须与第一个输入的类型一致，否则会被忽略。
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        # 预定义所有可能的输入，防止后端由前端动态调整时报错
+        # 实际显示的接口数量由前端 JS 控制
+        optional_inputs = {}
+        for i in range(1, 11):
+            optional_inputs[f"input_{i}"] = (ANY_TYPE,)
+            
+        return {
+            "required": {
+                "数量": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1, "display": "number"}),
+            },
+            "optional": optional_inputs
+        }
+
+    CATEGORY = "image/ZML_图像/工具"
+    
+    # 返回任意类型
+    RETURN_TYPES = (ANY_TYPE,)
+    RETURN_NAMES = ("列表",)
+    
+    # 关键：标记输出为列表，这样下游节点会识别为批量/循环执行
+    OUTPUT_IS_LIST = (True,)
+    
+    FUNCTION = "merge_to_list"
+
+    def merge_to_list(self, 数量, **kwargs):
+        # 收集数据
+        collected_list = []
+        first_item_type = None
+        
+        # 按照 1 到 数量 的顺序遍历
+        for i in range(1, 数量 + 1):
+            key = f"input_{i}"
+            val = kwargs.get(key, None)
+            
+            if val is not None:
+                # 逻辑：取最上面的类型 (1>2>3)
+                # 如果是列表里的第一个元素，确定基准类型
+                if len(collected_list) == 0:
+                    collected_list.append(val)
+                    first_item_type = type(val)
+                else:
+                    # 检查后续元素的类型是否与第一个元素兼容
+                    # 注意：ComfyUI 的 Tensor 图片和 Latent 都是 torch.Tensor，可能需要更宽松的判断
+                    # 这里做简单的 type 判断，如果不匹配则打印警告并跳过，防止下游节点崩溃
+                    if isinstance(val, first_item_type) or (first_item_type is not None and isinstance(first_item_type, type(val))):
+                        collected_list.append(val)
+                    else:
+                        print(f"[ZML_MergeToList] 警告: 输入 '{key}' 的类型 {type(val)} 与第一个输入的类型 {first_item_type} 不一致，已忽略。")
+
+        # 如果没有收集到任何东西 (全空)，为了防止报错，返回一个空列表或 None
+        if not collected_list:
+            # 这种情况下通常下游会报错，但我们尽力返回空
+            return ([],)
+
+        return (collected_list,)
+
+
+# ============================== 复制到列表节点 ==============================
+class ZML_CopyToList:
+    """
+    ZML 复制到列表节点
+    功能：将输入的任意类型复制指定次数，并输出为列表。
+    逻辑：输入类型任意，复制次数可通过 Widget 控制 (1-100)。
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "输入": (ANY_TYPE,),
+                "复制次数": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1, "display": "number"}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像/工具"
+    
+    # 返回任意类型
+    RETURN_TYPES = (ANY_TYPE,)
+    RETURN_NAMES = ("列表",)
+    
+    # 关键：标记输出为列表，这样下游节点会识别为批量/循环执行
+    OUTPUT_IS_LIST = (True,)
+    
+    FUNCTION = "copy_to_list"
+
+    def copy_to_list(self, 输入, 复制次数):
+        # 创建输入的复制列表
+        result_list = [输入] * 复制次数
+        return (result_list,)
+
+
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextFormatter": ZML_TextFormatter,
@@ -1722,6 +1833,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SplitText": ZML_SplitText,
     "ZML_AppendTextByKeyword": ZML_AppendTextByKeyword,
     "ZML_MergeText": ZML_MergeText,
+    "ZML_MergeToList": ZML_MergeToList,
+    "ZML_CopyToList": ZML_CopyToList,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1741,4 +1854,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_SplitText": "ZML_文本分离",
     "ZML_AppendTextByKeyword": "ZML_追加提示词",
     "ZML_MergeText": "ZML_合并文本（动态）",
+    "ZML_MergeToList": "ZML_合并到列表",
+    "ZML_CopyToList": "ZML_复制到列表",
 }

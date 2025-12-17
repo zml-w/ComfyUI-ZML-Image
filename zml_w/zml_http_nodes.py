@@ -86,7 +86,7 @@ class ZML_HTTP_Request:
                 "method": (["GET", "POST", "PUT", "DELETE", "PATCH"], {"default": "POST"}),
                 "url": ("STRING", {"default": "https://api.example.com", "multiline": False}),
                 "headers": ("STRING", {"default": "请求头", "multiline": True, "placeholder": "Key: Value (每行一个)"}),
-                "body": ("STRING", {"default": "请求体", "multiline": True}),
+                "body": ("STRING", {"default": "请求体（图像变量为{{IMAGE_B64}}）", "multiline": True}),
                 "timeout": ("INT", {"default": 30, "min": 1, "max": 300}),
             },
             "optional": {
