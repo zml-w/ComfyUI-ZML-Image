@@ -297,7 +297,7 @@ class ZML_XY_Grid_Drawer:
                 "图像": ("IMAGE",), 
                 "图表信息": ("ZML_GRID_INFO",),
                 "字体": (font_list,),
-                "字体大小": ("INT", {"default": 96, "min": 48}),
+                "字体大小": ("INT", {"default": 48, "min": 12}),
                 "网格间距": ("INT", {"default": 10, "min": 0}),
                 "背景颜色": (list(COLOR_MAP.keys()), {"default": "白色"}),
                 "文字颜色": (list(COLOR_MAP.keys()), {"default": "黑色"}),
@@ -411,11 +411,9 @@ class ZML_XY_Sampler_Params:
                 "步数数量": ("INT", {"default": 3, "min": 1, "step": 1}),
                 "步数起始值": ("INT", {"default": 20, "min": 1, "max": 10000}),
                 "步数结束值": ("INT", {"default": 30, "min": 1, "max": 10000}),
-                
                 "CFG数量": ("INT", {"default": 3, "min": 1, "step": 1}),
                 "CFG起始值": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 100.0, "step": 0.1}),
                 "CFG结束值": ("FLOAT", {"default": 8.0, "min": 0.0, "max": 100.0, "step": 0.1}),
-                
                 "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=CFG, Y=步数)", "label_off": "(X=步数, Y=CFG)"}),
             }
         }
@@ -498,8 +496,8 @@ class ZML_XY_LoRA_Loader_V2:
                 "LoRA文件夹路径": ("STRING", {"default": "E:\\Models\\Loras", "multiline": False}),
                 "LoRA数量": ("INT", {"default": 3, "min": 1, "step": 1}),
                 "LoRA权重数量": ("INT", {"default": 2, "min": 1, "step": 1}),
-                "权重起始值": ("FLOAT", {"default": 0.5, "min": -10.0, "max": 10.0, "step": 0.1}),
-                "权重结束值": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.1}),
+                "权重起始值": ("FLOAT", {"default": 0.8, "min": -10.0, "max": 10.0, "step": 0.05}),
+                "权重结束值": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.05}),
                 "多行文本": ("STRING", {"default": "", "multiline": True, "placeholder": "节点会读取LoRA的子文件夹'zml'里的同名txt文件，并将其里面的内容和这里输入的提示词合并后输出，如果zml文件夹下没有同名txt文件，则读取LoRA相同目录下的同名txt文件"}),
                 "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=权重, Y=LoRA)", "label_off": "(X=LoRA, Y=权重)"}),
             }
@@ -659,7 +657,7 @@ class ZML_XY_LoRA_Loader_V2:
         return (out_models, out_conds, grid_info)
 
 # ==========================================
-# 节点 6: ZML_XY_自定义图表
+# 节点 6: ZML_XY_自定义图表 (修复空位背景一致性)
 # ==========================================
 class ZML_XY_Custom_Grid:
     @classmethod
@@ -668,201 +666,241 @@ class ZML_XY_Custom_Grid:
         
         return {
             "required": {
-                "多行文本": ("STRING", {"multiline": True, "default": "", "placeholder": "每行一个文本，会被用作图表标签"}),
-                "类型": (["字符串", "数字"], {"default": "字符串"}),
-                "起始数": ("FLOAT", {"default": 0.0, "min": -10000.0, "max": 10000.0, "step": 0.1}),
-                "步长": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 1000.0, "step": 0.1}),
-                "XY方向": (["X", "Y"], {"default": "X"}),
+                "类型": (["字符串", "数字", "无"], {"default": "字符串"}),
+                "多行文本": ("STRING", {"multiline": True, "default": "", "placeholder": "每行对应一张图 (类型选字符串时生效)"}),
+                "拼接方向": (["左", "右", "上", "下"], {"default": "右"}),
+                "单行上限": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "display": "number", "tooltip": "0表示不限制"}),
+                "数字起始数": ("FLOAT", {"default": 0.0, "min": -10000.0, "max": 10000.0, "step": 0.1}),
+                "数字步长": ("FLOAT", {"default": 1.0, "min": -10000.0, "max": 1000.0, "step": 0.1}),
                 "字体": (font_list,),
-                "字体大小": ("INT", {"default": 96, "min": 48}),
-                "网格间距": ("INT", {"default": 10, "min": 0}),
-                "背景颜色": (list(COLOR_MAP.keys()), {"default": "白色"}),
-                "文字颜色": (list(COLOR_MAP.keys()), {"default": "黑色"}),
+                "字体大小": ("INT", {"default": 96, "min": 12}),
+                "字体颜色": ("STRING", {"default": "#000000", "tooltip": "留空=透明, ZML=随机"}),
+                "背景颜色": ("STRING", {"default": "#FFFFFF", "tooltip": "单元格背景。留空=透明, ZML=随机"}),
+                "内边框大小": ("INT", {"default": 30, "min": 0, "display": "number"}),
+                "内边框颜色": ("STRING", {"default": "#FFFFFF", "tooltip": "图片间隙颜色。留空=透明, ZML=随机"}),
+                "外边框大小": ("INT", {"default": 30, "min": 0, "display": "number"}),
+                "外边框颜色": ("STRING", {"default": "#000000", "tooltip": "整体外框颜色。留空=透明, ZML=随机"}),
                 "图像": ("IMAGE",),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("自定义图表",)
-    INPUT_IS_LIST = (False, False, False, False, False, False, False, False, False, False, True)
+    INPUT_IS_LIST = (False, False, False, False, False, False, False, False, False, False, False, False, False, False, True)
     FUNCTION = "draw_custom_grid"
     CATEGORY = "image/ZML_图像/XYZ"
+    
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
 
-    def draw_custom_grid(self, 多行文本, 类型, 起始数, 步长, XY方向, 字体, 字体大小, 网格间距, 背景颜色, 文字颜色, 图像):
-        def to_scalar(v):
-            if isinstance(v, list): return v[0]
-            return v
-            
-        font_size = to_scalar(字体大小)
-        margin = to_scalar(网格间距)
-        bg_name = to_scalar(背景颜色)
-        txt_name = to_scalar(文字颜色)
-        font_name = to_scalar(字体)
-        data_type = to_scalar(类型)
-        start_num = to_scalar(起始数)
-        step_num = to_scalar(步长)
-        xy_direction = to_scalar(XY方向)
-        multi_line_text = to_scalar(多行文本)
-
-        # 处理图像输入
-        if not isinstance(图像, list):
-            images = [图像]
+    def _parse_color(self, color_str, default_color=(0, 0, 0, 0)):
+        if not color_str:
+            return default_color
+        s = str(color_str).strip().lower()
+        if s == "":
+            return default_color
+        elif s == "zml":
+            return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), 255)
         else:
-            images = 图像
-        
-        if not images:
-            return (torch.zeros(1, 100, 100, 3),)  # 返回一个空白图像
+            try:
+                from PIL import ImageColor
+                c = ImageColor.getrgb(str(color_str))
+                if len(c) == 3:
+                    return c + (255,)
+                return c
+            except:
+                return default_color
 
-        # 展开所有批次的图像
+    def draw_custom_grid(self, 类型, 多行文本, 拼接方向, 单行上限, 
+                         数字起始数, 数字步长,
+                         字体, 字体大小, 字体颜色, 背景颜色,
+                         内边框大小, 内边框颜色, 外边框大小, 外边框颜色, 
+                         图像):
+        
+        # --- 输入数据清洗 ---
+        def clean_text(v):
+            if isinstance(v, list):
+                return "\n".join([str(x) for x in v if x is not None])
+            return str(v) if v is not None else ""
+
+        def to_scalar(v, default=None):
+            if isinstance(v, list):
+                return v[0] if len(v) > 0 else default
+            return v if v is not None else default
+
+        多行文本 = clean_text(多行文本)
+        类型 = to_scalar(类型, "字符串")
+        数字起始数 = to_scalar(数字起始数, 0.0)
+        数字步长 = to_scalar(数字步长, 1.0)
+        拼接方向 = to_scalar(拼接方向, "右")
+        单行上限 = to_scalar(单行上限, 0)
+        
+        内边框大小 = to_scalar(内边框大小, 10)
+        内边框颜色 = to_scalar(内边框颜色, "") 
+        外边框大小 = to_scalar(外边框大小, 20)
+        外边框颜色 = to_scalar(外边框颜色, "#FFFFFF")
+        
+        字体 = to_scalar(字体)
+        字体大小 = to_scalar(字体大小, 48)
+        字体颜色 = to_scalar(字体颜色, "#000000")
+        背景颜色 = to_scalar(背景颜色, "#FFFFFF")
+        
+        # 颜色解析
+        txt_col = self._parse_color(字体颜色, (0, 0, 0, 255))
+        bg_col = self._parse_color(背景颜色, (0, 0, 0, 0))
+        inner_border_col = self._parse_color(内边框颜色, (0, 0, 0, 0))
+        outer_border_col = self._parse_color(外边框颜色, (0, 0, 0, 0))
+
+        # 3. 图像展开
         flattened_images = []
-        for img in images:
+        if not isinstance(图像, list):
+            图像 = [图像]
+            
+        for img in 图像:
             if isinstance(img, torch.Tensor):
-                if len(img.shape) == 4:  # 多批次图像 [batch_size, height, width, channels]
+                if len(img.shape) == 4:
                     for i in range(img.shape[0]):
-                        flattened_images.append(img[i])  # 展开每个批次
-                else:  # 单张图像 [height, width, channels]
+                        flattened_images.append(img[i])
+                elif len(img.shape) == 3:
                     flattened_images.append(img)
             else:
-                flattened_images.append(img)
+                pass
 
-        if not flattened_images:
-            return (torch.zeros(1, 100, 100, 3),)  # 返回一个空白图像
-
-        # 确定图像数量
         num_images = len(flattened_images)
-
-        # 生成标签列表
-        labels = []
-        if data_type == "数字":
-            # 如果类型是数字，忽略输入文本列表
-            labels = [f"{start_num + i * step_num:.2f}" for i in range(num_images)]
-        else:
-            # 如果类型是字符串，处理多行文本
-            if multi_line_text.strip():
-                # 按行分割
-                labels = [line.strip() for line in multi_line_text.strip().split('\n') if line.strip()]
-                # 如果标签数量少于图像数量，循环使用
-                if len(labels) < num_images:
-                    labels = labels * ((num_images + len(labels) - 1) // len(labels))
-                # 取前num_images个
-                labels = labels[:num_images]
-            else:
-                # 如果没有输入任何东西，自动使用数值
-                labels = [f"{start_num + i * step_num:.2f}" for i in range(num_images)]
-
-        # 确定XY方向
-        if xy_direction == "X":
-            # X方向：一行排列
-            count_x = num_images
-            count_y = 1
-            x_labels = labels
-            y_labels = []
-        else:
-            # Y方向：一列排列
-            count_x = 1
-            count_y = num_images
-            x_labels = []
-            y_labels = labels
-
-        # 获取字体
-        _, font_dir = find_font_files()
-        font = get_font(font_name, font_size, font_dir)
-        if font is None: font = ImageFont.load_default()
-        
-        dummy_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-        
-        # 处理图像批次
-        try:
-            if isinstance(flattened_images[0], torch.Tensor):
-                # 确保所有图像尺寸一致
-                first_img = flattened_images[0]
-                if len(first_img.shape) == 3:  # 单张图像 [height, width, channels]
-                    img_h, img_w, _ = first_img.shape
-                else:  # 多批次图像中的单个图像
-                    img_h, img_w, _ = first_img.shape[1:]
-                
-                # 如果有多个图像，检查尺寸
-                if num_images > 1:
-                    for img in flattened_images[1:]:
-                        if len(img.shape) == 3:
-                            h, w, _ = img.shape
-                        else:
-                            h, w, _ = img.shape[1:]
-                        if h != img_h or w != img_w:
-                            # 尺寸不一致，使用第一个图像的尺寸作为标准
-                            break
-            else:
-                # 非张量图像，暂时返回错误
-                return (torch.zeros(1, 100, 100, 3),)
-        except:
+        if num_images == 0:
             return (torch.zeros(1, 100, 100, 3),)
 
-        # 计算图表尺寸
-        header_h = 0
-        if x_labels:
-            try:
-                max_h = max([text_size(dummy_draw, str(l), font)[1] for l in x_labels] + [0])
-            except: max_h = 20
-            header_h = max_h + margin * 2
+        labels = []
+        if 类型 == "无":
+            labels = [None] * num_images
+        elif 类型 == "数字":
+            labels = [f"{数字起始数 + i * 数字步长:.2f}" for i in range(num_images)]
+        else: # 字符串
+            if 多行文本.strip():
+                lines = [line.strip() for line in 多行文本.strip().split('\n') if line.strip()]
+                if lines:
+                    labels = lines * ((num_images + len(lines) - 1) // len(lines))
+                    labels = labels[:num_images]
+            if not labels:
+                labels = [str(i) for i in range(num_images)]
 
-        sidebar_w = 0
-        if y_labels:
-            try:
-                max_w = max([text_size(dummy_draw, str(l), font)[0] for l in y_labels] + [0])
-            except: max_w = 50
-            sidebar_w = max_w + margin * 2
+        _, font_dir = find_font_files()
+        font = get_font(字体, 字体大小, font_dir)
+        if font is None: font = ImageFont.load_default()
+        dummy_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
 
-        grid_w = sidebar_w + (img_w + margin) * count_x - margin
-        grid_h = header_h + (img_h + margin) * count_y - margin
+        max_img_w, max_img_h = 0, 0
+        pil_images = []
+        for tensor in flattened_images:
+            img_np = np.clip(255. * tensor.cpu().numpy(), 0, 255).astype(np.uint8)
+            pil = Image.fromarray(img_np).convert("RGBA")
+            pil_images.append(pil)
+            max_img_w = max(max_img_w, pil.width)
+            max_img_h = max(max_img_h, pil.height)
+
+        max_text_h = 0
+        text_padding = 0
         
-        bg_col = COLOR_MAP.get(bg_name, "white")
-        txt_col = COLOR_MAP.get(txt_name, "black")
+        if 类型 != "无":
+            for txt in labels:
+                if txt:
+                    _, th = text_size(dummy_draw, str(txt), font)
+                    max_text_h = max(max_text_h, th)
+            
+            if max_text_h > 0:
+                text_padding = max(30, int(字体大小 * 0.50))
+
+        # 单元格尺寸
+        cell_w = max_img_w
+        cell_h = max_img_h + max_text_h + text_padding
+
+        cols = 0
+        rows = 0
+        limit = 单行上限
+        if limit <= 0: limit = num_images
+
+        if 拼接方向 in ["左", "右"]:
+            cols = min(num_images, limit)
+            rows = math.ceil(num_images / cols)
+        else:
+            rows = min(num_images, limit)
+            cols = math.ceil(num_images / rows)
+
+        # 尺寸计算
+        content_w = (cols * cell_w) + (max(0, cols - 1) * 内边框大小)
+        content_h = (rows * cell_h) + (max(0, rows - 1) * 内边框大小)
         
-        try:
-            canvas = Image.new("RGB", (grid_w + margin*2, grid_h + margin*2), bg_col)
-        except:
-            canvas = Image.new("RGB", (grid_w + margin*2, grid_h + margin*2), "white")
+        total_w = content_w + (外边框大小 * 2)
+        total_h = content_h + (外边框大小 * 2)
+        
+        # --- 绘制逻辑 ---
+        
+        # 1. 创建内容层，用内边框颜色初始化
+        content_canvas = Image.new("RGBA", (content_w, content_h), inner_border_col)
+        draw_content = ImageDraw.Draw(content_canvas)
+        
+        # 2. 绘制有效图像
+        for idx, (pil_img, label_text) in enumerate(zip(pil_images, labels)):
+            if 拼接方向 == "右": c, r = idx % cols, idx // cols
+            elif 拼接方向 == "左": c, r = idx % cols, idx // cols
+            elif 拼接方向 in ["下", "上"]: r, c = idx % rows, idx // rows
             
-        draw = ImageDraw.Draw(canvas)
+            x = c * (cell_w + 内边框大小)
+            y = r * (cell_h + 内边框大小)
 
-        # 绘制X标签
-        if header_h > 0:
-            for i, text in enumerate(x_labels):
-                str_text = str(text)
-                tw, th = text_size(draw, str_text, font)
-                x = margin + sidebar_w + i * (img_w + margin) + (img_w - tw) // 2
-                y = margin + (header_h - th) // 2
-                draw.text((x, y), str_text, fill=txt_col, font=font)
+            # 挖空 + 填背景
+            content_canvas.paste((0, 0, 0, 0), (x, y, x + cell_w, y + cell_h))
+            if bg_col[3] > 0:
+                draw_content.rectangle([x, y, x + cell_w, y + cell_h], fill=bg_col)
 
-        # 绘制Y标签
-        if sidebar_w > 0:
-            for j, text in enumerate(y_labels):
-                str_text = str(text)
-                tw, th = text_size(draw, str_text, font)
-                x = margin + (sidebar_w - tw) // 2
-                y = margin + header_h + j * (img_h + margin) + (img_h - th) // 2
-                draw.text((x, y), str_text, fill=txt_col, font=font)
+            # 绘制文字
+            if label_text:
+                tw, th = text_size(draw_content, str(label_text), font)
+                tx = x + (cell_w - tw) // 2
+                ty = y 
+                draw_content.text((tx, ty), str(label_text), fill=txt_col, font=font)
 
-        # 绘制图像
-        for idx, img_tensor in enumerate(flattened_images):
-            if idx >= count_x * count_y: break
+            # 粘贴图片
+            img_x = x + (cell_w - pil_img.width) // 2
+            img_y_start = y + max_text_h + text_padding
+            img_y = img_y_start + (max_img_h - pil_img.height) // 2
             
-            if xy_direction == "X":
-                c = idx
-                r = 0
-            else:
-                c = 0
-                r = idx
-            
-            # 处理单个图像张量（已经展开过，直接处理）
-            pil_img = Image.fromarray(np.clip(255. * img_tensor.cpu().numpy(), 0, 255).astype(np.uint8))
-            
-            x = margin + sidebar_w + c * (img_w + margin)
-            y = margin + header_h + r * (img_h + margin)
-            
-            canvas.paste(pil_img, (x, y))
+            content_canvas.paste(pil_img, (img_x, img_y), pil_img if pil_img.mode == 'RGBA' else None)
 
-        return (torch.from_numpy(np.array(canvas).astype(np.float32) / 255.0)[None,],)
+        # 3. [修复] 处理剩余的空位 (Empty Slots)
+        total_slots = cols * rows
+        if num_images < total_slots:
+            for idx in range(num_images, total_slots):
+                if 拼接方向 == "右": c, r = idx % cols, idx // cols
+                elif 拼接方向 == "左": c, r = idx % cols, idx // cols
+                elif 拼接方向 in ["下", "上"]: r, c = idx % rows, idx // rows
+                
+                x = c * (cell_w + 内边框大小)
+                y = r * (cell_h + 内边框大小)
+                
+                # Step 1: 强制挖空 (清除内边框颜色)
+                content_canvas.paste((0, 0, 0, 0), (x, y, x + cell_w, y + cell_h))
+                
+                # Step 2: 如果有背景色，填充背景色
+                if bg_col[3] > 0:
+                    draw_content.rectangle([x, y, x + cell_w, y + cell_h], fill=bg_col)
+
+        # 4. 外边框合成 (初始化全透明)
+        final_canvas = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
+        draw_final = ImageDraw.Draw(final_canvas)
+        
+        # 5. 绘制外边框框线
+        if outer_border_col[3] > 0 and 外边框大小 > 0:
+            draw_final.rectangle([0, 0, total_w, 外边框大小], fill=outer_border_col)
+            draw_final.rectangle([0, total_h - 外边框大小, total_w, total_h], fill=outer_border_col)
+            draw_final.rectangle([0, 0, 外边框大小, total_h], fill=outer_border_col)
+            draw_final.rectangle([total_w - 外边框大小, 0, total_w, total_h], fill=outer_border_col)
+        
+        # 6. 粘贴内容层
+        final_canvas.paste(content_canvas, (外边框大小, 外边框大小), content_canvas if content_canvas.mode == 'RGBA' else None)
+
+        return (torch.from_numpy(np.array(final_canvas).astype(np.float32) / 255.0).unsqueeze(0),)
 
 # ============================== 注册节点 ==============================
 NODE_CLASS_MAPPINGS = {

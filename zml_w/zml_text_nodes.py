@@ -1475,12 +1475,8 @@ class ZML_TextList:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {
-                "多行文本": ("STRING", {
-                    "multiline": True, 
-                    "default": "",
-                    "placeholder": "在此输入文本，每一行都会触发一次单独的执行流程。\n例如输入5行，连接的节点就会运行5次。"
-                }),
+            "required": {"固定文本": ("STRING", {"multiline": False, "default": "","tooltip": "此处的文本会合并到文本列表的每一项中"}),
+                "多行文本": ("STRING", {"multiline": True, "default": "","placeholder": "在此输入文本，每一行都会触发一次单独的执行流程。\n例如输入5行，连接的节点就会运行5次。"}),
                 "起始索引": ("INT", {"default": 0, "min": 0, "step": 1, "tooltip": "从第几行开始执行（0为第一行）"}),
                 "执行上限": ("INT", {"default": 0, "min": 0, "max": 9999, "step": 1, "tooltip": "最多执行多少行，0表示不限制"}),
             },
@@ -1499,7 +1495,7 @@ class ZML_TextList:
     # ComfyUI 会遍历这个列表，对列表中的每一项单独运行一次后续工作流
     OUTPUT_IS_LIST = (True,) 
     
-    def process_list(self, 多行文本, 起始索引, 执行上限, 列表输入=None):
+    def process_list(self, 多行文本, 固定文本, 起始索引, 执行上限, 列表输入=None):
         final_list = []
 
         # 1. 处理手动输入的多行文本
@@ -1536,6 +1532,8 @@ class ZML_TextList:
         # 5. 应用执行上限
         if 执行上限 > 0:
             final_list = final_list[:执行上限]
+        # 合并固定文本到列表的每一项
+        final_list = [f"{固定文本}{item}" for item in final_list] if 固定文本 else final_list
 
         # 返回列表，ComfyUI 会自动将其拆解为多次执行
         return (final_list,)
