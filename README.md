@@ -727,14 +727,6 @@
 `脚本都是独立运行的，而不是在comfyui中使用`
 
 - **https://github.com/zml-w/ZML-Image-Script/tree/main**
-  
-### ✨QQ群聊：1023857787
-
-**在群聊里可以找到已经写入文本块的图像，你可以直接下载使用它们**
-
-**如果不想添加群聊，那也可以通过[百度网盘](https://pan.baidu.com/s/1ULhAL6TKcujkOu1aHDgRVQ?pwd=ZMLw)下载（因为种种原因，网盘里的文本块图像并没有QQ群文件里的多）**
-
-
 
 ## ✨部分节点和功能是借鉴的别人的，感谢他们💕
 
