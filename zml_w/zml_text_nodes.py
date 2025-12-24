@@ -1076,6 +1076,107 @@ class ZML_PresetResolution:
         
         return (width, height, latent_dict)
 
+# ============================== 预设分辨率 V2 节点 ==============================
+class ZML_PresetResolutionV2:
+    """
+    ZML 预设分辨率V2节点
+    功能同V1，但增加了“自定义”选项以及自定义宽高参数。
+    """
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        # 复用 V1 的加载逻辑，确保数据与 V1 节点同步
+        ZML_PresetResolution._load_resolutions()
+        
+        # 获取 V1 的预设列表，并在最前面添加 "自定义" 选项
+        # 注意：这里我们创建一个新列表，避免修改原始引用
+        presets = ["自定义"] + ZML_PresetResolution._resolution_display_names
+        
+        return {
+            "required": {
+                "预设": (presets, {"default": "自定义"}),
+            },
+            "optional": {
+                "互换宽高": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
+                "随机模式": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
+                # 新增的自定义参数，位于随机模式和批次数量之间
+                "自定义宽": ("INT", {"default": 1024, "min": 64, "max": 16384, "step": 8}),
+                "自定义高": ("INT", {"default": 1024, "min": 64, "max": 16384, "step": 8}),
+                "批次数量": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT", "LATENT")
+    RETURN_NAMES = ("宽", "高", "latent")
+    FUNCTION = "get_resolution"
+    CATEGORY = "image/ZML_图像/整数"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # 只有在随机模式开启时才强制刷新，否则允许缓存
+        if kwargs.get("随机模式", False):
+            import time
+            return time.time()
+        return False
+
+    def get_resolution(self, 预设, 互换宽高=False, 随机模式=False, 自定义宽=1024, 自定义高=1024, 批次数量=1):
+        import random
+        
+        width, height = 1024, 1024
+        
+        # 逻辑：
+        # 1. 如果开启随机模式 -> 忽略下拉选单（包括自定义），从预设文件池中随机。
+        # 2. 如果关闭随机模式：
+        #    a. 如果选择 "自定义" -> 使用输入的自定义宽高。
+        #    b. 如果选择 其他预设 -> 使用预设文件中的宽高。
+        
+        if 随机模式:
+            # 获取所有可用的分辨率预设 (逻辑同 V1)
+            valid_resolutions = []
+            
+            # 直接访问 ZML_PresetResolution 的类变量，共享数据
+            for name, (w, h, _) in ZML_PresetResolution._resolutions_map.items():
+                if not name.startswith("没有预设") and not name.startswith("错误"):
+                    # 检查随机规则
+                    if ZML_RANDOM_RESOLUTION_RULES:
+                        if name in ZML_RANDOM_RESOLUTION_RULES and ZML_RANDOM_RESOLUTION_RULES[name] is False:
+                            continue
+                        valid_resolutions.append((w, h))
+                    else:
+                        valid_resolutions.append((w, h))
+            
+            if valid_resolutions:
+                width, height = random.choice(valid_resolutions)
+            else:
+                # 如果没有有效预设，回退到自定义值或默认值
+                if 预设 == "自定义":
+                    width, height = 自定义宽, 自定义高
+                else:
+                    pass 
+
+        else:
+            # 非随机模式
+            if 预设 == "自定义":
+                width = 自定义宽
+                height = 自定义高
+            else:
+                # 从 V1 的 map 中查找
+                width, height, _ = ZML_PresetResolution._resolutions_map.get(预设, (1024, 1024, "没有预设"))
+        
+        # 互换宽高处理
+        if 互换宽高:
+            width, height = height, width
+        
+        批次数量 = max(1, 批次数量)
+        
+        # 创建 Latent
+        latent = torch.zeros([批次数量, 4, height // 8, width // 8], device="cpu")
+        latent_dict = {"samples": latent}
+        
+        return (width, height, latent_dict)
+
 # 随机分辨率规则存储变量和文件路径
 ZML_RANDOM_RESOLUTION_RULES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset integer", "random_rules.json")
 ZML_RANDOM_RESOLUTION_RULES = {}  # 用于存储前端传来的随机规则
@@ -1645,6 +1746,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_DualIntegerV2": ZML_DualIntegerV2,
     "ZML_DualIntegerV3": ZML_DualIntegerV3,
     "ZML_PresetResolution": ZML_PresetResolution,
+    "ZML_PresetResolutionV2": ZML_PresetResolutionV2, # 新增
     "ZML_SequentialIntegerLoader": ZML_SequentialIntegerLoader, 
     "ZML_IntegerStringConverter": ZML_IntegerStringConverter,
     "ZML_IntegerFloatConverter": ZML_IntegerFloatConverter,
@@ -1663,6 +1765,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_DualIntegerV2": "ZML_双整数V2",
     "ZML_DualIntegerV3": "ZML_双整数V3（判断）",
     "ZML_PresetResolution": "ZML_预设分辨率",
+    "ZML_PresetResolutionV2": "ZML_预设分辨率V2", # 新增
     "ZML_SequentialIntegerLoader": "ZML_顺序加载整数", 
     "ZML_IntegerStringConverter": "ZML_整数字符串互转",
     "ZML_IntegerFloatConverter": "ZML_整数浮点互转",

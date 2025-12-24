@@ -7,6 +7,7 @@ import re
 import folder_paths
 import comfy.sd
 import comfy.utils
+import random
 
 # ==========================================
 # 工具函数
@@ -124,25 +125,31 @@ class ZML_XY_LoRA_Loader:
             for i in range(LoRA权重数量):
                 weights.append(round(权重起始值 + i * step, 2))
 
+        # 修改：移除前缀，只保留核心信息
         lora_labels = []
         for p in lora_files:
             if p:
                 name = os.path.splitext(os.path.basename(p))[0]
-                lora_labels.append(f"LoRA: {name}")
+                lora_labels.append(name) # 只保留名称
             else:
-                lora_labels.append("无LoRA")
+                lora_labels.append("None")
         
-        weight_labels = [f"LoRA权重: {w}" for w in weights]
+        # 修改：移除前缀
+        weight_labels = [f"{w}" for w in weights]
 
         if not XY互换:
             x_labels = lora_labels
             y_labels = weight_labels
+            x_title = "LoRA"
+            y_title = "权重"
             outer_loop = weights
             inner_loop = lora_files
             def get_args(inner_item, outer_item): return inner_item, outer_item
         else:
             x_labels = weight_labels
             y_labels = lora_labels
+            x_title = "权重"
+            y_title = "LoRA"
             outer_loop = lora_files
             inner_loop = weights
             def get_args(inner_item, outer_item): return outer_item, inner_item
@@ -183,6 +190,8 @@ class ZML_XY_LoRA_Loader:
         grid_info = {
             "x_labels": x_labels,
             "y_labels": y_labels,
+            "x_title": x_title, # 新增
+            "y_title": y_title, # 新增
             "count_x": len(inner_loop),
             "count_y": len(outer_loop),
             "total_images": len(out_models)
@@ -220,7 +229,7 @@ class ZML_XY_Prompt_Loader:
         # 1. 解析 XY 提示词
         raw_prompts = [p.strip() for p in 多行变量.strip().split('\n') if p.strip()]
         if not raw_prompts:
-            raw_prompts = [""] # 防止空列表
+            raw_prompts = [""]
 
         # 2. 生成权重
         weights = []
@@ -231,25 +240,29 @@ class ZML_XY_Prompt_Loader:
             for i in range(权重数量):
                 weights.append(round(权重起始值 + i * step, 2))
 
-        # 3. 准备标签
+        # 3. 准备标签 (移除前缀)
         prompt_labels = [p if len(p) < 20 else p[:17]+"..." for p in raw_prompts]
-        weight_labels = [f"权重: {w}" for w in weights]
+        weight_labels = [f"{w}" for w in weights]
 
         # 4. 确定 XY 逻辑
         if not XY互换:
             # 默认: X=提示词, Y=权重
             x_labels = prompt_labels
             y_labels = weight_labels
+            x_title = "提示词"
+            y_title = "权重"
             outer_loop = weights        # 行 (Y)
             inner_loop = raw_prompts    # 列 (X)
-            def get_args(inner_item, outer_item): return inner_item, outer_item # text, weight
+            def get_args(inner_item, outer_item): return inner_item, outer_item 
         else:
             # 互换: X=权重, Y=提示词
             x_labels = weight_labels
             y_labels = prompt_labels
+            x_title = "权重"
+            y_title = "提示词"
             outer_loop = raw_prompts    # 行 (Y)
             inner_loop = weights        # 列 (X)
-            def get_args(inner_item, outer_item): return outer_item, inner_item # text, weight
+            def get_args(inner_item, outer_item): return outer_item, inner_item
 
         out_conds = []
 
@@ -258,8 +271,6 @@ class ZML_XY_Prompt_Loader:
             for inner_item in inner_loop:
                 current_text, current_weight = get_args(inner_item, outer_item)
                 
-                # 组合提示词: 固定 + (变量:权重)
-                # 如果权重是 1.0 且不需要强调，虽然 Comfy 支持 (text:1.0)，但为了清晰我们保持格式
                 if current_text:
                     part_xy = f"({current_text}:{current_weight})"
                     final_text = f"{固定提示词}{分隔符}{part_xy}"
@@ -270,12 +281,13 @@ class ZML_XY_Prompt_Loader:
                 tokens = CLIP.tokenize(final_text)
                 cond, pooled = CLIP.encode_from_tokens(tokens, return_pooled=True)
                 
-                # 包装成 Condition List (ComfyUI 格式: [[cond_tensor, {"pooled_output": ...}]])
                 out_conds.append([[cond, {"pooled_output": pooled}]])
 
         grid_info = {
             "x_labels": x_labels,
             "y_labels": y_labels,
+            "x_title": x_title,
+            "y_title": y_title,
             "count_x": len(inner_loop),
             "count_y": len(outer_loop),
             "total_images": len(out_conds)
@@ -285,7 +297,7 @@ class ZML_XY_Prompt_Loader:
 
 
 # ==========================================
-# 节点 3: ZML_XY_图表拼接
+# 节点 3: ZML_XY_图表拼接 (核心修改)
 # ==========================================
 class ZML_XY_Grid_Drawer:
     @classmethod
@@ -301,18 +313,19 @@ class ZML_XY_Grid_Drawer:
                 "网格间距": ("INT", {"default": 10, "min": 0}),
                 "背景颜色": (list(COLOR_MAP.keys()), {"default": "白色"}),
                 "文字颜色": (list(COLOR_MAP.keys()), {"default": "黑色"}),
+                "单元格图片排布": (["横向排列", "竖向排列"], {"default": "横向排列", "tooltip": "一个单元格内有多张图时，它们的排列方向"}),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("XYZ图表",)
-    INPUT_IS_LIST = (True, False, False, False, False, False, False)
+    INPUT_IS_LIST = (True, False, False, False, False, False, False, False, False)
     FUNCTION = "draw_grid"
     CATEGORY = "image/ZML_图像/XYZ"
 
-    def draw_grid(self, 图像, 图表信息, 字体, 字体大小, 网格间距, 背景颜色, 文字颜色):
-        def to_scalar(v):
-            if isinstance(v, list): return v[0]
+    def draw_grid(self, 图像, 图表信息, 字体, 字体大小, 网格间距, 背景颜色, 文字颜色, 单元格图片排布):
+        def to_scalar(v, default=None):
+            if isinstance(v, list): return v[0] if len(v) > 0 else default
             return v
             
         font_size = to_scalar(字体大小)
@@ -320,85 +333,185 @@ class ZML_XY_Grid_Drawer:
         bg_name = to_scalar(背景颜色)
         txt_name = to_scalar(文字颜色)
         font_name = to_scalar(字体)
+        cell_layout = to_scalar(单元格图片排布)
 
-        try:
-            if isinstance(图像, torch.Tensor):
-                image_batch = 图像
+        pil_images_batch = []
+        for img_tensor in 图像:
+            if isinstance(img_tensor, torch.Tensor):
+                if len(img_tensor.shape) == 4:
+                    for i in range(img_tensor.shape[0]):
+                        pil_images_batch.append(Image.fromarray(np.clip(255. * img_tensor[i].cpu().numpy(), 0, 255).astype(np.uint8)))
+                elif len(img_tensor.shape) == 3:
+                    pil_images_batch.append(Image.fromarray(np.clip(255. * img_tensor.cpu().numpy(), 0, 255).astype(np.uint8)))
             else:
-                image_batch = torch.cat(图像, dim=0)
-        except:
-            image_batch = 图像[0] if isinstance(图像, list) else 图像
-            print("[ZML] 警告：图片尺寸不一致，可能导致拼接失败。")
+                pil_images_batch.append(Image.fromarray(np.clip(255. * img_tensor.cpu().numpy(), 0, 255).astype(np.uint8)))
+
+        if not pil_images_batch:
+            return (torch.zeros(1, 64, 64, 3),)
+
+        first_img_h, first_img_w = pil_images_batch[0].height, pil_images_batch[0].width
 
         info = 图表信息[0] if isinstance(图表信息, list) else 图表信息
         x_labels = info.get("x_labels", [])
         y_labels = info.get("y_labels", [])
+        x_title = info.get("x_title", "")
+        y_title = info.get("y_title", "")
+        
         cols = info.get("count_x", 1)
         rows = info.get("count_y", 1)
+        cell_image_counts = info.get("cell_image_counts", [1] * (cols * rows))
+        if len(cell_image_counts) != (cols * rows):
+            cell_image_counts = [1] * (cols * rows)
         
         _, font_dir = find_font_files()
         font = get_font(font_name, font_size, font_dir)
         if font is None: font = ImageFont.load_default()
         
         dummy_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-        batch_size, img_h, img_w, _ = image_batch.shape
+
+        # 准备左上角文本 (Y \ X)
+        corner_text = ""
+        if x_title or y_title:
+            corner_text = f"{y_title} \\ {x_title}"
         
+        corner_w, corner_h = 0, 0
+        if corner_text:
+             corner_w, corner_h = text_size(dummy_draw, corner_text, font)
+
+        # 计算头部和侧边栏尺寸
         header_h = 0
-        if x_labels:
-            try:
-                max_h = max([text_size(dummy_draw, str(l), font)[1] for l in x_labels] + [0])
-            except: max_h = 20
-            header_h = max_h + margin * 2
+        if x_labels or corner_text:
+            max_header_label_h = 0
+            for label in x_labels:
+                _, th = text_size(dummy_draw, str(label), font)
+                max_header_label_h = max(max_header_label_h, th)
+            
+            # 头部高度至少要容纳标签高度，也要考虑角标文本的高度
+            header_h = max(max_header_label_h, corner_h) + margin * 2
 
         sidebar_w = 0
-        if y_labels:
-            try:
-                max_w = max([text_size(dummy_draw, str(l), font)[0] for l in y_labels] + [0])
-            except: max_w = 50
-            sidebar_w = max_w + margin * 2
+        if y_labels or corner_text:
+            max_sidebar_label_w = 0
+            for label in y_labels:
+                tw, _ = text_size(dummy_draw, str(label), font)
+                max_sidebar_label_w = max(max_sidebar_label_w, tw)
+            
+            # 侧边宽度至少要容纳标签宽度，也要考虑角标文本的宽度
+            sidebar_w = max(max_sidebar_label_w, corner_w) + margin * 2
 
-        grid_w = sidebar_w + (img_w + margin) * cols - margin
-        grid_h = header_h + (img_h + margin) * rows - margin
+        # 预先计算每个逻辑单元格的实际尺寸
+        cell_actual_widths = [0] * cols
+        cell_actual_heights = [0] * rows
+        
+        current_image_idx = 0
+        for r_idx in range(rows):
+            for c_idx in range(cols):
+                linear_idx = r_idx * cols + c_idx
+                num_images_in_current_cell = cell_image_counts[linear_idx]
+                
+                if num_images_in_current_cell == 0:
+                    cell_img_w = first_img_w
+                    cell_img_h = first_img_h
+                elif cell_layout == "横向排列":
+                    cell_img_w = first_img_w * num_images_in_current_cell + margin * max(0, num_images_in_current_cell - 1)
+                    cell_img_h = first_img_h
+                else:
+                    cell_img_w = first_img_w
+                    cell_img_h = first_img_h * num_images_in_current_cell + margin * max(0, num_images_in_current_cell - 1)
+                
+                cell_actual_widths[c_idx] = max(cell_actual_widths[c_idx], cell_img_w)
+                cell_actual_heights[r_idx] = max(cell_actual_heights[r_idx], cell_img_h)
+                
+                current_image_idx += cell_image_counts[linear_idx]
+
+        grid_content_w = sum(cell_actual_widths) + margin * max(0, cols - 1)
+        grid_content_h = sum(cell_actual_heights) + margin * max(0, rows - 1)
+
+        canvas_w = sidebar_w + grid_content_w + margin * 2
+        canvas_h = header_h + grid_content_h + margin * 2
         
         bg_col = COLOR_MAP.get(bg_name, "white")
         txt_col = COLOR_MAP.get(txt_name, "black")
         
-        try:
-            canvas = Image.new("RGB", (grid_w + margin*2, grid_h + margin*2), bg_col)
-        except:
-            canvas = Image.new("RGB", (grid_w + margin*2, grid_h + margin*2), "white")
-            
+        canvas = Image.new("RGB", (canvas_w, canvas_h), bg_col)
         draw = ImageDraw.Draw(canvas)
 
-        if header_h > 0:
-            for i, text in enumerate(x_labels):
-                str_text = str(text)
-                tw, th = text_size(draw, str_text, font)
-                x = margin + sidebar_w + i * (img_w + margin) + (img_w - tw) // 2
-                y = margin + (header_h - th) // 2
-                draw.text((x, y), str_text, fill=txt_col, font=font)
-
-        if sidebar_w > 0:
-            for j, text in enumerate(y_labels):
-                str_text = str(text)
-                tw, th = text_size(draw, str_text, font)
-                x = margin + (sidebar_w - tw) // 2
-                y = margin + header_h + j * (img_h + margin) + (img_h - th) // 2
-                draw.text((x, y), str_text, fill=txt_col, font=font)
-
-        for idx in range(batch_size):
-            if idx >= cols * rows: break
-            c = idx % cols
-            r = idx // cols
+        # === 绘制左上角角标 ===
+        if corner_text and sidebar_w > 0 and header_h > 0:
+            # 绘制文字居中
+            cx = margin + (sidebar_w - margin*2 - corner_w) // 2
+            cy = margin + (header_h - margin*2 - corner_h) // 2
+            # 确保不小于0
+            cx = max(cx, 0)
+            cy = max(cy, 0)
             
-            pil_img = Image.fromarray(np.clip(255. * image_batch[idx].cpu().numpy(), 0, 255).astype(np.uint8))
+            draw.text((cx, cy), corner_text, fill=txt_col, font=font)
             
-            x = margin + sidebar_w + c * (img_w + margin)
-            y = margin + header_h + r * (img_h + margin)
-            
-            canvas.paste(pil_img, (x, y))
+            # 可选：绘制一条简单的对角线装饰 (左上->右下 of the box)
+            # box_w = sidebar_w
+            # box_h = header_h
+            # draw.line([(0, 0), (box_w, box_h)], fill=txt_col, width=2)
 
-        return (torch.from_numpy(np.array(canvas).astype(np.float32) / 255.0)[None,],)
+        # 绘制 X 轴标签
+        current_x = sidebar_w + margin
+        for i, text in enumerate(x_labels):
+            str_text = str(text)
+            tw, th = text_size(draw, str_text, font)
+            col_width = cell_actual_widths[i]
+            x_pos = current_x + (col_width - tw) // 2
+            y_pos = margin + (header_h - margin*2 - th) // 2 # 垂直居中于header区域
+            draw.text((x_pos, y_pos), str_text, fill=txt_col, font=font)
+            current_x += col_width + margin
+
+        # 绘制 Y 轴标签
+        current_y = header_h + margin
+        for j, text in enumerate(y_labels):
+            str_text = str(text)
+            tw, th = text_size(draw, str_text, font)
+            row_height = cell_actual_heights[j]
+            x_pos = margin + (sidebar_w - margin*2 - tw) // 2 # 水平居中于sidebar区域
+            y_pos = current_y + (row_height - th) // 2
+            draw.text((x_pos, y_pos), str_text, fill=txt_col, font=font)
+            current_y += row_height + margin
+
+        # 绘制图片
+        current_image_batch_idx = 0
+        for r_idx in range(rows):
+            for c_idx in range(cols):
+                linear_idx = r_idx * cols + c_idx
+                num_images_in_cell = cell_image_counts[linear_idx]
+
+                cell_start_x = sidebar_w + margin + sum(cell_actual_widths[:c_idx]) + margin * c_idx
+                cell_start_y = header_h + margin + sum(cell_actual_heights[:r_idx]) + margin * r_idx
+                
+                current_cell_actual_w = cell_actual_widths[c_idx]
+                current_cell_actual_h = cell_actual_heights[r_idx]
+
+                sub_img_x_offset = 0
+                sub_img_y_offset = 0
+                
+                for k in range(num_images_in_cell):
+                    if current_image_batch_idx >= len(pil_images_batch):
+                        break
+                    
+                    pil_img = pil_images_batch[current_image_batch_idx]
+                    
+                    if cell_layout == "横向排列":
+                        paste_x = cell_start_x + sub_img_x_offset
+                        paste_y = cell_start_y + (current_cell_actual_h - pil_img.height) // 2
+                        sub_img_x_offset += pil_img.width + margin
+                    else:
+                        paste_x = cell_start_x + (current_cell_actual_w - pil_img.width) // 2
+                        paste_y = cell_start_y + sub_img_y_offset
+                        sub_img_y_offset += pil_img.height + margin
+                    
+                    canvas.paste(pil_img, (paste_x, paste_y))
+                    current_image_batch_idx += 1
+                
+                current_image_batch_idx += (cell_image_counts[linear_idx] - num_images_in_cell)
+                if current_image_batch_idx < 0 : current_image_batch_idx = 0
+
+        return (torch.from_numpy(np.array(canvas).astype(np.float32) / 255.0).unsqueeze(0),)
 
 # ==========================================
 # 节点 4: ZML_XY_采样参数 (CFG & Steps)
@@ -425,17 +538,13 @@ class ZML_XY_Sampler_Params:
     CATEGORY = "image/ZML_图像/XYZ"
 
     def gen_batch_params(self, 步数数量, 步数起始值, 步数结束值, CFG数量, CFG起始值, CFG结束值, XY互换):
-        # 1. 生成步数列表
         steps_list = []
         if 步数数量 <= 1:
             steps_list = [步数起始值]
         else:
-            # 线性插值并取整
             raw_steps = np.linspace(步数起始值, 步数结束值, 步数数量)
             steps_list = [int(round(s)) for s in raw_steps]
-            # 去重保护（如果范围太小导致重复）- 暂时保留重复以维持网格结构
         
-        # 2. 生成 CFG 列表
         cfg_list = []
         if CFG数量 <= 1:
             cfg_list = [CFG起始值]
@@ -443,30 +552,30 @@ class ZML_XY_Sampler_Params:
             raw_cfgs = np.linspace(CFG起始值, CFG结束值, CFG数量)
             cfg_list = [round(float(c), 2) for c in raw_cfgs]
 
-        # 3. 准备标签
-        step_labels = [f"Steps: {s}" for s in steps_list]
-        cfg_labels = [f"CFG: {c}" for c in cfg_list]
+        # 移除前缀
+        step_labels = [f"{s}" for s in steps_list]
+        cfg_labels = [f"{c}" for c in cfg_list]
 
-        # 4. 确定 XY 逻辑
         if not XY互换:
-            # 默认: X=步数, Y=CFG
             x_labels = step_labels
             y_labels = cfg_labels
+            x_title = "Steps"
+            y_title = "CFG"
             outer_loop = cfg_list    # 行 (Y)
             inner_loop = steps_list  # 列 (X)
-            def get_vals(inner_item, outer_item): return inner_item, outer_item # step, cfg
+            def get_vals(inner_item, outer_item): return inner_item, outer_item
         else:
-            # 互换: X=CFG, Y=步数
             x_labels = cfg_labels
             y_labels = step_labels
+            x_title = "CFG"
+            y_title = "Steps"
             outer_loop = steps_list  # 行 (Y)
             inner_loop = cfg_list    # 列 (X)
-            def get_vals(inner_item, outer_item): return outer_item, inner_item # step, cfg
+            def get_vals(inner_item, outer_item): return outer_item, inner_item
 
         out_steps = []
         out_cfgs = []
 
-        # 5. 循环生成输出列表
         for outer_item in outer_loop:
             for inner_item in inner_loop:
                 s, c = get_vals(inner_item, outer_item)
@@ -476,6 +585,8 @@ class ZML_XY_Sampler_Params:
         grid_info = {
             "x_labels": x_labels,
             "y_labels": y_labels,
+            "x_title": x_title,
+            "y_title": y_title,
             "count_x": len(inner_loop),
             "count_y": len(outer_loop),
             "total_images": len(out_steps)
@@ -498,7 +609,8 @@ class ZML_XY_LoRA_Loader_V2:
                 "LoRA权重数量": ("INT", {"default": 2, "min": 1, "step": 1}),
                 "权重起始值": ("FLOAT", {"default": 0.8, "min": -10.0, "max": 10.0, "step": 0.05}),
                 "权重结束值": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.05}),
-                "多行文本": ("STRING", {"default": "", "multiline": True, "placeholder": "节点会读取LoRA的子文件夹'zml'里的同名txt文件，并将其里面的内容和这里输入的提示词合并后输出，如果zml文件夹下没有同名txt文件，则读取LoRA相同目录下的同名txt文件"}),
+                "多行文本": ("STRING", {"default": "", "multiline": True, "placeholder": "节点会读取LoRA的子文件夹'zml'里的同名txt文件。若不存在，则读取LoRA相同目录下的同名txt文件。"}),
+                "txt联结方式": (["全部内容", "每行独立"], {"default": "全部内容", "tooltip": "每行独立是将txt里的每一行都独立输出，如果txt里有三行提示词，那就会输出三份条件"}),
                 "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=权重, Y=LoRA)", "label_off": "(X=LoRA, Y=权重)"}),
             }
         }
@@ -509,7 +621,7 @@ class ZML_XY_LoRA_Loader_V2:
     FUNCTION = "load_batch_loras_v2"
     CATEGORY = "image/ZML_图像/XYZ"
 
-    def load_batch_loras_v2(self, 模型, CLIP, LoRA文件夹路径, LoRA数量, LoRA权重数量, 权重起始值, 权重结束值, 多行文本, XY互换):
+    def load_batch_loras_v2(self, 模型, CLIP, LoRA文件夹路径, LoRA数量, LoRA权重数量, 权重起始值, 权重结束值, 多行文本, txt联结方式, XY互换):
         folder_path = LoRA文件夹路径.strip().strip('"')
         found_loras = []
         if os.path.exists(folder_path) and os.path.isdir(folder_path):
@@ -533,115 +645,126 @@ class ZML_XY_LoRA_Loader_V2:
             for i in range(LoRA权重数量):
                 weights.append(round(权重起始值 + i * step, 2))
 
+        # 修改：移除前缀
         lora_labels = []
         for p in lora_files:
             if p:
                 name = os.path.splitext(os.path.basename(p))[0]
-                lora_labels.append(f"LoRA: {name}")
+                lora_labels.append(name)
             else:
-                lora_labels.append("无LoRA")
+                lora_labels.append("None")
         
-        weight_labels = [f"LoRA权重: {w}" for w in weights]
+        weight_labels = [f"{w}" for w in weights]
 
         if not XY互换:
             x_labels = lora_labels
             y_labels = weight_labels
-            outer_loop = weights
-            inner_loop = lora_files
+            x_title = "LoRA"
+            y_title = "权重"
+            outer_loop_items = weights
+            inner_loop_items = lora_files
             def get_args(inner_item, outer_item): return inner_item, outer_item
         else:
             x_labels = weight_labels
             y_labels = lora_labels
-            outer_loop = lora_files
-            inner_loop = weights
+            x_title = "权重"
+            y_title = "LoRA"
+            outer_loop_items = lora_files
+            inner_loop_items = weights
             def get_args(inner_item, outer_item): return outer_item, inner_item
 
         out_models = []
         out_conds = []
         loaded_cache = {}
+        
+        cell_image_counts = []
 
-        # 合并文本处理
-        def get_combined_text(lora_path):
-            combined_text = []
+        # 获取处理后的文本列表
+        def get_prompt_list(lora_path):
+            # 基础文本
+            base_text = 多行文本.strip()
             
-            # 1. 读取多行文本框内容
-            if 多行文本.strip():
-                combined_text.append(多行文本.strip())
-            
-            # 2. 查找并读取lora同名txt文件
+            # 读取文件内容
+            file_lines = []
             if lora_path:
                 lora_dir = os.path.dirname(lora_path)
                 lora_name = os.path.splitext(os.path.basename(lora_path))[0]
                 
-                # 优先查找zml子文件夹
                 zml_txt_path = os.path.join(lora_dir, "zml", f"{lora_name}.txt")
                 txt_path = os.path.join(lora_dir, f"{lora_name}.txt")
                 
-                # 检查文件存在性并读取
+                target_path = None
                 if os.path.exists(zml_txt_path):
-                    try:
-                        with open(zml_txt_path, 'r', encoding='utf-8') as f:
-                            txt_content = f.read().strip()
-                            if txt_content:
-                                combined_text.append(txt_content)
-                    except:
-                        pass
+                    target_path = zml_txt_path
                 elif os.path.exists(txt_path):
+                    target_path = txt_path
+                
+                if target_path:
                     try:
-                        with open(txt_path, 'r', encoding='utf-8') as f:
-                            txt_content = f.read().strip()
-                            if txt_content:
-                                combined_text.append(txt_content)
+                        with open(target_path, 'r', encoding='utf-8') as f:
+                            # 读取所有非空行
+                            file_lines = [line.strip() for line in f.readlines() if line.strip()]
                     except:
                         pass
             
-            # 合并所有文本，用逗号分隔
-            return ", ".join(combined_text)
+            prompts = []
+            
+            if txt联结方式 == "全部内容":
+                # 合并模式
+                parts = []
+                if base_text: parts.append(base_text)
+                if file_lines: parts.append(", ".join(file_lines))
+                prompts.append(", ".join(parts) if parts else "")
+            else:
+                # 独立模式
+                if not file_lines:
+                    prompts.append(base_text)
+                else:
+                    for line in file_lines:
+                        parts = []
+                        if base_text: parts.append(base_text)
+                        parts.append(line)
+                        prompts.append(", ".join(parts))
+            
+            return [p for p in prompts if p or not base_text and not file_lines]
 
-        for outer_item in outer_loop:
-            for inner_item in inner_loop:
+        # 主循环
+        for outer_idx, outer_item in enumerate(outer_loop_items):
+            for inner_idx, inner_item in enumerate(inner_loop_items):
                 current_lora, current_weight = get_args(inner_item, outer_item)
                 
-                if current_lora is None:
-                    out_models.append(模型)
-                    # 处理条件输出 - 始终返回有效CONDITIONING对象
-                    combined_text = get_combined_text(None)
-                    if combined_text:
-                        tokens = CLIP.tokenize(combined_text)
-                        cond, pooled = CLIP.encode_from_tokens(tokens, return_pooled=True)
-                        out_conds.append([[cond, {"pooled_output": pooled}]])
-                    else:
-                        # 创建空条件
-                        tokens = CLIP.tokenize("")
-                        cond, pooled = CLIP.encode_from_tokens(tokens, return_pooled=True)
-                        out_conds.append([[cond, {"pooled_output": pooled}]])
-                    continue
+                prompts_to_process = get_prompt_list(current_lora)
+                if not prompts_to_process: prompts_to_process = [""]
                 
-                try:
-                    if current_lora not in loaded_cache:
-                        loaded_cache[current_lora] = comfy.utils.load_torch_file(current_lora)
-                    lora_data = loaded_cache[current_lora]
-                    
-                    # 加载LoRA
-                    m, c = comfy.sd.load_lora_for_models(模型, CLIP, lora_data, current_weight, current_weight)
-                    out_models.append(m)
-                    
-                    # 处理条件输出 - 始终返回有效CONDITIONING对象
-                    combined_text = get_combined_text(current_lora)
-                    if combined_text:
-                        tokens = c.tokenize(combined_text)
-                        cond, pooled = c.encode_from_tokens(tokens, return_pooled=True)
-                        out_conds.append([[cond, {"pooled_output": pooled}]])
-                    else:
-                        # 创建空条件
-                        tokens = c.tokenize("")
-                        cond, pooled = c.encode_from_tokens(tokens, return_pooled=True)
-                        out_conds.append([[cond, {"pooled_output": pooled}]])
-                except:
-                    out_models.append(模型)
-                    # 异常情况下也返回有效CONDITIONING对象
-                    tokens = CLIP.tokenize("")
-                    cond, pooled = CLIP.encode_from_tokens(tokens, return_pooled=True)
+                cell_image_count = len(prompts_to_process)
+                cell_image_counts.append(cell_image_count)
+
+                # 准备模型
+                current_model = None
+                current_patched_clip = CLIP
+                
+                if current_lora is not None:
+                    try:
+                        if current_lora not in loaded_cache:
+                            loaded_cache[current_lora] = comfy.utils.load_torch_file(current_lora)
+                        lora_data = loaded_cache[current_lora]
+                        
+                        m, c_patched = comfy.sd.load_lora_for_models(模型, CLIP, lora_data, current_weight, current_weight)
+                        current_model = m
+                        current_patched_clip = c_patched
+                    except Exception as e:
+                        print(f"Error loading LoRA {current_lora}: {e}")
+                        current_model = 模型
+                        current_patched_clip = CLIP
+                else:
+                    current_model = 模型
+                    current_patched_clip = CLIP
+
+                for prompt_text in prompts_to_process:
+                    out_models.append(current_model)
+
+                    tokens = current_patched_clip.tokenize(prompt_text)
+                    cond, pooled = current_patched_clip.encode_from_tokens(tokens, return_pooled=True)
                     out_conds.append([[cond, {"pooled_output": pooled}]])
                     
         del loaded_cache
@@ -649,15 +772,18 @@ class ZML_XY_LoRA_Loader_V2:
         grid_info = {
             "x_labels": x_labels,
             "y_labels": y_labels,
-            "count_x": len(inner_loop),
-            "count_y": len(outer_loop),
-            "total_images": len(out_models)
+            "x_title": x_title,
+            "y_title": y_title,
+            "count_x": len(inner_loop_items),
+            "count_y": len(outer_loop_items),
+            "cell_image_counts": cell_image_counts, 
+            "total_images": len(out_models) 
         }
 
         return (out_models, out_conds, grid_info)
 
 # ==========================================
-# 节点 6: ZML_XY_自定义图表 (修复空位背景一致性)
+# 节点 6: ZML_XY_自定义图表 
 # ==========================================
 class ZML_XY_Custom_Grid:
     @classmethod
@@ -836,11 +962,9 @@ class ZML_XY_Custom_Grid:
         
         # --- 绘制逻辑 ---
         
-        # 1. 创建内容层，用内边框颜色初始化
         content_canvas = Image.new("RGBA", (content_w, content_h), inner_border_col)
         draw_content = ImageDraw.Draw(content_canvas)
         
-        # 2. 绘制有效图像
         for idx, (pil_img, label_text) in enumerate(zip(pil_images, labels)):
             if 拼接方向 == "右": c, r = idx % cols, idx // cols
             elif 拼接方向 == "左": c, r = idx % cols, idx // cols
@@ -849,26 +973,22 @@ class ZML_XY_Custom_Grid:
             x = c * (cell_w + 内边框大小)
             y = r * (cell_h + 内边框大小)
 
-            # 挖空 + 填背景
             content_canvas.paste((0, 0, 0, 0), (x, y, x + cell_w, y + cell_h))
             if bg_col[3] > 0:
                 draw_content.rectangle([x, y, x + cell_w, y + cell_h], fill=bg_col)
 
-            # 绘制文字
             if label_text:
                 tw, th = text_size(draw_content, str(label_text), font)
                 tx = x + (cell_w - tw) // 2
                 ty = y 
                 draw_content.text((tx, ty), str(label_text), fill=txt_col, font=font)
 
-            # 粘贴图片
             img_x = x + (cell_w - pil_img.width) // 2
             img_y_start = y + max_text_h + text_padding
             img_y = img_y_start + (max_img_h - pil_img.height) // 2
             
             content_canvas.paste(pil_img, (img_x, img_y), pil_img if pil_img.mode == 'RGBA' else None)
 
-        # 3. [修复] 处理剩余的空位 (Empty Slots)
         total_slots = cols * rows
         if num_images < total_slots:
             for idx in range(num_images, total_slots):
@@ -879,25 +999,19 @@ class ZML_XY_Custom_Grid:
                 x = c * (cell_w + 内边框大小)
                 y = r * (cell_h + 内边框大小)
                 
-                # Step 1: 强制挖空 (清除内边框颜色)
                 content_canvas.paste((0, 0, 0, 0), (x, y, x + cell_w, y + cell_h))
-                
-                # Step 2: 如果有背景色，填充背景色
                 if bg_col[3] > 0:
                     draw_content.rectangle([x, y, x + cell_w, y + cell_h], fill=bg_col)
 
-        # 4. 外边框合成 (初始化全透明)
         final_canvas = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
         draw_final = ImageDraw.Draw(final_canvas)
         
-        # 5. 绘制外边框框线
         if outer_border_col[3] > 0 and 外边框大小 > 0:
             draw_final.rectangle([0, 0, total_w, 外边框大小], fill=outer_border_col)
             draw_final.rectangle([0, total_h - 外边框大小, total_w, total_h], fill=outer_border_col)
             draw_final.rectangle([0, 0, 外边框大小, total_h], fill=outer_border_col)
             draw_final.rectangle([total_w - 外边框大小, 0, total_w, total_h], fill=outer_border_col)
         
-        # 6. 粘贴内容层
         final_canvas.paste(content_canvas, (外边框大小, 外边框大小), content_canvas if content_canvas.mode == 'RGBA' else None)
 
         return (torch.from_numpy(np.array(final_canvas).astype(np.float32) / 255.0).unsqueeze(0),)
