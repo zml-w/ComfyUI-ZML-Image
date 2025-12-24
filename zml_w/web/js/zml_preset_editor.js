@@ -1294,12 +1294,13 @@ app.registerExtension({
         }
         
         // 为“预设分辨率”节点添加“管理预设”按钮
-        if (node.comfyClass === "ZML_PresetResolution") {
+        if (node.comfyClass === "ZML_PresetResolution" || node.comfyClass === "ZML_PresetResolutionV2") {
             node.addWidget("button", "管理预设", null, () => {
                 const widget = node.widgets.find(w => w.name === "预设");
                 let currentResolutions = [];
                 if (widget && widget.options && widget.options.values) {
-                    currentResolutions = widget.options.values;
+                    // 过滤掉 "自定义" 选项，不让它进入管理列表
+                    currentResolutions = widget.options.values.filter(v => v !== "自定义");
                 }
                 createResolutionManageDialog(currentResolutions);
             });
@@ -1329,6 +1330,100 @@ app.registerExtension({
             });
         }
         // --------------------------------------------------------
+    }
+});
+
+// ============================== ZML_MergeToList 动态接口逻辑 ==============================
+app.registerExtension({
+    name: "ZML.MergeToList.Dynamic",
+    async beforeRegisterNodeDef(nodeType, nodeData, app) {
+        // 仅针对 ZML_MergeToList 节点生效
+        if (nodeData.name !== "ZML_MergeToList") return;
+
+        const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function() {
+            const r = origOnNodeCreated ? origOnNodeCreated.apply(this, arguments) : undefined;
+            try {
+                const node = this;
+                // 延迟执行，确保节点完全初始化后再裁剪空输入
+                setTimeout(() => {
+                    try {
+                        ensureOneFreeInput(node, true);
+                        node.size = node.computeSize(node.size);
+                        app.graph?.setDirtyCanvas(true, true);
+                    } catch(e) { console.error("ZML_MergeToList init error:", e); }
+                }, 0);
+            } catch (e) {
+                console.error("ZML_MergeToList init schedule error:", e);
+            }
+            return r;
+        };
+
+        // 监听输入连接变化，动态添加/移除输入接口
+        const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function(side, slot, connect, link_info, output) {
+            const r = origOnConnectionsChange ? origOnConnectionsChange.apply(this, arguments) : undefined;
+            if (side === 1) {
+                const node = this;
+                // 使用轻微延迟，等待链接状态稳定再修正输入数量
+                setTimeout(() => {
+                    try {
+                        ensureOneFreeInput(node, false);
+                        node.size = node.computeSize(node.size);
+                        app.graph?.setDirtyCanvas(true, true);
+                    } catch(e) { console.error("ZML_MergeToList conn change error:", e); }
+                }, 50);
+            }
+            return r;
+        };
+
+        // 确保始终有一个空闲输入接口（逻辑与合并文本节点一致）
+        function ensureOneFreeInput(node, prune = false) {
+            const inputSlots = [];
+            for (let i = 0; i < (node.inputs?.length || 0); i++) {
+                const inp = node.inputs[i];
+                const name = (inp?.name || inp?.label || "");
+                const m = /^输入(\d+)$/.exec(name);
+                if (m) {
+                    inputSlots.push({ slot: i, idx: parseInt(m[1], 10), linked: !!inp.link });
+                }
+            }
+            inputSlots.sort((a, b) => a.idx - b.idx);
+
+            // 初始时裁剪多余的空输入，只保留“输入1”
+            if (prune) {
+                const toRemove = inputSlots.filter(s => !s.linked && s.idx > 1).sort((a,b)=>b.idx-a.idx);
+                toRemove.forEach(s => {
+                    try { node.removeInput(s.slot); } catch {}
+                });
+                return ensureOneFreeInput(node, false);
+            }
+
+            const maxIdx = inputSlots.length ? Math.max(...inputSlots.map(s => s.idx)) : 0;
+            const empty = inputSlots.filter(s => !s.linked);
+
+            // 没有空闲输入且未达到上限时，新增下一个“输入N”输入
+            if (empty.length === 0 && maxIdx < 20) {
+                const nextIdx = maxIdx + 1;
+                try { node.addInput(`输入${nextIdx}`, "*", { forceInput: true }); } catch {}
+                return ensureOneFreeInput(node, false);
+            }
+
+            // 保持仅一个空闲输入：移除多余的空输入（优先移除索引较大的）
+            const empties = [];
+            for (let i = 0; i < (node.inputs?.length || 0); i++) {
+                const inp = node.inputs[i];
+                const name = (inp?.name || inp?.label || "");
+                const m = /^输入(\d+)$/.exec(name);
+                if (m && !inp.link) empties.push({ slot: i, idx: parseInt(m[1], 10) });
+            }
+            empties.sort((a,b)=>b.idx-a.idx);
+            while (empties.length > 1) {
+                const rem = empties.shift();
+                try { node.removeInput(rem.slot); } catch {}
+                return ensureOneFreeInput(node, false);
+            }
+        }
     }
 });
 
