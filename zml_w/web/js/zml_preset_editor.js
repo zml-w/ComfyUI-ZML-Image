@@ -1428,6 +1428,98 @@ app.registerExtension({
 });
 
 
+// ============================== ZML_UnifyImageResolution 动态输入 ==============================
+app.registerExtension({
+    name: "ZML.UnifyImageResolution.DynamicInputs",
+    async beforeRegisterNodeDef(nodeType, nodeData, app) {
+        if (nodeData.name !== "ZML_UnifyImageResolution") return;
+
+        const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function() {
+            const r = origOnNodeCreated ? origOnNodeCreated.apply(this, arguments) : undefined;
+            try {
+                const node = this;
+                // 延迟执行，确保节点完全初始化后再裁剪空输入
+                setTimeout(() => {
+                    try {
+                        ensureOneFreeImageInput(node, true);
+                        node.size = node.computeSize(node.size);
+                        app.graph?.setDirtyCanvas(true, true);
+                    } catch(e) { console.error("ZML_UnifyImageResolution init error:", e); }
+                }, 0);
+            } catch (e) {
+                console.error("ZML_UnifyImageResolution init schedule error:", e);
+            }
+            return r;
+        };
+
+        const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function(side, slot, connect, link_info, output) {
+            const r = origOnConnectionsChange ? origOnConnectionsChange.apply(this, arguments) : undefined;
+            if (side === 1) {
+                const node = this;
+                // 使用轻微延迟，等待链接状态稳定再修正输入数量
+                setTimeout(() => {
+                    try {
+                        ensureOneFreeImageInput(node, false);
+                        node.size = node.computeSize(node.size);
+                        app.graph?.setDirtyCanvas(true, true);
+                    } catch(e) { console.error("ZML_UnifyImageResolution conn change error:", e); }
+                }, 50);
+            }
+            return r;
+        };
+
+        function ensureOneFreeImageInput(node, prune = false) {
+            const imageSlots = [];
+            for (let i = 0; i < (node.inputs?.length || 0); i++) {
+                const inp = node.inputs[i];
+                const name = (inp?.name || inp?.label || "");
+                const m = /^图像(\d+)$/.exec(name);
+                if (m) {
+                    imageSlots.push({ slot: i, idx: parseInt(m[1], 10), linked: !!inp.link });
+                }
+            }
+            imageSlots.sort((a, b) => a.idx - b.idx);
+
+            // 初始时裁剪多余的空图像输入，只保留“图像1”
+            if (prune) {
+                const toRemove = imageSlots.filter(s => !s.linked && s.idx > 1).sort((a,b)=>b.idx-a.idx);
+                toRemove.forEach(s => {
+                    try { node.removeInput(s.slot); } catch {}
+                });
+                return ensureOneFreeImageInput(node, false);
+            }
+
+            const maxIdx = imageSlots.length ? Math.max(...imageSlots.map(s => s.idx)) : 0;
+            const empty = imageSlots.filter(s => !s.linked);
+
+            // 没有空闲输入且未达到上限时，新增下一个“图像N”输入
+            if (empty.length === 0 && maxIdx < 20) {
+                const nextIdx = maxIdx + 1;
+                try { node.addInput(`图像${nextIdx}`, "IMAGE", { forceInput: true }); } catch {}
+                return ensureOneFreeImageInput(node, false);
+            }
+
+            // 保持仅一个空闲输入：移除多余的空输入（优先移除索引较大的）
+            const empties = [];
+            for (let i = 0; i < (node.inputs?.length || 0); i++) {
+                const inp = node.inputs[i];
+                const name = (inp?.name || inp?.label || "");
+                const m = /^图像(\d+)$/.exec(name);
+                if (m && !inp.link) empties.push({ slot: i, idx: parseInt(m[1], 10) });
+            }
+            empties.sort((a,b)=>b.idx-a.idx);
+            while (empties.length > 1) {
+                const rem = empties.shift();
+                try { node.removeInput(rem.slot); } catch {}
+                return ensureOneFreeImageInput(node, false);
+            }
+        }
+    }
+});
+
+
 // ============================== ZML_MergeText 动态输入 ==============================
 app.registerExtension({
     name: "ZML.MergeText.DynamicInputs",
