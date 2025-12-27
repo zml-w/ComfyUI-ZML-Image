@@ -763,6 +763,14 @@
 
 - **LoRA加载节点：https://github.com/pythongosssss/ComfyUI-Custom-Scripts**
 
+- **采样器节点：**
+
+   * 借鉴了[效率采样器](https://github.com/jags111/efficiency-nodes-comfyui)的随机种方法和预览实现方式。
+  
+   * 借鉴了[SMZ](https://github.com/shiimizu/ComfyUI_smZNodes)的GPU噪波方式。
+  
+   * 借鉴了[视频节点](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite)的视频动态预览方式。
+
 ### 借鉴的灵感：
 
 - **桌宠：https://github.com/11dogzi/Comfyui-ergouzi-kaiguan**
