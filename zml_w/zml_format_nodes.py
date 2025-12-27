@@ -1718,7 +1718,7 @@ ANY_TYPE = AnyType("*")
 class ZML_MergeToList:
     """
     ZML 合并到列表节点
-    功能：通过 Widget 手动控制输入数量 (1-10)，将输入合并为列表输出。
+    功能：将多个输入合并为列表输出，支持动态添加输入接口。
     逻辑：输入类型任意，但为了保证列表安全性，后续输入必须与第一个输入的类型一致，否则会被忽略。
     """
     
@@ -1727,13 +1727,10 @@ class ZML_MergeToList:
         # 预定义所有可能的输入，防止后端由前端动态调整时报错
         # 实际显示的接口数量由前端 JS 控制
         optional_inputs = {}
-        for i in range(1, 11):
-            optional_inputs[f"input_{i}"] = (ANY_TYPE,)
+        for i in range(1, 21):
+            optional_inputs[f"输入{i}"] = (ANY_TYPE, {"forceInput": True})
             
         return {
-            "required": {
-                "数量": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1, "display": "number"}),
-            },
             "optional": optional_inputs
         }
 
@@ -1748,14 +1745,14 @@ class ZML_MergeToList:
     
     FUNCTION = "merge_to_list"
 
-    def merge_to_list(self, 数量, **kwargs):
+    def merge_to_list(self, **kwargs):
         # 收集数据
         collected_list = []
         first_item_type = None
         
-        # 按照 1 到 数量 的顺序遍历
-        for i in range(1, 数量 + 1):
-            key = f"input_{i}"
+        # 按照 1 到 20 的顺序遍历
+        for i in range(1, 21):
+            key = f"输入{i}"
             val = kwargs.get(key, None)
             
             if val is not None:

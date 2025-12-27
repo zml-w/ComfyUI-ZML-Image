@@ -86,8 +86,8 @@ class ZML_XY_LoRA_Loader:
                 "LoRA文件夹路径": ("STRING", {"default": "E:\\Models\\Loras", "multiline": False}),
                 "LoRA数量": ("INT", {"default": 3, "min": 1, "step": 1}),
                 "LoRA权重数量": ("INT", {"default": 2, "min": 1, "step": 1}),
-                "权重起始值": ("FLOAT", {"default": 0.5, "min": -10.0, "max": 10.0, "step": 0.1}),
-                "权重结束值": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.1}),
+                "权重起始值": ("FLOAT", {"default": 0.8, "min": -10.0, "max": 10.0, "step": 0.05}),
+                "权重结束值": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.05}),
                 "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=权重, Y=LoRA)", "label_off": "(X=LoRA, Y=权重)"}),
             },
             "optional": {

@@ -1733,7 +1733,6 @@ class ZML_TextCounter:
         
         return path
 
-
 # ============================== 节点注册 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_TextInput": ZML_TextInput,
@@ -1746,7 +1745,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_DualIntegerV2": ZML_DualIntegerV2,
     "ZML_DualIntegerV3": ZML_DualIntegerV3,
     "ZML_PresetResolution": ZML_PresetResolution,
-    "ZML_PresetResolutionV2": ZML_PresetResolutionV2, # 新增
+    "ZML_PresetResolutionV2": ZML_PresetResolutionV2,
     "ZML_SequentialIntegerLoader": ZML_SequentialIntegerLoader, 
     "ZML_IntegerStringConverter": ZML_IntegerStringConverter,
     "ZML_IntegerFloatConverter": ZML_IntegerFloatConverter,
@@ -1765,7 +1764,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_DualIntegerV2": "ZML_双整数V2",
     "ZML_DualIntegerV3": "ZML_双整数V3（判断）",
     "ZML_PresetResolution": "ZML_预设分辨率",
-    "ZML_PresetResolutionV2": "ZML_预设分辨率V2", # 新增
+    "ZML_PresetResolutionV2": "ZML_预设分辨率V2",
     "ZML_SequentialIntegerLoader": "ZML_顺序加载整数", 
     "ZML_IntegerStringConverter": "ZML_整数字符串互转",
     "ZML_IntegerFloatConverter": "ZML_整数浮点互转",

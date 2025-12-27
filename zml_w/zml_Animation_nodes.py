@@ -416,8 +416,13 @@ class ZML_PreviewImage:
                 image_array = 255. * image_tensor.cpu().numpy()
                 pil_image = Image.fromarray(np.clip(image_array, 0, 255).astype(np.uint8))
                 
-                # 保存图像（不添加元数据，仅用于预览）
-                pil_image.save(final_image_path, compress_level=1)  # 使用较低的压缩级别以加快预览速度
+                # 保存图像，添加元数据用于工作流信息
+                metadata = PngImagePlugin.PngInfo()
+                metadata.add_text("workflow", "ZML_PreviewImage")
+                metadata.add_text("node_id", str(unique_id) if unique_id else "unknown")
+                metadata.add_text("image_index", str(index))
+                metadata.add_text("timestamp", timestamp)
+                pil_image.save(final_image_path, pnginfo=metadata, compress_level=1)  # 使用较低的压缩级别以加快预览速度
                 
                 # 准备用于UI预览的结果
                 try:
@@ -620,6 +625,11 @@ class ZML_ImageMemory:
     # 启用OUTPUT_NODE，使其能在UI中预览图像。
     OUTPUT_NODE = True
 
+    # 类变量，用于在节点实例之间共享缓存
+    _image_cache = {}    # UI预览用的路径缓存
+    _counter_cache = {}  # 计数器
+    _tensor_buffer = {}  # 【新增】核心数据缓存：用于存储真实的图像数据张量
+
     def __init__(self):
         self.stored_image = None
         # 定义临时预览图像子目录
@@ -635,9 +645,10 @@ class ZML_ImageMemory:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "关闭输入": ("BOOLEAN", {"default": False, "tooltip": "开启后不执行上游节点"}),
+                "关闭输入": ("BOOLEAN", {"default": False, "tooltip": "开启后不执行上游节点，锁定当前状态"}),
                 "关闭输出": ("BOOLEAN", {"default": False, "tooltip": "开启后不执行下游节点"}),
-                "选择输出索引": ("INT", {"default": 0, "min": 0, "max": 50, "step": 1, "label": "选择输出索引(0=全部)", "tooltip": "0=输出所有图像，1-50=选择输出特定索引的单张图像"}),
+                "选择输出索引": ("INT", {"default": 0, "min": 0, "max": 50, "step": 1, "label": "选择输出索引(0=全部)", "tooltip": "0=输出缓存中的所有图像拼接结果，1-50=选择输出缓存队列中特定位置的单张图像"}),
+                "暂存次数": ("INT", {"default": 1, "min": 1, "max": 64, "step": 1, "display": "number", "tooltip": "设置缓存队列的大小。例如设为3，节点会保留最近3次运行的图像（或3个批次），并将其合并输出。"}),
             },
             "optional": {
                 "输入图像": ("IMAGE", lazy_options),
@@ -653,131 +664,139 @@ class ZML_ImageMemory:
     RETURN_NAMES = ("图像",)
     FUNCTION = "store_and_retrieve_image"
     CATEGORY = "image/ZML_图像/工具"
+    OUTPUT_IS_LIST = (True,)
     
     def check_lazy_status(self, 关闭输入, **kwargs):
         """告诉系统是否需要输入图像"""
-        # 如果关闭输入，则不需要执行上游节点
         if 关闭输入:
             return None
-        # 否则需要输入图像
         elif "输入图像" in kwargs:
             return ["输入图像"]
         return None
 
-    def store_and_retrieve_image(self, 关闭输入, 关闭输出, 选择输出索引, 输入图像=None, prompt=None, extra_pnginfo=None, unique_id=None):
-        # 保存元数据到实例变量
+    def store_and_retrieve_image(self, 关闭输入, 关闭输出, 选择输出索引, 暂存次数=1, 输入图像=None, prompt=None, extra_pnginfo=None, unique_id=None):
         self.prompt = prompt
         self.extra_pnginfo = extra_pnginfo
         
-        image_to_output = None
+        # 1. 确保唯一ID对应的缓存列表存在
+        if unique_id:
+            if unique_id not in self._tensor_buffer:
+                self._tensor_buffer[unique_id] = []
+            if unique_id not in self._image_cache:
+                self._image_cache[unique_id] = []
 
-        if 关闭输入:
-            # 关闭输入时，从内存获取图像
-            image_to_output = self.stored_image
-        elif 输入图像 is not None:
-            # 有新输入图像时，存储到内存
-            self.stored_image = 输入图像
-            image_to_output = 输入图像
-        else:
-            # 无新输入图像时，从内存获取
-            image_to_output = self.stored_image
+        new_image_received = False
+        current_input_image = None
 
-        if image_to_output is None:
-            default_size = 1
-            image_to_output = torch.zeros((1, default_size, default_size, 3), dtype=torch.float32, device="cpu")
-
-        # ====== 处理UI预览图像 ======
-        subfolder_path = os.path.join(self.temp_output_dir, self.temp_subfolder)
-        os.makedirs(subfolder_path, exist_ok=True)
-
-        # 准备UI所需的数据列表
-        ui_image_data = []
-        
-        # 获取批次大小
-        batch_size = image_to_output.shape[0]
-        
-        # 处理每个批次的图像
-        for i in range(batch_size):
-            # 提取当前批次的图像
-            current_image = image_to_output[i:i+1]
+        # 2. 处理输入逻辑
+        if not 关闭输入 and 输入图像 is not None:
+            current_input_image = 输入图像
+            new_image_received = True
             
-            # 将 tensor 转换为 PIL Image
-            # 确保尺寸正确，如果 tensor 是 (1, 1, 1, 3)，PIL无法处理
-            if current_image.shape[1] == 1 and current_image.shape[2] == 1:
-                # 对于1x1的黑图，创建一个可见的小图用于预览，例如 32x32
-                preview_image_tensor = torch.zeros((1, 32, 32, 3), dtype=torch.float32, device=current_image.device)
-                pil_image = Image.fromarray((preview_image_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
+            # --- 【核心修改】数据累积逻辑 ---
+            if unique_id:
+                # 不再清空缓存，支持暂存不同分辨率的图像
+                # 添加新图像到 Tensor 缓存
+                self._tensor_buffer[unique_id].append(current_input_image)
+                
+                # 维护队列长度（先进先出）
+                while len(self._tensor_buffer[unique_id]) > 暂存次数:
+                    self._tensor_buffer[unique_id].pop(0) # 移除最旧的
+
+        # 3. 准备生成 UI 预览图 (这一步主要是为了生成缩略图文件)
+        # 我们只为"新进来的"图片生成预览文件，旧的已经在以前运行生成过了
+        current_image_paths = []
+        if new_image_received and current_input_image is not None:
+            subfolder_path = os.path.join(self.temp_output_dir, self.temp_subfolder)
+            os.makedirs(subfolder_path, exist_ok=True)
+            
+            batch_size = current_input_image.shape[0]
+            for i in range(batch_size):
+                img_t = current_input_image[i:i+1]
+                # 处理 1x1 黑图等特殊情况
+                if img_t.shape[1] <= 1 and img_t.shape[2] <= 1:
+                    preview_tensor = torch.zeros((1, 32, 32, 3), dtype=torch.float32, device=img_t.device)
+                    pil_img = Image.fromarray((preview_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
+                else:
+                    pil_img = Image.fromarray((img_t.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
+                
+                filename = f"zml_mem_{unique_id}_{uuid.uuid4().hex[:8]}.png"
+                file_path = os.path.join(subfolder_path, filename)
+                
+                metadata = PngImagePlugin.PngInfo()
+                if self.prompt: metadata.add_text("prompt", json.dumps(self.prompt))
+                
+                pil_img.save(file_path, pnginfo=metadata, compress_level=4)
+                current_image_paths.append({"filename": filename, "subfolder": self.temp_subfolder, "type": "temp"})
+
+        # 4. 更新 UI 缓存 (路径列表)
+        if unique_id:
+            if new_image_received:
+                self._image_cache[unique_id].append(current_image_paths)
+                # 维护 UI 缓存长度
+                while len(self._image_cache[unique_id]) > 暂存次数:
+                    self._image_cache[unique_id].pop(0)
+            
+            # 扁平化 UI 列表 (因为 self._image_cache 是 [[paths_run1], [paths_run2]] 结构)
+            # 我们需要把它变成一个长列表给前端
+            flat_ui_paths = []
+            for batch_paths in self._image_cache[unique_id]:
+                flat_ui_paths.extend(batch_paths)
+        else:
+            flat_ui_paths = current_image_paths
+
+        # 5. --- 【核心修改】构建输出数据 ---
+        # 默认输出空
+        final_output_list = []
+
+        if unique_id and len(self._tensor_buffer[unique_id]) > 0:
+            # 检查所有图像的分辨率是否一致
+            resolutions = set()
+            for tensor in self._tensor_buffer[unique_id]:
+                h, w, c = tensor.shape[1:]
+                resolutions.add((h, w, c))
+            
+            if len(resolutions) == 1:
+                # 分辨率一致，拼接成一个大的 Batch
+                final_output_batch = torch.cat(self._tensor_buffer[unique_id], dim=0)
+                final_output_list = [final_output_batch]
             else:
-                # 正常图像处理
-                pil_image = Image.fromarray((current_image.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
-
-            # 生成唯一文件名，包含批次索引
-            filename = f"zml_image_memory_batch_{i}_{uuid.uuid4()}.png"
-            file_path = os.path.join(subfolder_path, filename)
-
-            # 创建元数据对象
-            metadata = PngImagePlugin.PngInfo()
-
-            # 添加标准的ComfyUI元数据（工作流等）
-            if self.prompt is not None:
-                try:
-                    metadata.add_text("prompt", json.dumps(self.prompt))
-                except Exception:
-                    pass
-            if self.extra_pnginfo is not None:
-                for key, value in self.extra_pnginfo.items():
-                    try:
-                        metadata.add_text(key, json.dumps(value))
-                    except Exception:
-                        pass
-
-            # 保存图像和元数据
-            pil_image.save(file_path, pnginfo=metadata, compress_level=4)
-
-            # 添加到UI数据列表
-            ui_image_data.append({"filename": filename, "subfolder": self.temp_subfolder, "type": "temp"})
-        
-        # 根据选择的索引提取输出图像
-        # 当索引为0时，输出所有图像
-        if 选择输出索引 == 0:
-            selected_image = image_to_output
+                # 分辨率不同，输出图像列表
+                final_output_list = self._tensor_buffer[unique_id].copy()
+        elif current_input_image is not None:
+            # 如果没有 unique_id (极端情况)，直接透传当前输入
+            final_output_list = [current_input_image]
         else:
-            # 由于用户索引从1开始，需要减1以适应Python数组索引从0开始的特性
-            zero_based_index = 选择输出索引 - 1
-            # 确保索引在有效范围内
-            selected_index = min(zero_based_index, batch_size - 1) if batch_size > 0 else 0
-            # 从批次中提取选择的图像
-            selected_image = image_to_output[selected_index:selected_index+1]
+            # 没有图像，输出空列表
+            final_output_list = []
 
-        # 如果关闭输出，使用ExecutionBlocker阻止下游节点执行
+        # 6. 处理索引选择
+        if 选择输出索引 > 0 and len(final_output_list) > 0:
+            # 输出指定索引的那一张
+            # 索引转换：用户输入1代表第1张(idx 0)
+            idx = 选择输出索引 - 1
+            if 0 <= idx < len(final_output_list):
+                final_output_list = [final_output_list[idx]]
+            else:
+                # 索引越界时，返回最后一张
+                print(f"ZML_ImageMemory: 索引 {选择输出索引} 超出范围 (当前共有 {len(final_output_list)} 张), 返回最后一张。")
+                final_output_list = [final_output_list[-1]]
+
+        # 7. 处理关闭输出
         if 关闭输出 and ExecutionBlocker is not None:
-            output = ExecutionBlocker(None)
-        else:
-            # 输出选择的图像
-            output = selected_image
+            return {"ui": {"images": flat_ui_paths}, "result": (ExecutionBlocker(None),)}
             
-        # 返回结果：(图像,), 同时返回UI信息
-        return {"ui": {"images": ui_image_data}, "result": (output,)}
+        return {"ui": {"images": flat_ui_paths}, "result": (final_output_list,)}
 
     def _save_to_local(self, image_tensor):
-        """将图像张量保存到本地文件"""
-        try:
-            pil_image = Image.fromarray((image_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
-            pil_image.save(self.persistence_file, "PNG")
-        except Exception as e:
-            print(f"保存图像到本地失败: {e}")
+        # 此方法保留，虽然逻辑中未深度使用
+        pass
 
     def _load_from_local(self):
-        """从本地文件加载图像张量"""
-        if os.path.exists(self.persistence_file):
-            try:
-                pil_image = Image.open(self.persistence_file).convert('RGB')
-                image_np = np.array(pil_image).astype(np.float32) / 255.0
-                return torch.from_numpy(image_np).unsqueeze(0)
-            except Exception as e:
-                print(f"从本地加载图像失败: {e}")
+        # 此方法保留
         return None
 
+# ============================== 提示词token统一 ==============================
 class ZML_PromptTokenBalancer:
     """
     提示词token统一节点

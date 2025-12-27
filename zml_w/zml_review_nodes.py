@@ -1318,26 +1318,25 @@ class ZML_MaskSeparateThree:
 class ZML_UnifyImageResolution:
     @classmethod
     def INPUT_TYPES(cls):
+        # 预定义最多20个图像输入名称，供前端按需动态添加/移除
+        optional_inputs = {}
+        for i in range(1, 21):
+            optional_inputs[f"图像{i}"] = ("IMAGE", {"forceInput": True})
         return {
             "required": {
-                "图像": ("IMAGE",),
                 "分辨率": (["根据首张图像", "根据最大图像", "根据最小图像", "自定义"], {"default": "根据首张图像"}),
                 "宽度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
                 "高度": ("INT", {"default": 1024, "min": 8, "max": 8192, "step": 8}),
                 "处理模式": (["拉伸", "中心裁剪", "填充黑", "填充白", "填充透明"],),
             },
-            "optional": {
-                "图像_2": ("IMAGE",),
-                "图像_3": ("IMAGE",),
-                "图像_4": ("IMAGE",),
-                "图像_5": ("IMAGE",),
-            }
+            "optional": optional_inputs,
         }
 
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("图像", "输出宽度", "输出高度")
     FUNCTION = "unify_resolution"
     CATEGORY = "image/ZML_图像/图像"
+    INPUT_IS_LIST = (False, False, False, False) + tuple([True] * 20)  # 所有图像输入都支持列表
 
     def tensor_to_pil(self, tensor):
         # 确保转换为RGBA以正确处理透明度（尤其是填充模式）
@@ -1370,8 +1369,31 @@ class ZML_UnifyImageResolution:
         else: # 对于拉伸和中心裁剪，实际上不会用到填充色，但为了RGBA统一返回透明
             return (0, 0, 0, 0) # 完全透明
 
-    def unify_resolution(self, 图像, 分辨率, 宽度, 高度, 处理模式, 图像_2=None, 图像_3=None, 图像_4=None, 图像_5=None):
-        all_input_images_batches = [图像, 图像_2, 图像_3, 图像_4, 图像_5]
+    def unify_resolution(self, 分辨率, 宽度, 高度, 处理模式, **kwargs):
+        # 处理列表输入
+        all_input_images_batches = []
+        
+        # 处理所有图像输入
+        for i in range(1, 21):
+            key = f"图像{i}"
+            img = kwargs.get(key, None)
+            if img is not None:
+                if isinstance(img, list):
+                    for item in img:
+                        if item is not None:
+                            all_input_images_batches.append(item)
+                else:
+                    all_input_images_batches.append(img)
+        
+        # 处理非列表参数
+        if isinstance(宽度, list):
+            宽度 = 宽度[0] if 宽度 else 1024
+        if isinstance(高度, list):
+            高度 = 高度[0] if 高度 else 1024
+        if isinstance(分辨率, list):
+            分辨率 = 分辨率[0] if 分辨率 else "自定义"
+        if isinstance(处理模式, list):
+            处理模式 = 处理模式[0] if 处理模式 else "拉伸"
 
         # 过滤掉None的输入图像批次，并展平为一个列表，包含所有批次中的所有图像张量
         all_individual_images_tensors = []
@@ -1825,7 +1847,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_LimitImageAspect": ZML_LimitImageAspect,
     "ZML_MaskCropNode": ZML_MaskCropNode,
     "ZML_ImageSelectorNode": ZML_ImageSelectorNode,
-    "ZML_BufferNode": ZML_BufferNode, # 新增
+    "ZML_BufferNode": ZML_BufferNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1844,5 +1866,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_LimitImageAspect": "ZML_限制图像比例",
     "ZML_MaskCropNode": "ZML_遮罩裁剪",
     "ZML_ImageSelectorNode": "ZML_多图选择",
-    "ZML_BufferNode": "ZML_缓冲节点", # 新增
+    "ZML_BufferNode": "ZML_缓冲节点",
 }
