@@ -264,7 +264,7 @@ class ZML_XY_Prompt_Loader:
                 "CLIP": ("CLIP",),
                 "固定提示词": ("STRING", {"multiline": False, "default": "masterpiece, best quality, 1girl"}),
                 "多行变量": ("STRING", {"multiline": True, "default": "red dress\nblue dress\nwhite dress"}),
-
+                "分隔符": ("STRING", {"default": ", "}),
                 "权重数量": ("INT", {"default": 2, "min": 1, "step": 1}),
                 "权重起始值": ("FLOAT", {"default": 1.0, "min": -5, "max": 10.0, "step": 0.05}),
                 "权重结束值": ("FLOAT", {"default": 1.2, "min": -5, "max": 10.0, "step": 0.05}),
@@ -1169,7 +1169,6 @@ class ZML_XY_LoRA_Loader_V3:
                 "无LoRA对比": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
                 "固定提示词": ("STRING", {"default": "", "multiline": False}),
                 "多行变量提示词": ("STRING", {"default": "", "multiline": True}),
-                "分隔符": ("STRING", {"default": ", "}),
                 "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=提示词, Y=LoRA)", "label_off": "(X=LoRA, Y=提示词)"}),
             }
         }
@@ -1262,7 +1261,7 @@ class ZML_XY_LoRA_Loader_V3:
 
                 # 拼接提示词
                 if current_line:
-                    final_text = f"{固定提示词}{current_line}"
+                    final_text = f"{固定提示词}, {current_line}"
                 else:
                     final_text = 固定提示词
                 
