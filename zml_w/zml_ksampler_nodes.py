@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import server
 import latent_preview as core_latent_preview
+from latent_preview import LatentPreviewMethod
 import functools
 from PIL import Image, PngImagePlugin
 import time
@@ -106,7 +107,7 @@ def rng_rand_source(rand_source='cpu'):
                 return torch.asarray(rng.randn(shape), device=latent_image.device)
             else:
                 return torch.randn(shape, dtype=latent_image.dtype, layout=latent_image.layout,
-                                   generator=generator, device=latent_image.device)
+                                   generator=generator, device="cpu").to(latent_image.device)
 
         unique_inds, inverse = np.unique(noise_inds, return_inverse=True)
         noises = []
@@ -116,7 +117,7 @@ def rng_rand_source(rand_source='cpu'):
                 noise = torch.asarray(rng.randn(shape), device=latent_image.device)
             else:
                 noise = torch.randn(shape, dtype=latent_image.dtype, layout=latent_image.layout,
-                                    generator=generator, device=latent_image.device)
+                                    generator=generator, device="cpu").to(latent_image.device)
             noises.append(noise)
         return torch.cat(noises)[inverse]
 
@@ -127,22 +128,31 @@ def rng_rand_source(rand_source='cpu'):
 # ===============================================
 @contextmanager
 def zml_preview(preview_method, video_preview_enabled):
-    old_method = args.preview_method
-    should_override = True
+    # 建立字符串到枚举的映射。注意：此处必须是 NoPreviews (带s)
+    method_map = {
+        "auto": LatentPreviewMethod.Auto,
+        "latent2rgb": LatentPreviewMethod.Latent2RGB,
+        "taesd": LatentPreviewMethod.TAESD,
+        "none": LatentPreviewMethod.NoPreviews,
+    }
     
+    old_method = args.preview_method
+    target_method = method_map.get(preview_method, LatentPreviewMethod.Auto)
+    
+    should_override = True
     if preview_method == "auto" and not video_preview_enabled:
         should_override = False
 
     try:
         if should_override:
-            args.preview_method = preview_method
+            args.preview_method = target_method
         yield
     finally:
         if should_override:
             args.preview_method = old_method
 
 # ===============================================
-# ZML 动态预览逻辑
+# ZML 动态预览逻辑 (Hook)
 # ===============================================
 def zml_hook(obj, attr):
     def dec(f):
@@ -660,8 +670,12 @@ class ZML_KSampler:
         with zml_preview(预览方式, video_preview_enabled):
             samples = run_zml_sampler(模型, 种子, 步数, CFG, 采样器, 调度器, 正面条件, 负面条件, Latent, denoise=降噪, disable_noise=False, start_step=0, last_step=步数, force_full_denoise=False, script=脚本)[0]
             
-        if VAE: image = VAEDecode().decode(VAE, samples)[0]
-        else: image = torch.zeros(1, 1, 3, dtype=torch.float32)
+        # 修正：不论预览方式如何，只要有 VAE，永远输出真实的解码图像供后续节点使用
+        if VAE: 
+            image = VAEDecode().decode(VAE, samples)[0]
+        else: 
+            image = torch.zeros(1, 1, 3, dtype=torch.float32)
+            
         if not video_preview_enabled: serv.send_sync('VHS_cleanup_preview', {'id': serv.last_node_id})
         if hasattr(serv, 'zml_video_preview_enabled'): del serv.zml_video_preview_enabled
         if hasattr(serv, 'zml_video_preview_rate'): del serv.zml_video_preview_rate
@@ -703,8 +717,12 @@ class ZML_KSampler_Advanced:
         with zml_preview(预览方式, video_preview_enabled):
             samples = run_zml_sampler(模型, 随机种子, 步数, CFG, 采样器, 调度器, 正面条件, 负面条件, Latent, denoise=1.0, disable_noise=disable_noise, start_step=开始步数, last_step=结束步数, force_full_denoise=force_full_denoise, script=脚本)[0]
             
-        if VAE: image = VAEDecode().decode(VAE, samples)[0]
-        else: image = torch.zeros(1, 1, 3, dtype=torch.float32)
+        # 修正：始终输出正常解码图像
+        if VAE: 
+            image = VAEDecode().decode(VAE, samples)[0]
+        else: 
+            image = torch.zeros(1, 1, 3, dtype=torch.float32)
+            
         if not video_preview_enabled: serv.send_sync('VHS_cleanup_preview', {'id': serv.last_node_id})
         if hasattr(serv, 'zml_video_preview_enabled'): del serv.zml_video_preview_enabled
         if hasattr(serv, 'zml_video_preview_rate'): del serv.zml_video_preview_rate

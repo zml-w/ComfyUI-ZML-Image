@@ -152,7 +152,11 @@ def force_compatibility_mode():
 
 class ZML_AutoCensorNode:
     def __init__(self):
-        self.node_dir = os.path.dirname(os.path.abspath(__file__)); self.counter_dir = os.path.join(self.node_dir, "counter"); os.makedirs(self.counter_dir, exist_ok=True); self.counter_file = os.path.join(self.counter_dir, "review.txt"); self.ensure_counter_file()
+        self.node_dir = os.path.dirname(os.path.abspath(__file__))
+        self.counter_dir = os.path.join(self.node_dir, "counter")
+        os.makedirs(self.counter_dir, exist_ok=True)
+        self.counter_file = os.path.join(self.counter_dir, "review.txt")
+        self.ensure_counter_file()
     def ensure_counter_file(self):
         if not os.path.exists(self.counter_file):
             with open(self.counter_file, "w", encoding="utf-8") as f: f.write("0")
@@ -160,22 +164,41 @@ class ZML_AutoCensorNode:
     def INPUT_TYPES(cls):
         try: model_list = folder_paths.get_filename_list("ultralytics") or []
         except KeyError: model_list = []
-        return {"required": {"原始图像": ("IMAGE",), "YOLO模型": (model_list,), "置信度阈值": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}), "覆盖模式": (["图像", "马赛克"],), "拉伸图像": ("BOOLEAN", {"default": False}), "检测模式": ("BOOLEAN", {"default": False, "description": "开启后如果YOLO检测到目标，则输出覆盖图像"}), "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256, "step": 1}), "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}), "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),}, "optional": { "覆盖图": ("IMAGE",), }}
-    RETURN_TYPES = ("IMAGE", "MASK"); RETURN_NAMES = ("处理后图像", "检测遮罩"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/工具"
-    def process(self, 原始图像, YOLO模型, 置信度阈值, 覆盖模式, 拉伸图像, 检测模式, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 覆盖图=None):
-        if not YOLO模型: _, h, w, _ = 原始图像.shape; return (原始图像, torch.zeros((1, h, w), dtype=torch.float32))
-        if 覆盖模式 == "图像" and 覆盖图 is None: 覆盖图 = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
+        return {
+            "required": {
+                "原始图像": ("IMAGE",),
+                "YOLO模型": (model_list,),
+                "置信度阈值": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "覆盖模式": (["图像", "马赛克"],),
+                "拉伸图像": ("BOOLEAN", {"default": False}),
+                "审查模式": ("BOOLEAN", {"default": False, "tooltip": "开启审查模式时，如果检测到目标，将直接输出安全审查图像"}),
+                "马赛克数量": ("INT", {"default": 5, "min": 1, "max": 256, "step": 1}),
+                "遮罩缩放系数": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05}),
+                "遮罩膨胀": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1}),
+            },
+            "optional": {
+                "安全审查图像": ("IMAGE", {"tooltip": "开启审查模式时，如果检测到目标，将直接输出安全审查图像"})
+            }
+        }
+    RETURN_TYPES = ("IMAGE", "MASK", "BOOLEAN"); RETURN_NAMES = ("处理后图像", "检测遮罩", "检测结果"); FUNCTION = "process"; CATEGORY = "image/ZML_图像/工具"
+    def process(self, 原始图像, YOLO模型, 置信度阈值, 覆盖模式, 拉伸图像, 审查模式, 马赛克数量, 遮罩缩放系数, 遮罩膨胀, 安全审查图像=None):
+        if not YOLO模型:
+            _, h, w, _ = 原始图像.shape
+            return (原始图像, torch.zeros((1, h, w), dtype=torch.float32), False)
+        if 覆盖模式 == "图像" and 安全审查图像 is None: 安全审查图像 = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
         model_path = folder_paths.get_full_path("ultralytics", YOLO模型)
         if not model_path: raise FileNotFoundError(f"模型文件 '{YOLO模型}' 未找到。")
         with force_compatibility_mode(): model = YOLO(model_path)
-        source_pil = self.tensor_to_pil(原始图像); source_cv2 = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR); h, w = source_cv2.shape[:2]
+        source_pil = self.tensor_to_pil(原始图像)
+        source_cv2 = cv2.cvtColor(np.array(source_pil), cv2.COLOR_RGB2BGR)
+        h, w = source_cv2.shape[:2]
         results = model(source_pil, conf= 置信度阈值, verbose=False)
         final_combined_mask = Image.new('L', (w, h), 0)
         has_detections = len(results[0]) > 0
         
-        if has_detections and 检测模式 and 覆盖模式 == "图像":
-            # 当检测到目标且检测模式开启时，直接返回覆盖图像的原始尺寸
-            overlay_pil = self.tensor_to_pil(覆盖图)
+        if has_detections and 审查模式 and 覆盖模式 == "图像":
+            # 当检测到目标且审查模式开启时，直接返回安全审查图像的原始尺寸
+            overlay_pil = self.tensor_to_pil(安全审查图像)
             # 不再调整覆盖图大小，直接使用原始尺寸
             # 转换为OpenCV格式
             source_cv2 = cv2.cvtColor(np.array(overlay_pil.convert('RGB')), cv2.COLOR_RGB2BGR)
@@ -184,18 +207,23 @@ class ZML_AutoCensorNode:
                 mask_cv, mask_type = self.get_mask(result, w, h)
                 if mask_cv is None: continue
                 processed_mask_cv = self.process_mask(mask_cv, 遮罩缩放系数, 遮罩膨胀)
-                source_cv2 = self.apply_overlay(source_cv2, processed_mask_cv, 覆盖模式, 覆盖图, 马赛克数量, 拉伸图像, mask_type)
+                source_cv2 = self.apply_overlay(source_cv2, processed_mask_cv, 覆盖模式, 安全审查图像, 马赛克数量, 拉伸图像, mask_type)
                 final_combined_mask.paste(Image.fromarray(processed_mask_cv), (0,0), Image.fromarray(processed_mask_cv))
         # 未检测到目标时，保持原始图像不变
         
         final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
-        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1))
+        return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1), has_detections)
         
         final_image_pil = Image.fromarray(cv2.cvtColor(source_cv2, cv2.COLOR_BGR2RGB))
         return (self.pil_to_tensor(final_image_pil), self.pil_to_tensor(final_combined_mask).squeeze(-1))
     def get_mask(self, result, w, h):
-        if hasattr(result, 'masks') and result.masks: return (cv2.resize(result.masks.data[0].cpu().numpy(), (w, h), interpolation=cv2.INTER_NEAREST) * 255).astype(np.uint8), 'segm'
-        elif hasattr(result, 'boxes') and result.boxes: box = result.boxes.xyxy[0].cpu().numpy().astype(int); mask_cv = np.zeros((h, w), dtype=np.uint8); cv2.rectangle(mask_cv, (box[0], box[1]), (box[2], box[3]), 255, -1); return mask_cv, 'bbox' # 修正了box[1]这里的问题
+        if hasattr(result, 'masks') and result.masks:
+            return (cv2.resize(result.masks.data[0].cpu().numpy(), (w, h), interpolation=cv2.INTER_NEAREST) * 255).astype(np.uint8), 'segm'
+        elif hasattr(result, 'boxes') and result.boxes:
+            box = result.boxes.xyxy[0].cpu().numpy().astype(int)
+            mask_cv = np.zeros((h, w), dtype=np.uint8)
+            cv2.rectangle(mask_cv, (box[0], box[1]), (box[2], box[3]), 255, -1)
+            return mask_cv, 'bbox' # 修正了box[1]这里的问题
         return None, None
     def process_mask(self, mask_cv, scale, dilation):
         processed_mask = mask_cv.copy()

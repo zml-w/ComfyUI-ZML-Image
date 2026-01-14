@@ -484,8 +484,8 @@ async def save_llm_config(request):
 
 # 注册节点
 NODE_CLASS_MAPPINGS = {
-    "ZML_LLM_ModelLoader": ZML_LLM_ModelLoader,      # V1 基础版
-    "ZML_LLM_ModelLoaderV2": ZML_LLM_ModelLoaderV2,  # V2 高级版
+    "ZML_LLM_ModelLoader": ZML_LLM_ModelLoader,   
+    "ZML_LLM_ModelLoaderV2": ZML_LLM_ModelLoaderV2, 
     "ZML_LLM_SystemPrompt": ZML_LLM_SystemPrompt,
     "ZML_LLM_Parameters": ZML_LLM_Parameters,
     "ZML_LLM_JsonSchema": ZML_LLM_JsonSchema,

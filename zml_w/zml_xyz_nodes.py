@@ -68,6 +68,39 @@ def text_size(draw, text, font):
     else:
         return draw.textsize(text, font=font)
 
+# 新增：文本自动换行计算函数
+def get_wrapped_text(draw, text, font, max_width):
+    if not text:
+        return [], 0
+    
+    # 估算单行高度
+    _, line_height = text_size(draw, "Wg", font)
+    
+    lines = []
+    
+    # 简单的分词策略：优先按空格分，长文件名可能没空格，需要按字符分
+    # 这里采用一种混合策略，逐字符累加，超过宽度就换行
+    current_line = ""
+    for char in text:
+        test_line = current_line + char
+        w, h = text_size(draw, test_line, font)
+        if w <= max_width:
+            current_line = test_line
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = char
+    if current_line:
+        lines.append(current_line)
+    
+    if not lines: lines = [text]
+    
+    # 计算总高度 (行高 + 行间距)
+    line_spacing = int(line_height * 0.1) # 10% 行间距
+    total_height = len(lines) * line_height + (len(lines) - 1) * line_spacing
+    
+    return lines, total_height
+
 COLOR_MAP = {
     "白色": "white", "黑色": "black", "红色": "red", 
     "绿色": "green", "蓝色": "blue", "黄色": "yellow", 
@@ -88,6 +121,7 @@ class ZML_XY_LoRA_Loader:
                 "LoRA权重数量": ("INT", {"default": 2, "min": 1, "step": 1}),
                 "权重起始值": ("FLOAT", {"default": 0.8, "min": -10.0, "max": 10.0, "step": 0.05}),
                 "权重结束值": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.05}),
+                "无LoRA对比": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭", "tooltip": "开启后，会额外跑一次没有LoRA的图，多个权重时不会重复生成无LoRA的图。比如LoRA数量3，权重数量2，那就是2*3=6次有LoRA图，无LoRA的图跑一次，剩下的一个通过复制图像来生成。总共跑2*3+1=7张图。"}),
                 "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=权重, Y=LoRA)", "label_off": "(X=LoRA, Y=权重)"}),
             },
             "optional": {
@@ -101,7 +135,7 @@ class ZML_XY_LoRA_Loader:
     FUNCTION = "load_batch_loras"
     CATEGORY = "image/ZML_图像/XYZ"
 
-    def load_batch_loras(self, 模型, LoRA文件夹路径, LoRA数量, LoRA权重数量, 权重起始值, 权重结束值, XY互换, CLIP=None):
+    def load_batch_loras(self, 模型, LoRA文件夹路径, LoRA数量, LoRA权重数量, 权重起始值, 权重结束值, 无LoRA对比, XY互换, CLIP=None):
         folder_path = LoRA文件夹路径.strip().strip('"')
         found_loras = []
         if os.path.exists(folder_path) and os.path.isdir(folder_path):
@@ -115,7 +149,13 @@ class ZML_XY_LoRA_Loader:
             except: pass
         
         lora_files = found_loras[:LoRA数量]
-        if not lora_files: lora_files = [None]
+        
+        # 核心逻辑：如果开启对比，且None不在列表里，就插到第一位
+        if  无LoRA对比:
+            if None not in  lora_files:
+                lora_files.insert(0, None )
+        
+        if not lora_files: lora_files = [None ]
 
         weights = []
         if LoRA权重数量 <= 1:
@@ -156,15 +196,25 @@ class ZML_XY_LoRA_Loader:
 
         out_models = []
         out_clips = []
+        cell_image_counts = [] # 这个列表记录每个格子跑几张图。1=正常采样，0=不采样直接复用
+        base_model_added = False # 标记原始模型是否已经进过采样队列
         loaded_cache = {}
 
         for outer_item in outer_loop:
             for inner_item in inner_loop:
                 current_lora, current_weight = get_args(inner_item, outer_item)
                 
-                if current_lora is None:
-                    out_models.append(模型)
-                    out_clips.append(CLIP)
+                # 如果是“无LoRA”的格子
+                if current_lora is None :
+                    if not  base_model_added:
+                        # 第一次遇到：输出模型到列表，进行一次采样
+                        out_models.append(模型)
+                        out_clips.append(CLIP)
+                        cell_image_counts.append(1 )
+                        base_model_added = True
+                    else:
+                        # 之后遇到：不再输出模型，标记为0告知Grid节点直接复用第一张图
+                        cell_image_counts.append(0 )
                     continue
                 
                 try:
@@ -181,9 +231,11 @@ class ZML_XY_LoRA_Loader:
                         new_model.patch_model_lora(lora_data, current_weight)
                         out_models.append(new_model)
                         out_clips.append(None)
+                    cell_image_counts.append(1)
                 except:
                     out_models.append(模型)
                     out_clips.append(CLIP)
+                    cell_image_counts.append(1)
                     
         del loaded_cache
 
@@ -194,6 +246,7 @@ class ZML_XY_LoRA_Loader:
             "y_title": y_title, # 新增
             "count_x": len(inner_loop),
             "count_y": len(outer_loop),
+            "cell_image_counts" : cell_image_counts,
             "total_images": len(out_models)
         }
 
@@ -211,7 +264,7 @@ class ZML_XY_Prompt_Loader:
                 "CLIP": ("CLIP",),
                 "固定提示词": ("STRING", {"multiline": False, "default": "masterpiece, best quality, 1girl"}),
                 "多行变量": ("STRING", {"multiline": True, "default": "red dress\nblue dress\nwhite dress"}),
-                "分隔符": ("STRING", {"default": ", "}),
+
                 "权重数量": ("INT", {"default": 2, "min": 1, "step": 1}),
                 "权重起始值": ("FLOAT", {"default": 1.0, "min": -5, "max": 10.0, "step": 0.05}),
                 "权重结束值": ("FLOAT", {"default": 1.2, "min": -5, "max": 10.0, "step": 0.05}),
@@ -297,7 +350,7 @@ class ZML_XY_Prompt_Loader:
 
 
 # ==========================================
-# 节点 3: ZML_XY_图表拼接 (核心修改)
+# 节点 3: ZML_XY_图表拼接
 # ==========================================
 class ZML_XY_Grid_Drawer:
     @classmethod
@@ -309,8 +362,8 @@ class ZML_XY_Grid_Drawer:
                 "图像": ("IMAGE",), 
                 "图表信息": ("ZML_GRID_INFO",),
                 "字体": (font_list,),
-                "字体大小": ("INT", {"default": 48, "min": 12}),
-                "网格间距": ("INT", {"default": 10, "min": 0}),
+                "字体大小": ("INT", {"default": 96, "min": 12}),
+                "网格间距": ("INT", {"default": 30, "min": 0}),
                 "背景颜色": (list(COLOR_MAP.keys()), {"default": "白色"}),
                 "文字颜色": (list(COLOR_MAP.keys()), {"default": "黑色"}),
                 "单元格图片排布": (["横向排列", "竖向排列"], {"default": "横向排列", "tooltip": "一个单元格内有多张图时，它们的排列方向"}),
@@ -368,38 +421,10 @@ class ZML_XY_Grid_Drawer:
         if font is None: font = ImageFont.load_default()
         
         dummy_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-
-        # 准备左上角文本 (Y \ X)
-        corner_text = ""
-        if x_title or y_title:
-            corner_text = f"{y_title} \\ {x_title}"
         
-        corner_w, corner_h = 0, 0
-        if corner_text:
-             corner_w, corner_h = text_size(dummy_draw, corner_text, font)
-
-        # 计算头部和侧边栏尺寸
-        header_h = 0
-        if x_labels or corner_text:
-            max_header_label_h = 0
-            for label in x_labels:
-                _, th = text_size(dummy_draw, str(label), font)
-                max_header_label_h = max(max_header_label_h, th)
-            
-            # 头部高度至少要容纳标签高度，也要考虑角标文本的高度
-            header_h = max(max_header_label_h, corner_h) + margin * 2
-
-        sidebar_w = 0
-        if y_labels or corner_text:
-            max_sidebar_label_w = 0
-            for label in y_labels:
-                tw, _ = text_size(dummy_draw, str(label), font)
-                max_sidebar_label_w = max(max_sidebar_label_w, tw)
-            
-            # 侧边宽度至少要容纳标签宽度，也要考虑角标文本的宽度
-            sidebar_w = max(max_sidebar_label_w, corner_w) + margin * 2
-
-        # 预先计算每个逻辑单元格的实际尺寸
+        # --- 第一步：先计算所有图片单元格的尺寸 (不含文字) ---
+        # 我们必须先知道每个格子的图片宽度，才能决定文字什么时候换行
+        
         cell_actual_widths = [0] * cols
         cell_actual_heights = [0] * rows
         
@@ -424,6 +449,73 @@ class ZML_XY_Grid_Drawer:
                 
                 current_image_idx += cell_image_counts[linear_idx]
 
+        # --- 第二步：计算头部(X轴)和侧边栏(Y轴)尺寸 (含文字换行逻辑) ---
+
+        # 准备左上角文本 (Y \ X)
+        corner_text = ""
+        if x_title or y_title:
+            corner_text = f"{y_title} \\ {x_title}"
+        
+        corner_w, corner_h = 0, 0
+        if corner_text:
+             corner_w, corner_h = text_size(dummy_draw, corner_text, font)
+
+        # 1. 计算X轴表头高度 (支持换行)
+        header_h = 0
+        # 缓存一下每个X标签的换行结果，避免绘制时重复计算
+        x_label_layouts = [] 
+        
+        if x_labels or corner_text:
+            max_header_label_h = 0
+            for i, label in enumerate(x_labels):
+                str_label = str(label)
+                # 获取该列的最大宽度作为文字的限制宽度
+                # 减去一点margin防止贴边
+                max_txt_width = cell_actual_widths[i] - margin 
+                if max_txt_width < font_size: max_txt_width = font_size # 保护机制
+                
+                lines, total_h = get_wrapped_text(dummy_draw, str_label, font, max_txt_width)
+                x_label_layouts.append({"lines": lines, "h": total_h})
+                max_header_label_h = max(max_header_label_h, total_h)
+            
+            # 头部高度至少要容纳最长的标签高度，也要考虑角标文本的高度
+            header_h = max(max_header_label_h, corner_h) + margin * 2
+
+        # 2. 计算Y轴侧边栏宽度 (支持换行)
+        # 通常Y轴不需要太宽，但如果Y也是长文件名，也需要处理
+        sidebar_w = 0
+        y_label_layouts = []
+        
+        if y_labels or corner_text:
+            max_sidebar_label_w = 0
+            
+            # 这里Y轴的逻辑稍微不同，我们可以给它设定一个最大宽度限制（比如图片的1/2或者固定值），或者让它自然生长
+            # 考虑到用户提到拥挤，我们假设Y轴让它自然宽一点，或者限制在一定范围内换行
+            # 这里先不做强制限制，只对极长文本做换行，避免侧边栏宽得离谱
+            limit_sidebar_w = 600 # 假设一个最大侧边栏宽度
+            
+            for i, label in enumerate(y_labels):
+                str_label = str(label)
+                tw, th = text_size(dummy_draw, str_label, font)
+                
+                if tw > limit_sidebar_w:
+                    lines, total_h = get_wrapped_text(dummy_draw, str_label, font, limit_sidebar_w)
+                    # 重新计算实际最宽的那一行
+                    real_w = 0
+                    for line in lines:
+                        lw, _ = text_size(dummy_draw, line, font)
+                        real_w = max(real_w, lw)
+                    max_sidebar_label_w = max(max_sidebar_label_w, real_w)
+                    y_label_layouts.append({"lines": lines, "h": total_h, "w": real_w})
+                else:
+                    max_sidebar_label_w = max(max_sidebar_label_w, tw)
+                    y_label_layouts.append({"lines": [str_label], "h": th, "w": tw})
+            
+            sidebar_w = max(max_sidebar_label_w, corner_w) + margin * 2
+
+
+        # --- 第三步：构建画布并绘制 ---
+
         grid_content_w = sum(cell_actual_widths) + margin * max(0, cols - 1)
         grid_content_h = sum(cell_actual_heights) + margin * max(0, rows - 1)
 
@@ -435,43 +527,60 @@ class ZML_XY_Grid_Drawer:
         
         canvas = Image.new("RGB", (canvas_w, canvas_h), bg_col)
         draw = ImageDraw.Draw(canvas)
+        
+        _, one_line_h = text_size(draw, "Mg", font)
+        line_spacing = int(one_line_h * 0.1)
 
         # === 绘制左上角角标 ===
         if corner_text and sidebar_w > 0 and header_h > 0:
-            # 绘制文字居中
             cx = margin + (sidebar_w - margin*2 - corner_w) // 2
             cy = margin + (header_h - margin*2 - corner_h) // 2
-            # 确保不小于0
             cx = max(cx, 0)
             cy = max(cy, 0)
-            
             draw.text((cx, cy), corner_text, fill=txt_col, font=font)
-            
-            # 可选：绘制一条简单的对角线装饰 (左上->右下 of the box)
-            # box_w = sidebar_w
-            # box_h = header_h
-            # draw.line([(0, 0), (box_w, box_h)], fill=txt_col, width=2)
 
-        # 绘制 X 轴标签
+        # 绘制 X 轴标签 (应用换行逻辑)
         current_x = sidebar_w + margin
-        for i, text in enumerate(x_labels):
-            str_text = str(text)
-            tw, th = text_size(draw, str_text, font)
+        for i, layout in enumerate(x_label_layouts):
+            lines = layout["lines"]
+            total_text_h = layout["h"]
             col_width = cell_actual_widths[i]
-            x_pos = current_x + (col_width - tw) // 2
-            y_pos = margin + (header_h - margin*2 - th) // 2 # 垂直居中于header区域
-            draw.text((x_pos, y_pos), str_text, fill=txt_col, font=font)
+            
+            # 文字块垂直居中
+            block_y_start = margin + (header_h - margin*2 - total_text_h) // 2
+            
+            current_line_y = block_y_start
+            for line in lines:
+                lw, lh = text_size(draw, line, font)
+                # 水平居中
+                line_x = current_x + (col_width - lw) // 2
+                draw.text((line_x, current_line_y), line, fill=txt_col, font=font)
+                current_line_y += one_line_h + line_spacing
+
             current_x += col_width + margin
 
         # 绘制 Y 轴标签
         current_y = header_h + margin
-        for j, text in enumerate(y_labels):
-            str_text = str(text)
-            tw, th = text_size(draw, str_text, font)
+        for j, layout in enumerate(y_label_layouts):
+            lines = layout["lines"]
+            total_text_h = layout["h"]
+            # 若Y标签换行导致高度增加，这里目前逻辑是不撑开行高的（行高由图片决定）。
+            # 如果文字非常多导致高度超过图片高度，文字会和下面的重叠。
+            # 但通常图片高度远大于文字高度。
+            
             row_height = cell_actual_heights[j]
-            x_pos = margin + (sidebar_w - margin*2 - tw) // 2 # 水平居中于sidebar区域
-            y_pos = current_y + (row_height - th) // 2
-            draw.text((x_pos, y_pos), str_text, fill=txt_col, font=font)
+            
+            # 文字块垂直居中于行
+            block_y_start = current_y + (row_height - total_text_h) // 2
+            
+            current_line_y = block_y_start
+            for line in lines:
+                lw, lh = text_size(draw, line, font)
+                # 水平居中于Sidebar
+                line_x = margin + (sidebar_w - margin*2 - lw) // 2 
+                draw.text((line_x, current_line_y), line, fill=txt_col, font=font)
+                current_line_y += one_line_h + line_spacing
+                
             current_y += row_height + margin
 
         # 绘制图片
@@ -490,23 +599,27 @@ class ZML_XY_Grid_Drawer:
                 sub_img_x_offset = 0
                 sub_img_y_offset = 0
                 
-                for k in range(num_images_in_cell):
-                    if current_image_batch_idx >= len(pil_images_batch):
-                        break
-                    
-                    pil_img = pil_images_batch[current_image_batch_idx]
-                    
-                    if cell_layout == "横向排列":
-                        paste_x = cell_start_x + sub_img_x_offset
-                        paste_y = cell_start_y + (current_cell_actual_h - pil_img.height) // 2
-                        sub_img_x_offset += pil_img.width + margin
-                    else:
-                        paste_x = cell_start_x + (current_cell_actual_w - pil_img.width) // 2
-                        paste_y = cell_start_y + sub_img_y_offset
-                        sub_img_y_offset += pil_img.height + margin
-                    
-                    canvas.paste(pil_img, (paste_x, paste_y))
-                    current_image_batch_idx += 1
+                if num_images_in_cell == 0:
+                    # 复用第一张图
+                    canvas.paste(pil_images_batch[0], (cell_start_x + (current_cell_actual_w-first_img_w)//2, cell_start_y + (current_cell_actual_h-first_img_h)//2 ))
+                else:
+                    for k in range(num_images_in_cell):
+                        if current_image_batch_idx >= len(pil_images_batch):
+                            break
+                        
+                        pil_img = pil_images_batch[current_image_batch_idx]
+                        
+                        if cell_layout == "横向排列":
+                            paste_x = cell_start_x + sub_img_x_offset
+                            paste_y = cell_start_y + (current_cell_actual_h - pil_img.height) // 2
+                            sub_img_x_offset += pil_img.width + margin
+                        else:
+                            paste_x = cell_start_x + (current_cell_actual_w - pil_img.width) // 2
+                            paste_y = cell_start_y + sub_img_y_offset
+                            sub_img_y_offset += pil_img.height + margin
+                        
+                        canvas.paste(pil_img, (paste_x, paste_y))
+                        current_image_batch_idx += 1
                 
                 current_image_batch_idx += (cell_image_counts[linear_idx] - num_images_in_cell)
                 if current_image_batch_idx < 0 : current_image_batch_idx = 0
@@ -609,6 +722,7 @@ class ZML_XY_LoRA_Loader_V2:
                 "LoRA权重数量": ("INT", {"default": 2, "min": 1, "step": 1}),
                 "权重起始值": ("FLOAT", {"default": 0.8, "min": -10.0, "max": 10.0, "step": 0.05}),
                 "权重结束值": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.05}),
+                "无LoRA对比": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭", "tooltip": "开启后，会额外跑一次没有LoRA的图，多个权重时不会重复生成无LoRA的图。比如LoRA数量3，权重数量2，那就是2*3=6次有LoRA图，无LoRA的图跑一次，剩下的一个通过复制图像来生成。总共跑2*3+1=7张图。"}),
                 "多行文本": ("STRING", {"default": "", "multiline": True, "placeholder": "节点会读取LoRA的子文件夹'zml'里的同名txt文件。若不存在，则读取LoRA相同目录下的同名txt文件。"}),
                 "txt联结方式": (["全部内容", "每行独立"], {"default": "全部内容", "tooltip": "每行独立是将txt里的每一行都独立输出，如果txt里有三行提示词，那就会输出三份条件"}),
                 "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=权重, Y=LoRA)", "label_off": "(X=LoRA, Y=权重)"}),
@@ -621,7 +735,7 @@ class ZML_XY_LoRA_Loader_V2:
     FUNCTION = "load_batch_loras_v2"
     CATEGORY = "image/ZML_图像/XYZ"
 
-    def load_batch_loras_v2(self, 模型, CLIP, LoRA文件夹路径, LoRA数量, LoRA权重数量, 权重起始值, 权重结束值, 多行文本, txt联结方式, XY互换):
+    def load_batch_loras_v2(self, 模型, CLIP, LoRA文件夹路径, LoRA数量, LoRA权重数量, 权重起始值, 权重结束值, 无LoRA对比, 多行文本, txt联结方式, XY互换):
         folder_path = LoRA文件夹路径.strip().strip('"')
         found_loras = []
         if os.path.exists(folder_path) and os.path.isdir(folder_path):
@@ -635,6 +749,12 @@ class ZML_XY_LoRA_Loader_V2:
             except: pass
         
         lora_files = found_loras[:LoRA数量]
+        
+        # 核心逻辑：如果开启对比，且None不在列表里，就插到第一位
+        if  无LoRA对比:
+            if None not in  lora_files:
+                lora_files.insert(0, None )
+        
         if not lora_files: lora_files = [None]
 
         weights = []
@@ -678,6 +798,7 @@ class ZML_XY_LoRA_Loader_V2:
         loaded_cache = {}
         
         cell_image_counts = []
+        base_model_added = False # 标记原始模型是否已经进过采样队列
 
         # 获取处理后的文本列表
         def get_prompt_list(lora_path):
@@ -733,11 +854,27 @@ class ZML_XY_LoRA_Loader_V2:
             for inner_idx, inner_item in enumerate(inner_loop_items):
                 current_lora, current_weight = get_args(inner_item, outer_item)
                 
-                prompts_to_process = get_prompt_list(current_lora)
-                if not prompts_to_process: prompts_to_process = [""]
-                
-                cell_image_count = len(prompts_to_process)
-                cell_image_counts.append(cell_image_count)
+                # 如果是“无LoRA”的格子
+                if current_lora is None :
+                    if not  base_model_added:
+                        # 第一次遇到：正常处理
+                        prompts_to_process = get_prompt_list(current_lora)
+                        if not prompts_to_process: prompts_to_process = [""]
+                        
+                        cell_image_count = len(prompts_to_process)
+                        cell_image_counts.append(cell_image_count)
+                        base_model_added = True
+                    else:
+                        # 之后遇到：不再输出模型，标记为0告知Grid节点直接复用第一张图
+                        cell_image_counts.append(0 )
+                        continue
+                else:
+                    # 正常LoRA格子
+                    prompts_to_process = get_prompt_list(current_lora)
+                    if not prompts_to_process: prompts_to_process = [""]
+                    
+                    cell_image_count = len(prompts_to_process)
+                    cell_image_counts.append(cell_image_count)
 
                 # 准备模型
                 current_model = None
@@ -793,7 +930,7 @@ class ZML_XY_Custom_Grid:
         return {
             "required": {
                 "类型": (["字符串", "数字", "无"], {"default": "字符串"}),
-                "多行文本": ("STRING", {"multiline": True, "default": "", "placeholder": "每行对应一张图 (类型选字符串时生效)"}),
+                "多行文本": ("STRING", {"multiline": True, "default": "", "placeholder": "每行对应一张图 (类型选字符串时生效)，输入字符串列表也可以，都可以处理的"}),
                 "拼接方向": (["左", "右", "上", "下"], {"default": "右"}),
                 "单行上限": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "display": "number", "tooltip": "0表示不限制"}),
                 "数字起始数": ("FLOAT", {"default": 0.0, "min": -10000.0, "max": 10000.0, "step": 0.1}),
@@ -1016,10 +1153,145 @@ class ZML_XY_Custom_Grid:
 
         return (torch.from_numpy(np.array(final_canvas).astype(np.float32) / 255.0).unsqueeze(0),)
 
+# ==========================================
+# 节点 5: ZML_XY_LoRA加载器V3
+# ==========================================
+class ZML_XY_LoRA_Loader_V3:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "模型": ("MODEL",),
+                "CLIP": ("CLIP",),
+                "LoRA文件夹路径": ("STRING", {"default": "E:\\Models\\Loras", "multiline": False}),
+                "LoRA数量": ("INT", {"default": 3, "min": 1, "step": 1}),
+                "LoRA权重": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.05}),
+                "无LoRA对比": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
+                "固定提示词": ("STRING", {"default": "", "multiline": False}),
+                "多行变量提示词": ("STRING", {"default": "", "multiline": True}),
+                "分隔符": ("STRING", {"default": ", "}),
+                "XY互换": ("BOOLEAN", {"default": False, "label_on": "(X=提示词, Y=LoRA)", "label_off": "(X=LoRA, Y=提示词)"}),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL", "CONDITIONING", "ZML_GRID_INFO")
+    RETURN_NAMES = ("模型", "条件", "图表信息")
+    OUTPUT_IS_LIST = (True, True, False)
+    FUNCTION = "load_batch_loras_v3"
+    CATEGORY = "image/ZML_图像/XYZ"
+
+    def load_batch_loras_v3(self, 模型, CLIP, LoRA文件夹路径, LoRA数量, LoRA权重, 无LoRA对比, 固定提示词, 多行变量提示词, XY互换):
+        # 1. 扫描 LoRA 文件
+        folder_path = LoRA文件夹路径.strip().strip('"')
+        found_loras = []
+        if os.path.exists(folder_path) and os.path.isdir(folder_path):
+            valid_ext = {'.safetensors', '.pt', '.ckpt'}
+            try:
+                files = [f for f in os.listdir(folder_path) if os.path.splitext(f)[1].lower() in valid_ext]
+                files.sort()
+                for f in files:
+                    found_loras.append(os.path.join(folder_path, f))
+            except: pass
+        
+        lora_files = found_loras[:LoRA数量]
+        if 无LoRA对比:
+            if None not in lora_files:
+                lora_files.insert(0, None)
+        if not lora_files: lora_files = [None]
+
+        # 2. 处理多行提示词
+        prompt_lines = [p.strip() for p in 多行变量提示词.strip().split('\n') if p.strip()]
+        if not prompt_lines:
+            prompt_lines = [""]
+
+        # 3. 准备标签 (用于图表显示)
+        lora_labels = []
+        for p in lora_files:
+            if p:
+                name = os.path.splitext(os.path.basename(p))[0]
+                lora_labels.append(name)
+            else:
+                lora_labels.append("None")
+        
+        prompt_labels = [p if len(p) < 20 else p[:17]+"..." for p in prompt_lines]
+
+        # 4. 确定 XY 逻辑
+        if not XY互换:
+            # X=LoRA, Y=提示词
+            x_labels = lora_labels
+            y_labels = prompt_labels
+            x_title = "LoRA"
+            y_title = "提示词变量"
+            outer_loop = prompt_lines  # 行 (Y)
+            inner_loop = lora_files    # 列 (X)
+            def get_args(inner_item, outer_item): return inner_item, outer_item # (lora, prompt)
+        else:
+            # X=提示词, Y=LoRA
+            x_labels = prompt_labels
+            y_labels = lora_labels
+            x_title = "提示词变量"
+            y_title = "LoRA"
+            outer_loop = lora_files    # 行 (Y)
+            inner_loop = prompt_lines  # 列 (X)
+            def get_args(inner_item, outer_item): return outer_item, inner_item # (lora, prompt)
+
+        out_models = []
+        out_conds = []
+        loaded_cache = {}
+
+        # 5. 循环生成模型和条件对
+        for outer_item in outer_loop:
+            for inner_item in inner_loop:
+                current_lora, current_line = get_args(inner_item, outer_item)
+                
+                # 处理模型和CLIP
+                current_model = 模型
+                current_clip = CLIP
+                
+                if current_lora is not None:
+                    try:
+                        if current_lora not in loaded_cache:
+                            loaded_cache[current_lora] = comfy.utils.load_torch_file(current_lora)
+                        lora_data = loaded_cache[current_lora]
+                        
+                        m, c = comfy.sd.load_lora_for_models(模型, CLIP, lora_data, LoRA权重, LoRA权重)
+                        current_model = m
+                        current_clip = c
+                    except Exception as e:
+                        print(f"加载LoRA失败: {current_lora}, 错误: {e}")
+
+                # 拼接提示词
+                if current_line:
+                    final_text = f"{固定提示词}{current_line}"
+                else:
+                    final_text = 固定提示词
+                
+                # 编码提示词
+                tokens = current_clip.tokenize(final_text)
+                cond, pooled = current_clip.encode_from_tokens(tokens, return_pooled=True)
+                
+                out_models.append(current_model)
+                out_conds.append([[cond, {"pooled_output": pooled}]])
+
+        del loaded_cache
+
+        grid_info = {
+            "x_labels": x_labels,
+            "y_labels": y_labels,
+            "x_title": x_title,
+            "y_title": y_title,
+            "count_x": len(inner_loop),
+            "count_y": len(outer_loop),
+            "total_images": len(out_models)
+        }
+
+        return (out_models, out_conds, grid_info)
+
 # ============================== 注册节点 ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_XY_LoRA_Loader": ZML_XY_LoRA_Loader,
     "ZML_XY_LoRA_Loader_V2": ZML_XY_LoRA_Loader_V2,
+    "ZML_XY_LoRA_Loader_V3": ZML_XY_LoRA_Loader_V3,
     "ZML_XY_Prompt_Loader": ZML_XY_Prompt_Loader,
     "ZML_XY_Sampler_Params": ZML_XY_Sampler_Params, 
     "ZML_XY_Grid_Drawer": ZML_XY_Grid_Drawer,
@@ -1029,8 +1301,9 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_XY_LoRA_Loader": "ZML_XY_LoRA加载器",
     "ZML_XY_LoRA_Loader_V2": "ZML_XY_LoRA加载器V2",
+    "ZML_XY_LoRA_Loader_V3": "ZML_XY_LoRA加载器V3",
     "ZML_XY_Prompt_Loader": "ZML_XY_提示词",
-    "ZML_XY_Sampler_Params": "ZML_XY_采样参数", 
+    "ZML_XY_Sampler_Params": "ZML_XY_采样参数",
     "ZML_XY_Grid_Drawer": "ZML_XY_图表拼接",
     "ZML_XY_Custom_Grid": "ZML_XY_自定义图表"
 }

@@ -8,6 +8,8 @@ import folder_paths
 from pathlib import Path
 import uuid
 import json
+import base64
+from io import BytesIO
 
 #==========================图像过度动画==========================
 
@@ -964,6 +966,58 @@ class ZML_ImageCrop:
 
         return (cropped_image,)
 
+#==========================图像Base64互转节点==========================
+
+class ZML_ImageBase64Converter:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "图像": ("IMAGE", {"label": "要转换的图像"}),
+                "Base64字符串": ("STRING", {"label": "要转换的Base64字符串", "multiline": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "IMAGE")
+    RETURN_NAMES = ("Base64字符串", "图像")
+    FUNCTION = "convert"
+    CATEGORY = "image/ZML_图像/图像"
+
+    def convert(self, 图像=None, Base64字符串=None):
+        base64_output = None
+        image_output = None
+        
+        # 图像转Base64
+        if 图像 is not None:
+            try:
+                img_np = np.clip(255. * 图像.cpu().numpy().squeeze(0), 0, 255).astype(np.uint8)
+                pil_image = Image.fromarray(img_np)
+                
+                buffer = BytesIO()
+                pil_image.save(buffer, format="PNG")
+                base64_output = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            except Exception as e:
+                print(f"图像转Base64出错: {e}")
+        
+        # Base64转图像
+        if Base64字符串 is not None:
+            try:
+                image_data = base64.b64decode(Base64字符串)
+                pil_image = Image.open(BytesIO(image_data))
+                
+                img_np = np.array(pil_image).astype(np.float32) / 255.0
+                image_output = torch.from_numpy(img_np).unsqueeze(0)
+            except Exception as e:
+                print(f"Base64转图像出错: {e}")
+        
+        # 如果转换失败，返回输入作为默认值
+        if base64_output is None and 图像 is not None:
+            base64_output = ""
+        if image_output is None and Base64字符串 is not None:
+            image_output = torch.zeros((1, 1, 1, 3))
+            
+        return (base64_output, image_output)
+
 # ==========================================
 # 节点 7: ZML_列表转批次
 # ==========================================
@@ -1136,7 +1190,8 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageBatchToInt": ZML_ImageBatchToInt,
     "ZML_ImageCrop": ZML_ImageCrop, 
     "ZML_List_To_Batch": ZML_List_To_Batch,
-    "ZML_Get_Item_From_List": ZML_Get_Item_From_List
+    "ZML_Get_Item_From_List": ZML_Get_Item_From_List,
+    "ZML_ImageBase64Converter": ZML_ImageBase64Converter
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1150,5 +1205,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageBatchToInt": "ZML_批次到整数",
     "ZML_ImageCrop": "ZML_图像裁剪",
     "ZML_List_To_Batch": "ZML_列表转批次",
-    "ZML_Get_Item_From_List": "ZML_获取列表项"
+    "ZML_Get_Item_From_List": "ZML_获取列表项",
+    "ZML_ImageBase64Converter": "ZML_图像Base64互转"
 }
