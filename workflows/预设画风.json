@@ -1,0 +1,1544 @@
+{
+  "id": "fc3cc99b-8b3e-403a-9965-887ad0749ec8",
+  "revision": 0,
+  "last_node_id": 59,
+  "last_link_id": 55,
+  "nodes": [
+    {
+      "id": 5,
+      "type": "PreviewAny",
+      "pos": [
+        210,
+        1130
+      ],
+      "size": [
+        210,
+        180
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 11
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 12,
+      "type": "ZmlPowerLoraLoader",
+      "pos": [
+        200,
+        670
+      ],
+      "size": [
+        460,
+        420
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "shape": 7,
+          "type": "MODEL",
+          "link": null
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": null
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": null
+        },
+        {
+          "name": "lora名称列表",
+          "type": "STRING",
+          "links": [
+            11,
+            13
+          ]
+        },
+        {
+          "name": "预览_图",
+          "shape": 6,
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "触发词",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "自定义文本",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZmlPowerLoraLoader"
+      },
+      "widgets_values": [
+        "{\"entries\":[{\"id\":\"lora1757338143598\",\"item_type\":\"lora\",\"display_name\":\"\",\"custom_text\":\"\",\"lora_name\":\"None\",\"weight\":1,\"enabled\":true,\"parent_id\":null}]}",
+        ""
+      ],
+      "shape": 1,
+      "powerLoraLoader_data": {
+        "entries": [
+          {
+            "id": "lora1757338143598",
+            "item_type": "lora",
+            "display_name": "",
+            "custom_text": "",
+            "lora_name": "None",
+            "weight": 1,
+            "enabled": true,
+            "parent_id": null
+          }
+        ]
+      },
+      "isLocked": false,
+      "compactView": false,
+      "loraNameWidth": 65,
+      "customTextWidth": 80,
+      "folderColor": "#30353c",
+      "loraEntryColor": "#3a3a3a"
+    },
+    {
+      "id": 13,
+      "type": "ZML_MultiTextInput3",
+      "pos": [
+        670,
+        670
+      ],
+      "size": [
+        400,
+        420
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "文本1",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "文本1"
+          },
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "name": "文本",
+          "type": "STRING",
+          "links": [
+            29,
+            31
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_MultiTextInput3"
+      },
+      "widgets_values": [
+        false,
+        "",
+        "",
+        "#在梦里_w#",
+        ""
+      ],
+      "shape": 1
+    },
+    {
+      "id": 14,
+      "type": "ZmlNameLoraLoader",
+      "pos": [
+        2340,
+        660
+      ],
+      "size": [
+        180.369140625,
+        66
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "模型",
+          "type": "MODEL",
+          "link": null
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "name": "LoRA名称列表",
+          "type": "STRING",
+          "link": 36
+        }
+      ],
+      "outputs": [
+        {
+          "name": "输出_模型",
+          "type": "MODEL",
+          "links": []
+        },
+        {
+          "name": "输出_CLIP",
+          "type": "CLIP",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZmlNameLoraLoader"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 26,
+      "type": "ZML_SimpleSaveImage",
+      "pos": [
+        1330,
+        670
+      ],
+      "size": [
+        210,
+        106
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "link": 30
+        },
+        {
+          "name": "文本块存储",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "文本块存储"
+          },
+          "link": 29
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ZML_SimpleSaveImage"
+      },
+      "widgets_values": [
+        "保存图像",
+        "output/ZML/%Y-%m-%d",
+        ""
+      ],
+      "shape": 1
+    },
+    {
+      "id": 27,
+      "type": "LoadImage",
+      "pos": [
+        1090,
+        670
+      ],
+      "size": [
+        210,
+        314.00006103515625
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            30
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 28,
+      "type": "PreviewAny",
+      "pos": [
+        670,
+        1130
+      ],
+      "size": [
+        210,
+        180
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 31
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 29,
+      "type": "ZML_LoadImage",
+      "pos": [
+        1620,
+        660
+      ],
+      "size": [
+        210,
+        406.0000305175781
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "文本块",
+          "type": "STRING",
+          "links": [
+            32,
+            33
+          ]
+        },
+        {
+          "name": "Name",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_LoadImage"
+      },
+      "widgets_values": [
+        "ZML#-#00002.png",
+        "正规",
+        "启用",
+        "启用",
+        "image"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 30,
+      "type": "PreviewAny",
+      "pos": [
+        1870,
+        800
+      ],
+      "size": [
+        210,
+        180
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 32
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 31,
+      "type": "ZML_SplitText",
+      "pos": [
+        1870,
+        660
+      ],
+      "size": [
+        210,
+        80
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "文本_输入",
+          "shape": 7,
+          "type": "STRING",
+          "link": 33
+        }
+      ],
+      "outputs": [
+        {
+          "name": "文本_前缀",
+          "type": "STRING",
+          "links": [
+            34,
+            36
+          ]
+        },
+        {
+          "name": "文本_后缀",
+          "type": "STRING",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_SplitText"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "shape": 1
+    },
+    {
+      "id": 32,
+      "type": "PreviewAny",
+      "pos": [
+        2110,
+        660
+      ],
+      "size": [
+        210,
+        180
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 34
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 33,
+      "type": "PreviewAny",
+      "pos": [
+        2110,
+        890
+      ],
+      "size": [
+        210,
+        180
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 35
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 36,
+      "type": "Note",
+      "pos": [
+        200,
+        510
+      ],
+      "size": [
+        270,
+        110
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "加载你的LoRA组合"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 37,
+      "type": "Note",
+      "pos": [
+        670,
+        510
+      ],
+      "size": [
+        400,
+        120
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "中间为分隔符，可用任意设置，但自己要记住\n下面是任意提示词，可用为画师串组合"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 38,
+      "type": "Note",
+      "pos": [
+        1090,
+        510
+      ],
+      "size": [
+        210,
+        120
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "决定了你要将画风配方写在哪个图像里"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 39,
+      "type": "Note",
+      "pos": [
+        1330,
+        510
+      ],
+      "size": [
+        210,
+        120
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "保存配方"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 40,
+      "type": "Note",
+      "pos": [
+        430,
+        1130
+      ],
+      "size": [
+        230,
+        180
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "LoRA索引预览"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 41,
+      "type": "Note",
+      "pos": [
+        890,
+        1130
+      ],
+      "size": [
+        210,
+        180
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "完整文本块预览"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 42,
+      "type": "Note",
+      "pos": [
+        1620,
+        510
+      ],
+      "size": [
+        210,
+        110
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "加载配方图像"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 43,
+      "type": "Note",
+      "pos": [
+        1870,
+        510
+      ],
+      "size": [
+        210,
+        110
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "分离LoRA索引和提示词\n\n分隔符填之前的"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 44,
+      "type": "Note",
+      "pos": [
+        1870,
+        1020
+      ],
+      "size": [
+        210,
+        110
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "预览完整配方"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 45,
+      "type": "Note",
+      "pos": [
+        2110,
+        510
+      ],
+      "size": [
+        210,
+        110
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "预览LoRA配方\n\n预览提示词配方"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 46,
+      "type": "Note",
+      "pos": [
+        2340,
+        510
+      ],
+      "size": [
+        210,
+        110
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "加载LoRA配方"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 48,
+      "type": "ZML_LoadImage",
+      "pos": [
+        2630,
+        510
+      ],
+      "size": [
+        290,
+        420
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "图像",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "文本块",
+          "type": "STRING",
+          "links": [
+            42
+          ]
+        },
+        {
+          "name": "Name",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_LoadImage"
+      },
+      "widgets_values": [
+        "ZML#-#00002.png",
+        "正规",
+        "启用",
+        "启用",
+        "image"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 49,
+      "type": "ZML_SplitText",
+      "pos": [
+        2940,
+        510
+      ],
+      "size": [
+        260,
+        80
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "文本_输入",
+          "shape": 7,
+          "type": "STRING",
+          "link": 42
+        }
+      ],
+      "outputs": [
+        {
+          "name": "文本_前缀",
+          "type": "STRING",
+          "links": [
+            43
+          ]
+        },
+        {
+          "name": "文本_后缀",
+          "type": "STRING",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_SplitText"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "shape": 1
+    },
+    {
+      "id": 50,
+      "type": "ZmlNameLoraLoader",
+      "pos": [
+        3230,
+        510
+      ],
+      "size": [
+        260,
+        70
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "模型",
+          "type": "MODEL",
+          "link": 44
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "name": "LoRA名称列表",
+          "type": "STRING",
+          "link": 43
+        }
+      ],
+      "outputs": [
+        {
+          "name": "输出_模型",
+          "type": "MODEL",
+          "links": [
+            45
+          ]
+        },
+        {
+          "name": "输出_CLIP",
+          "type": "CLIP",
+          "links": [
+            46,
+            51
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZmlNameLoraLoader"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 51,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        2940,
+        640
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            44
+          ]
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": null
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            54
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "widgets_values": [
+        "miaomiaoHarem_v17.safetensors"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 52,
+      "type": "KSampler",
+      "pos": [
+        3740,
+        510
+      ],
+      "size": [
+        210,
+        262
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 45
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 50
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 49
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 52
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            53
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        0,
+        "randomize",
+        20,
+        6,
+        "euler_ancestral",
+        "simple",
+        1
+      ],
+      "shape": 1
+    },
+    {
+      "id": 53,
+      "type": "CLIPTextEncode",
+      "pos": [
+        3510,
+        510
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 46
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 47
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            50
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "color": "#232",
+      "bgcolor": "#353",
+      "shape": 1
+    },
+    {
+      "id": 54,
+      "type": "ZML_MultiTextInput3",
+      "pos": [
+        3230,
+        630
+      ],
+      "size": [
+        260,
+        440
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "文本2",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "文本2"
+          },
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "文本",
+          "type": "STRING",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_MultiTextInput3"
+      },
+      "widgets_values": [
+        true,
+        ",\\n\\n",
+        "",
+        "",
+        "masterpiece,best quality,very aesthetic,highres,absurdres,sensitive,\n"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 55,
+      "type": "CLIPTextEncode",
+      "pos": [
+        3510,
+        650
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 51
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            49
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "lowres,(bad),bad feet,text,error,fewer,extra,missing,worst quality,jpeg artifacts,low quality,watermark,unfinished,displeasing,oldest,early,chromatic aberration,signature,artistic error,username,scan,[abstract],english text,shiny_skin,\n"
+      ],
+      "color": "#322",
+      "bgcolor": "#533",
+      "shape": 1
+    },
+    {
+      "id": 56,
+      "type": "ZML_PresetResolution",
+      "pos": [
+        3510,
+        780
+      ],
+      "size": [
+        210,
+        122
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "宽",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "高",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            52
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZML_PresetResolution"
+      },
+      "widgets_values": [
+        "832x1216",
+        null
+      ],
+      "shape": 1
+    },
+    {
+      "id": 57,
+      "type": "VAEDecode",
+      "pos": [
+        3510,
+        950
+      ],
+      "size": [
+        140,
+        46
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 53
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 54
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            55
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 58,
+      "type": "PreviewImage",
+      "pos": [
+        3970,
+        510
+      ],
+      "size": [
+        350,
+        570
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 55
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "shape": 1
+    },
+    {
+      "id": 59,
+      "type": "Note",
+      "pos": [
+        2940,
+        790
+      ],
+      "size": [
+        260,
+        140
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "测试你的配方！！"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    }
+  ],
+  "links": [
+    [
+      11,
+      12,
+      2,
+      5,
+      0,
+      "*"
+    ],
+    [
+      13,
+      12,
+      2,
+      13,
+      0,
+      "STRING"
+    ],
+    [
+      29,
+      13,
+      0,
+      26,
+      1,
+      "STRING"
+    ],
+    [
+      30,
+      27,
+      0,
+      26,
+      0,
+      "IMAGE"
+    ],
+    [
+      31,
+      13,
+      0,
+      28,
+      0,
+      "*"
+    ],
+    [
+      32,
+      29,
+      1,
+      30,
+      0,
+      "*"
+    ],
+    [
+      33,
+      29,
+      1,
+      31,
+      0,
+      "STRING"
+    ],
+    [
+      34,
+      31,
+      0,
+      32,
+      0,
+      "*"
+    ],
+    [
+      35,
+      31,
+      1,
+      33,
+      0,
+      "*"
+    ],
+    [
+      36,
+      31,
+      0,
+      14,
+      2,
+      "STRING"
+    ],
+    [
+      42,
+      48,
+      1,
+      49,
+      0,
+      "STRING"
+    ],
+    [
+      43,
+      49,
+      0,
+      50,
+      2,
+      "STRING"
+    ],
+    [
+      44,
+      51,
+      0,
+      50,
+      0,
+      "MODEL"
+    ],
+    [
+      45,
+      50,
+      0,
+      52,
+      0,
+      "MODEL"
+    ],
+    [
+      46,
+      50,
+      1,
+      53,
+      0,
+      "CLIP"
+    ],
+    [
+      47,
+      54,
+      0,
+      53,
+      1,
+      "STRING"
+    ],
+    [
+      48,
+      49,
+      1,
+      54,
+      0,
+      "STRING"
+    ],
+    [
+      49,
+      55,
+      0,
+      52,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      50,
+      53,
+      0,
+      52,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      51,
+      50,
+      1,
+      55,
+      0,
+      "CLIP"
+    ],
+    [
+      52,
+      56,
+      2,
+      52,
+      3,
+      "LATENT"
+    ],
+    [
+      53,
+      52,
+      0,
+      57,
+      0,
+      "LATENT"
+    ],
+    [
+      54,
+      51,
+      2,
+      57,
+      1,
+      "VAE"
+    ],
+    [
+      55,
+      57,
+      0,
+      58,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 2,
+      "title": "保存配方",
+      "bounding": [
+        180,
+        430,
+        1370,
+        890
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "读取配方",
+      "bounding": [
+        1600,
+        430,
+        960,
+        710
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "运行测试",
+      "bounding": [
+        2610,
+        430,
+        1760,
+        660
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7627768444385654,
+      "offset": [
+        -70.82923719553222,
+        -432.1987163746506
+      ]
+    },
+    "frontendVersion": "1.23.4"
+  },
+  "version": 0.4
+}
