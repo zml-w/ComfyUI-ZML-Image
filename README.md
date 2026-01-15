@@ -16,79 +16,6 @@
 
  `为了方便查找，我将节点名称设置为全部以“ZML_”开头，并且节点全部放在comfyui官方"图像"分类下的子分类"ZML_图像”里。`
 
-<details>
-<summary>点击此处查看图像节点介绍</summary>
-
-> ### 最开始是为了方便管理图像和提示词而设计，将提示词以PNG文本块的方式保存在图像里：
-> <img width="1632" height="875" alt="1_1" src="https://github.com/user-attachments/assets/b23e248e-dc40-4000-9cb7-0f77dd448350" />
->
-> ### 为了更加方便管理，我还做了一个可视化UI：
-> <img width="1739" height="877" alt="1_15" src="https://github.com/user-attachments/assets/14957496-ca5e-406d-8c07-e944371c98f3" />
-> 
-> ### 可以实时编辑文本块：
-> <img width="1796" height="889" alt="1_16" src="https://github.com/user-attachments/assets/49a5645c-61d7-4f90-88c4-bf137a63a808" />
-> 
-> ### 然后输出：
-> <img width="1413" height="617" alt="1_6" src="https://github.com/user-attachments/assets/9c805e33-40dc-468d-a4a1-6bd8df9ff7ee" />
->
-> ### 从路径加载图像节点可以随机图像和文本块，加载图像可以输出透明通道和文本块，就不配图了。
-
-> ### 然后是其它的图像节点，比如可视化裁剪图像：
-> <img width="982" height="893" alt="1_2" src="https://github.com/user-attachments/assets/3bbf3bb4-9c4e-4d9a-bf0b-6a415d0eea7b" />
-> <img width="1254" height="753" alt="1_3" src="https://github.com/user-attachments/assets/9c7d6257-9f81-4d61-9fde-1b606cc6a0ef" />
-> 
-> ### 可视化合并图像：
-> <img width="911" height="894" alt="1_4" src="https://github.com/user-attachments/assets/e79c6d57-1714-4347-8559-082a191ddf1c" />
-> <img width="1290" height="760" alt="1_5" src="https://github.com/user-attachments/assets/8af17c60-e8e6-4758-a81a-415f37a71cf6" />
-> 
-> ### 画画：
-> <img width="1048" height="925" alt="1_8" src="https://github.com/user-attachments/assets/0b60dbbb-bf59-4fea-b93f-fc5470e6db2b" />
-
-</details>
-
- <details>
-<summary>点击此处查看LoRA节点介绍</summary>
-
-> ### 因为功能较多，所以我不详细介绍了，看图应该可以看懂个大概。
-> 
-> ### 不过有个功能我非常想告诉你！那就是节点可以给Nunchuck使用！！使用强力lora节点的功能来管理你的LoRA，再把加载的LoRA列表连接给我为Nunchuck专门做的加载节点上，即可使用强力LoRA加载器的强大功能来使用Nunchuck！！
->
-> ### 给LoRA一个自定义文本或触发词模板，即可通过点击一个按钮来快速切换功能！一键3D、一键写实！一键手办！一键TY……
->  <img width="1559" height="748" alt="1_13" src="https://github.com/user-attachments/assets/a8d2cc89-6572-4686-85b6-94b57e1cec96" />
-> 
-> ### 可视化UI管理你的LoRA：
-> <img width="1069" height="826" alt="1_9" src="https://github.com/user-attachments/assets/379631be-4fbc-43c3-93a9-21c2c3e4ac23" />
->
-> ### 预览MP4！
-> https://github.com/user-attachments/assets/14200a30-581d-4fd1-9dfc-f145f91aa593
-> 
-> ### 实时更改触发词和LoRA介绍：
-> <img width="1103" height="759" alt="356" src="https://github.com/user-attachments/assets/65a3e0b3-04df-46e3-afa9-a2ff173ba6d5" />
-> 
-> #### LoRA节点的信息文件，为了文件夹的整洁，我将其放在了子文件夹“zml”中，如果你需要和WebUI一致（放在LoRA的相同目录），那可以考虑试试[这个分支版本](https://github.com/zml-w/ComfyUI-ZML-Image/tree/modified-version)
-
-
-</details>
-
- <details>
-<summary>点击此处查看其它节点介绍</summary>
-
-> ### 桌宠！聊天！娱乐！涩涩……
-> <img width="1356" height="865" alt="1_7" src="https://github.com/user-attachments/assets/5aa82821-520e-4d8e-9e55-44af75f40412" />
-> 
-> ### 生成文字图像和为图像添加文字：
-> <img width="1582" height="843" alt="1_11" src="https://github.com/user-attachments/assets/97caad3f-ac3d-44a8-acaf-b0719a65fc79" />
-> 
-> ### 功能丰富的文本节点，不介绍了，看图即可：
-> <img width="1662" height="869" alt="1_14" src="https://github.com/user-attachments/assets/bf64f1bb-c476-403c-a01e-eb649bcfde8c" />
-> 
-> ### 为多人图制作的多个遮罩节点：
-> <img width="1225" height="743" alt="1_10" src="https://github.com/user-attachments/assets/e8a3dfd8-9d76-4f16-b47b-d5b8e177eb30" />
-> 
-> #### 节点很多且更新很快，所以就不在这里一一介绍了。可以在版本更新介绍里查看！每个新增节点都会有介绍。
-
-</details>
-
 ## ✨版本更新文字介绍
 
 > ### 最新更新日期： **2026.01.15**
@@ -100,7 +27,7 @@
 >
 > - #### XY图表新增了LoRA_V3节点，可以使用相同的多个提示词测试LoRA效果。
 >
-> - #### 新分类"子工作流"，主要是为了解决comfyui无法并行的缺点，但目前只能给一些api节点或者不需要加载模型，只有简单的逻辑处理的工作流使用（比如32线程并行为图像加水印，或者8线程并行调用大香蕉修改图像）。
+> - #### 新分类"子工作流"，主要是为了解决comfyui无法多线程并行的缺点，但目前只能给一些api节点，或者不需要加载模型 只有简单的逻辑处理的工作流使用（比如32线程并行为图像加水印，或者8线程并行调用大香蕉修改图像）。
 
 <details>
 <summary>点击查看往期更多更新内容</summary>
