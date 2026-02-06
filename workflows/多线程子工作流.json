@@ -1,0 +1,94 @@
+{
+  "1": {
+    "inputs": {
+      "JSON工作流": "{\n  \"1\": {\n    \"inputs\": {\n      \"文本\": \"{{提示词}}\",\n      \"字体\": \"可商用\\\\中文\\\\nfdcsCN16.ttf\",\n      \"字体大小\": 48,\n      \"颜色\": \"#000000\",\n      \"书写方向\": \"横排\",\n      \"字符间距\": 0,\n      \"行间距\": 10,\n      \"文字描边宽度\": 3,\n      \"文字描边颜色\": \"#FFFFFF\",\n      \"背景颜色\": \"#FFFFFF\",\n      \"图像大小模式\": \"根据字体大小决定图像尺寸\",\n      \"图像宽\": 512,\n      \"图像高\": 512,\n      \"文本图像占比\": 0.25,\n      \"图像拼接方向\": \"下\",\n      \"外边框宽度\": 30,\n      \"外边框颜色\": \"#000000\",\n      \"内边框宽度\": 20,\n      \"内边框颜色\": \"#000000\",\n      \"输入图像\": [\n        \"2\",\n        0\n      ]\n    },\n    \"class_type\": \"ZML_TextToImage\",\n    \"_meta\": {\n      \"title\": \"ZML_文本图像\"\n    }\n  },\n  \"2\": {\n    \"inputs\": {\n      \"图像\": \"{{图像}}\"\n    },\n    \"class_type\": \"ZML_SubflowLoadImage\",\n    \"_meta\": {\n      \"title\": \"ZML_智能加载图像 (子工作流)\"\n    }\n  },\n  \"4\": {\n    \"inputs\": {\n      \"图像\": [\n        \"1\",\n        0\n      ]\n    },\n    \"class_type\": \"ZML_SubflowExportImage\",\n    \"_meta\": {\n      \"title\": \"ZML_导出图像 (子工作流)\"\n    }\n  }\n}",
+      "执行次数": 9,
+      "并行线程数": 3,
+      "清理缓存间隔": 0,
+      "返回图像": "开启",
+      "控制台日志": "关闭",
+      "变量包": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "ZML_ParallelJsonContainer",
+    "_meta": {
+      "title": "ZML_多线程子工作流"
+    }
+  },
+  "2": {
+    "inputs": {
+      "images": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像"
+    }
+  },
+  "3": {
+    "inputs": {
+      "占位符": "图像",
+      "图像": [
+        "4",
+        0
+      ],
+      "输入变量包": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "ZML_ParallelVariableImage",
+    "_meta": {
+      "title": "ZML_变量_图像输入"
+    }
+  },
+  "4": {
+    "inputs": {
+      "image": "130159634_p0_master1200.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "7": {
+    "inputs": {
+      "preview": "None",
+      "source": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "预览任意"
+    }
+  },
+  "8": {
+    "inputs": {
+      "preview": "任务 1: ✅\n任务 2: ✅\n任务 3: ✅\n任务 4: ✅\n任务 5: ✅\n任务 6: ✅\n任务 7: ✅\n任务 8: ✅\n任务 9: ✅",
+      "source": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "预览任意"
+    }
+  },
+  "9": {
+    "inputs": {
+      "文本列表": "提示词1\n提示词2\n提示词3",
+      "占位符": "提示词"
+    },
+    "class_type": "ZML_ParallelVariableText",
+    "_meta": {
+      "title": "ZML_变量_文本列表"
+    }
+  }
+}
