@@ -44,15 +44,14 @@ async def add_preset_handler(request):
         print(f"ZML Add Preset Error: {e}")
         return web.Response(status=500, text=f"服务器错误: {e}")
 
-# ================= 聊天 API 代理 (带详细日志) =================
+# ================= 聊天 API 代理 (DeepSeek API) =================
 @PromptServer.instance.routes.post("/zml/chat")
 async def chat_handler(request):
-    #print("[ZML Chat] 收到聊天请求...")
     try:
         data = await request.json()
         api_key = data.get("apiKey")
-        api_url = data.get("apiUrl", "https://generativelanguage.googleapis.com")
-        model_id = data.get("modelId", "gemini-2.0-flash")
+        api_url = data.get("apiUrl", "https://api.deepseek.com")
+        model_id = data.get("modelId", "deepseek-chat")
         messages = data.get("messages", [])
         temperature = data.get("temperature", 0.7)
         system_prompt = data.get("systemPrompt", "")
@@ -64,35 +63,59 @@ async def chat_handler(request):
             print("[ZML Chat] 错误: 消息内容为空。")
             return web.Response(status=400, text="消息内容不能为空")
 
-        full_api_url = f"{api_url}/v1beta/models/{model_id}:generateContent?key={api_key}"
-        #print(f"[ZML Chat] 准备向谷歌API发送请求: {api_url}/v1beta/models/{model_id}")
+        # DeepSeek API 端点
+        full_api_url = f"{api_url}/chat/completions"
+        
+        # 转换消息格式从 Gemini 格式到 OpenAI/DeepSeek 格式
+        # Gemini: {role: "user"/"model", parts: [{text: "..."}]}
+        # DeepSeek: {role: "user"/"assistant", content: "..."}
+        converted_messages = []
+        for msg in messages:
+            role = msg.get("role", "")
+            parts = msg.get("parts", [])
+            text = parts[0].get("text", "") if parts else ""
+            
+            # 转换角色名称
+            if role == "model":
+                role = "assistant"
+            
+            converted_messages.append({
+                "role": role,
+                "content": text
+            })
+        
+        # 如果有系统提示词，添加到消息列表开头
+        if system_prompt and system_prompt.strip():
+            converted_messages.insert(0, {
+                "role": "system",
+                "content": system_prompt
+            })
         
         payload = {
-            "contents": messages,
-            "generationConfig": { "temperature": temperature }
+            "model": model_id,
+            "messages": converted_messages,
+            "temperature": temperature,
+            "stream": False
         }
-        
-        if system_prompt and system_prompt.strip():
-            payload["system_instruction"] = { "parts": [{"text": system_prompt}] }
-            #print("[ZML Chat] 请求中包含系统提示词。")
 
-        # 如果您想临时禁用代理，可以将其设置为 None，例如: proxy_url = None
-        proxy_url = "http://127.0.0.1:7890" 
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
 
         async with ClientSession() as session:
-            async with session.post(full_api_url, json=payload, headers={"Content-Type": "application/json"}, proxy=proxy_url) as resp:
+            async with session.post(full_api_url, json=payload, headers=headers) as resp:
                 response_text = await resp.text()
-                #print(f"[ZML Chat] 收到谷歌API响应, 状态码: {resp.status}")
                 
                 if resp.status == 200:
                     try:
                         response_json = json.loads(response_text)
-                        if "candidates" in response_json and response_json["candidates"]:
-                            reply_text = response_json["candidates"][0]["content"]["parts"][0]["text"]
-                            #print("[ZML Chat] 成功解析回复, 准备返回给前端。")
+                        # DeepSeek 响应格式: choices[0].message.content
+                        if "choices" in response_json and response_json["choices"]:
+                            reply_text = response_json["choices"][0]["message"]["content"]
                             return web.json_response({"reply": reply_text})
                         else:
-                            error_info = response_json.get("promptFeedback", {}).get("blockReason", "Unknown reason")
+                            error_info = response_json.get("error", {}).get("message", "Unknown error")
                             print(f"[ZML Chat] API返回内容无效, 原因: {error_info}")
                             return web.Response(status=500, text=f"API返回内容无效: {error_info}")
                     except Exception as parse_e:
