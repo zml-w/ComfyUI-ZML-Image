@@ -1176,14 +1176,68 @@ class ZML_Get_Item_From_List:
         
         # 5. 返回 (选定项, 长度)
         return (result, list_len)
+#==========================遮罩填充节点==========================
+
+class ZML_MaskFillHoles:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "遮罩": ("MASK",),
+                "闭合强度": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1, "tooltip": "数值越大，越能连接断开的线条以形成闭合区域。如果遮罩本身有缺口，增加此值。"}),
+            }
+        }
+
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("填充后遮罩",)
+    FUNCTION = "fill_mask_holes"
+    CATEGORY = "image/ZML_图像/遮罩"
+
+    def fill_mask_holes(self, 遮罩, 闭合强度):
+        import scipy.ndimage as ndimage
+        
+        # 转换张量为numpy [Batch, H, W]
+        mask_np = 遮罩.cpu().numpy()
+        
+        # 检查维度，确保是 [Batch, H, W]
+        if len(mask_np.shape) == 2:
+            mask_np = mask_np[None, ...]
+            is_single = True
+        else:
+            is_single = False
+            
+        out_list = []
+        
+        for i in range(mask_np.shape[0]):
+            curr_mask = mask_np[i]
+            
+            # 1. 预处理：形态学闭合 (Closing)
+            # 作用：先膨胀再腐蚀，用于连接微小的断开缺口
+            if 闭合强度 > 0:
+                # 创建一个圆形的结构元素，比方形效果更圆润
+                y, x = np.ogrid[-闭合强度:闭合强度+1, -闭合强度:闭合强度+1]
+                structure = x*x + y*y <= 闭合强度*闭合强度
+                # 执行闭合操作
+                curr_mask = ndimage.binary_closing(curr_mask > 0.5, structure=structure).astype(np.float32)
+            
+            # 2. 核心：填充所有内部孔洞
+            # 只要是内部被白色包围的黑色区域，都会被填满
+            filled_mask = ndimage.binary_fill_holes(curr_mask > 0.5).astype(np.float32)
+            
+            out_list.append(torch.from_numpy(filled_mask))
+            
+        # 合并回张量
+        result = torch.stack(out_list)
+        
+        return (result.squeeze(0) if is_single else result,)
 
 #====================================================
-
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageTransition": ZML_ImageTransition,
     "ZML_ImageEncryption": ZML_ImageEncryption,
     "ZML_BooleanSwitch": ZML_BooleanSwitch,
     "ZML_MaskStroke": ZML_MaskStroke,
+    "ZML_MaskFillHoles": ZML_MaskFillHoles, 
     "ZML_PreviewImage": ZML_PreviewImage,
     "ZML_ImageMemory": ZML_ImageMemory,
     "ZML_PromptTokenBalancer": ZML_PromptTokenBalancer,
@@ -1199,6 +1253,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageEncryption": "ZML_图像加密",
     "ZML_BooleanSwitch": "ZML_布尔开关",
     "ZML_MaskStroke": "ZML_遮罩描边",
+    "ZML_MaskFillHoles": "ZML_遮罩闭合填充", 
     "ZML_PreviewImage": "ZML_预览图像",
     "ZML_ImageMemory": "ZML_桥接预览图像",
     "ZML_PromptTokenBalancer": "ZML_提示词token统一",
