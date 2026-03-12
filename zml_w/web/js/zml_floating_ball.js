@@ -472,8 +472,8 @@ app.registerExtension({
 		let chatInput;
         const defaultChatSettings = {
             apiKey: "",
-            apiUrl: "https://generativelanguage.googleapis.com",
-            modelId: "gemini-2.0-flash",
+            apiUrl: "https://api.deepseek.com",
+            modelId: "deepseek-chat",
             systemPrompt: "你是一只猫娘。你是用户的乖妹妹，你要称呼用户为哥哥。", 
             temperature: 0.7,
             contextCount: 5,
@@ -608,8 +608,8 @@ app.registerExtension({
             const settingsInputs = {
                 apiKey: document.querySelector('.zml-chat-settings input[type="password"]'),
                 apiUrl: document.querySelector('.zml-chat-settings input[type="text"][value^="http"]'),
-                modelId: document.querySelector('.zml-chat-settings input[type="text"][value*="gemini"]'),
-                systemPrompt: document.querySelector('.zml-chat-settings textarea'), 
+                modelId: document.querySelector('.zml-chat-settings input[type="text"][value*="deepseek"]'),
+                systemPrompt: document.querySelector('.zml-chat-settings textarea'),
                 temperature: document.querySelector('.zml-chat-settings input[type="range"][oninput*="温度"]'),
                 contextCount: document.querySelector('.zml-chat-settings input[type="range"][oninput*="上下文数"]'),
             };
@@ -638,7 +638,7 @@ app.registerExtension({
 			messagesContainer = $el("div.zml-chat-messages");
 			chatInput = $el("input", { type: "text", placeholder: "输入消息..." });
 			const sendButton = $el("button", { textContent: "发送" });
-			const helpTooltip = $el("div.zml-chat-help-tooltip", { innerHTML: "默认使用的端口为‘http://127.0.0.1:7890’，<br>如果无法使用，<br>请将__init__.py里的<br>‘proxy_url = ’<br>修改为你实际代理端口，<br>TUN模式需要设置proxy_url = None" });
+			const helpTooltip = $el("div.zml-chat-help-tooltip", { innerHTML: "现在已经有了专门的LLM类节点，并且功能更丰富。" });
 			const helpIcon = $el("div.zml-chat-help-icon", { textContent: "?" });
 			helpIcon.onmouseenter = () => { helpTooltip.style.display = 'block'; };
 			helpIcon.onmouseleave = () => { helpTooltip.style.display = 'none'; };

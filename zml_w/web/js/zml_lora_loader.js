@@ -37,6 +37,8 @@ globalThis.zmlBatchLoraPreviewMp4Mode = false;
 globalThis.zmlBatchLoraAddTextMode = true;
 // 新增：每个LoRA独立的视频播放状态对象
 globalThis.zmlLoraVideoPlayStates = {};
+// 新增：控制编辑信息模式的全局变量（默认关闭）
+globalThis.zmlBatchLoraEditInfoMode = false;
 
 const loadImageList = async () => {
     try {
@@ -936,20 +938,352 @@ app.registerExtension({
                     zmlPllCurrentNodeInstance = null;
                 }
             }
-            // --- 结束：新增独立弹窗变量和函数 ---
 
-            // --- 新增：批量添加 LoRA 弹窗的变量和函数 ---
+            // ========== 编辑LoRA本地文件弹窗 ==========
+            let zmlLoraEditInfoModalOverlay = null;
+            let zmlLoraEditInfoModalTitle = null;
+            let zmlLoraEditInfoTxtTextarea = null;
+            let zmlLoraEditInfoLogTextarea = null;
+            let zmlLoraEditInfoCurrentLoraPath = null;
+            let zmlLoraEditInfoCurrentLoraName = null;
+            let zmlLoraEditInfoCurrentNodeInstance = null;
+
+            function createLoraEditInfoModal() {
+                if (zmlLoraEditInfoModalOverlay) return;
+
+                zmlLoraEditInfoModalOverlay = zmlCreateEl("div", {
+                    className: "zml-st3-modal-overlay",
+                    style: `
+                        position: fixed;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        background-color: rgba(0, 0, 0, 0.75);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        z-index: 10003;
+                        display: none;
+                        backdrop-filter: blur(3px);
+                    `
+                });
+
+                const modalContainer = zmlCreateEl("div", {
+                    className: "zml-st3-modal-container",
+                    style: `
+                        background-color: #31353a;
+                        border: 1px solid #4a515a;
+                        border-radius: 8px;
+                        padding: 20px;
+                        min-width: 600px;
+                        max-width: 80vw;
+                        max-height: 80vh;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+                    `
+                });
+
+                // 标题
+                zmlLoraEditInfoModalTitle = zmlCreateEl("h3", {
+                    className: "zml-st3-modal-title",
+                    style: `
+                        color: #e0e0e0;
+                        margin: 0;
+                        font-size: 1.3em;
+                        font-weight: 600;
+                        border-bottom: 2px solid #4a515a;
+                        padding-bottom: 15px;
+                    `,
+                    textContent: "编辑 LoRA 本地文件"
+                });
+
+                // 创建标签页容器
+                const tabContainer = zmlCreateEl("div", {
+                    style: `
+                        display: flex;
+                        border-bottom: 1px solid #4a515a;
+                        margin-bottom: 10px;
+                    `
+                });
+
+                // 创建txt文件标签
+                const txtTab = zmlCreateEl("button", {
+                    textContent: "触发词文件 (txt)",
+                    style: `
+                        padding: 8px 16px;
+                        background-color: #4a515a;
+                        color: white;
+                        border: none;
+                        border-top-left-radius: 4px;
+                        border-top-right-radius: 4px;
+                        cursor: pointer;
+                        font-weight: bold;
+                    `
+                });
+
+                // 创建log文件标签
+                const logTab = zmlCreateEl("button", {
+                    textContent: "介绍文件 (log)",
+                    style: `
+                        padding: 8px 16px;
+                        background-color: #31353a;
+                        color: #aaa;
+                        border: none;
+                        border-top-left-radius: 4px;
+                        border-top-right-radius: 4px;
+                        cursor: pointer;
+                    `
+                });
+
+                tabContainer.appendChild(txtTab);
+                tabContainer.appendChild(logTab);
+
+                // 创建txt文本编辑区域
+                zmlLoraEditInfoTxtTextarea = zmlCreateEl("textarea", {
+                    className: "zml-st3-modal-textarea",
+                    style: `
+                        width: 100%;
+                        height: 400px;
+                        resize: vertical;
+                        background-color: #1a1a1a;
+                        border: 1px solid #4a4a4a;
+                        color: #f0f0f0;
+                        padding: 12px;
+                        font-family: 'Segoe UI Mono', 'Consolas', monospace;
+                        font-size: 14px;
+                        border-radius: 4px;
+                        box-sizing: border-box;
+                        outline: none;
+                    `
+                });
+
+                // 创建log文本编辑区域 (默认隐藏)
+                zmlLoraEditInfoLogTextarea = zmlCreateEl("textarea", {
+                    className: "zml-st3-modal-textarea",
+                    style: `
+                        width: 100%;
+                        height: 400px;
+                        resize: vertical;
+                        background-color: #1a1a1a;
+                        border: 1px solid #4a4a4a;
+                        color: #f0f0f0;
+                        padding: 12px;
+                        font-family: 'Segoe UI Mono', 'Consolas', monospace;
+                        font-size: 14px;
+                        border-radius: 4px;
+                        box-sizing: border-box;
+                        outline: none;
+                        display: none;
+                    `
+                });
+
+                // 文本框焦点样式
+                zmlLoraEditInfoTxtTextarea.onfocus = (e) => {
+                    e.target.style.borderColor = '#5d99f2';
+                    e.target.style.boxShadow = '0 0 8px rgba(93, 153, 242, 0.4)';
+                };
+                zmlLoraEditInfoTxtTextarea.onblur = (e) => {
+                    e.target.style.borderColor = '#4a4a4a';
+                    e.target.style.boxShadow = 'none';
+                };
+
+                zmlLoraEditInfoLogTextarea.onfocus = (e) => {
+                    e.target.style.borderColor = '#5d99f2';
+                    e.target.style.boxShadow = '0 0 8px rgba(93, 153, 242, 0.4)';
+                };
+                zmlLoraEditInfoLogTextarea.onblur = (e) => {
+                    e.target.style.borderColor = '#4a4a4a';
+                    e.target.style.boxShadow = 'none';
+                };
+
+                // 标签切换功能
+                txtTab.onclick = () => {
+                    zmlLoraEditInfoTxtTextarea.style.display = 'block';
+                    zmlLoraEditInfoLogTextarea.style.display = 'none';
+                    txtTab.style.backgroundColor = '#4a515a';
+                    txtTab.style.color = 'white';
+                    logTab.style.backgroundColor = '#31353a';
+                    logTab.style.color = '#aaa';
+                    zmlLoraEditInfoTxtTextarea.focus();
+                };
+
+                logTab.onclick = () => {
+                    zmlLoraEditInfoTxtTextarea.style.display = 'none';
+                    zmlLoraEditInfoLogTextarea.style.display = 'block';
+                    txtTab.style.backgroundColor = '#31353a';
+                    txtTab.style.color = '#aaa';
+                    logTab.style.backgroundColor = '#4a515a';
+                    logTab.style.color = 'white';
+                    zmlLoraEditInfoLogTextarea.focus();
+                };
+
+                // 按钮组
+                const buttonGroup = zmlCreateEl("div", {
+                    style: `
+                        display: flex;
+                        justify-content: flex-end;
+                        gap: 12px;
+                        padding-top: 10px;
+                        border-top: 1px solid #4a515a;
+                    `
+                });
+
+                const baseButtonStyle = `
+                    height: 38px;
+                    padding: 0 25px;
+                    text-align: center;
+                    text-decoration: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 15px;
+                    font-weight: 500;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    white-space: nowrap;
+                `;
+
+                const saveButton = zmlCreateEl("button", {
+                    className: "zml-control-btn zml-st3-modal-save",
+                    textContent: "保存",
+                    style: `
+                        ${baseButtonStyle}
+                        background-color: #4CAF50;
+                        border: 1px solid #3e8e41;
+                        color: white;
+                    `
+                });
+
+                const cancelButton = zmlCreateEl("button", {
+                    className: "zml-control-btn zml-st3-modal-cancel",
+                    textContent: "取消",
+                    style: `
+                        ${baseButtonStyle}
+                        background-color: #f44336;
+                        border: 1px solid #da190b;
+                        color: white;
+                    `
+                });
+
+                buttonGroup.append(cancelButton, saveButton);
+                modalContainer.append(zmlLoraEditInfoModalTitle, tabContainer, zmlLoraEditInfoTxtTextarea, zmlLoraEditInfoLogTextarea, buttonGroup);
+                zmlLoraEditInfoModalOverlay.appendChild(modalContainer);
+                document.body.appendChild(zmlLoraEditInfoModalOverlay);
+
+                // 绑定保存事件
+                saveButton.onclick = async () => {
+                    if (zmlLoraEditInfoCurrentLoraPath) {
+                        try {
+                            // 保存txt文件
+                            const txtResponse = await api.fetchApi(`${ZML_API_PREFIX}/save_lora_file`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    "lora_filename": zmlLoraEditInfoCurrentLoraPath,
+                                    "file_type": "txt",
+                                    "content": zmlLoraEditInfoTxtTextarea.value
+                                })
+                            });
+                            const txtResult = await txtResponse.json();
+
+                            // 保存log文件
+                            const logResponse = await api.fetchApi(`${ZML_API_PREFIX}/save_lora_file`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    "lora_filename": zmlLoraEditInfoCurrentLoraPath,
+                                    "file_type": "log",
+                                    "content": zmlLoraEditInfoLogTextarea.value
+                                })
+                            });
+                            const logResult = await logResponse.json();
+
+                            if (txtResult.status === "success" && logResult.status === "success") {
+                                alert(`LoRA '${zmlLoraEditInfoCurrentLoraName}' 的本地文件保存成功！`);
+                            } else {
+                                alert(`保存失败：\n${txtResult.message || ''}\n${logResult.message || ''}`);
+                            }
+                        } catch (error) {
+                            console.error("Error saving lora files:", error);
+                            alert(`保存时发生网络错误或服务器错误。请检查控制台。`);
+                        }
+                    }
+                    hideLoraEditInfoModal();
+                };
+
+                cancelButton.onclick = () => {
+                    hideLoraEditInfoModal();
+                };
+
+                // 点击背景关闭
+                zmlLoraEditInfoModalOverlay.onclick = (e) => {
+                    if (e.target === zmlLoraEditInfoModalOverlay) {
+                        hideLoraEditInfoModal();
+                    }
+                };
+            }
+
+            async function showLoraEditInfoModal(entry, nodeInstance) {
+                if (!zmlLoraEditInfoModalOverlay) createLoraEditInfoModal();
+
+                zmlLoraEditInfoCurrentLoraPath = entry.lora_name;
+                zmlLoraEditInfoCurrentLoraName = entry.display_name || entry.lora_name?.split(/[/\\]/).pop() || "(未命名 LoRA)";
+                zmlLoraEditInfoCurrentNodeInstance = nodeInstance;
+
+                // 设置标题
+                zmlLoraEditInfoModalTitle.textContent = `编辑 LoRA 本地文件: ${zmlLoraEditInfoCurrentLoraName}`;
+
+                try {
+                    // 加载txt文件内容
+                    const txtResponse = await api.fetchApi(`${ZML_API_PREFIX}/get_lora_file`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            "lora_filename": entry.lora_name,
+                            "file_type": "txt"
+                        })
+                    });
+                    const txtResult = await txtResponse.json();
+                    zmlLoraEditInfoTxtTextarea.value = txtResult.content || "";
+
+                    // 加载log文件内容
+                    const logResponse = await api.fetchApi(`${ZML_API_PREFIX}/get_lora_file`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            "lora_filename": entry.lora_name,
+                            "file_type": "log"
+                        })
+                    });
+                    const logResult = await logResponse.json();
+                    zmlLoraEditInfoLogTextarea.value = logResult.content || "";
+
+                } catch (error) {
+                    console.error("Error loading lora files:", error);
+                    alert(`加载文件内容时发生网络错误或服务器错误。请检查控制台。`);
+                }
+
+                zmlLoraEditInfoModalOverlay.style.display = 'flex';
+                zmlLoraEditInfoTxtTextarea.focus();
+            }
+
+            function hideLoraEditInfoModal() {
+                if (zmlLoraEditInfoModalOverlay) {
+                    zmlLoraEditInfoModalOverlay.style.display = 'none';
+                    zmlLoraEditInfoCurrentLoraPath = null;
+                    zmlLoraEditInfoCurrentLoraName = null;
+                    zmlLoraEditInfoCurrentNodeInstance = null;
+                }
+            }
+
             let zmlBatchLoraModalOverlay = null;
             let zmlBatchLoraParentPathDisplay = null; // 显示当前路径
-
-            // --- 新增：LoRA内容编辑弹窗的变量和函数 ---
             let zmlLoraContentEditModalOverlay = null;
             let zmlLoraContentEditTxtTextarea = null;
             let zmlLoraContentEditLogTextarea = null;
             let zmlLoraContentEditModalTitle = null;
             let zmlLoraContentEditCurrentLoraPath = null;
             let zmlLoraContentEditCurrentLoraName = null;
-            // 新增：跟踪已删除的LoRA文件路径
             let zmlDeletedLoraFiles = new Set();
 
             function createLoraContentEditModal() {
@@ -4155,6 +4489,21 @@ app.registerExtension({
                      };
                      dropdownMenu.appendChild(separateWeightsItem);
                      
+                     // 添加编辑信息选项
+                     const editInfoItem = zmlCreateEl("div", {
+                         style: `padding: 6px 12px; cursor: pointer; color: #ccc; ${globalThis.zmlBatchLoraEditInfoMode ? 'background: #555;' : ''}`,
+                         textContent: '编辑信息'
+                     });
+                     editInfoItem.onclick = () => {
+                         globalThis.zmlBatchLoraEditInfoMode = !globalThis.zmlBatchLoraEditInfoMode;
+                         this.renderLoraEntries();
+                         this.triggerSlotChanged();
+                         // 更新菜单项高亮
+                         editInfoItem.style.background = globalThis.zmlBatchLoraEditInfoMode ? '#555' : 'transparent';
+                         dropdownMenu.style.display = 'none';
+                     };
+                     dropdownMenu.appendChild(editInfoItem);
+                     
                      sizeToggleButton.appendChild(dropdownMenu);
                      
                      // 点击按钮切换下拉菜单显示/隐藏
@@ -5313,6 +5662,26 @@ app.registerExtension({
                              }
                          }
                          // ===========================
+
+                         // 编辑信息按钮（仅在编辑信息模式下显示）
+                         if (globalThis.zmlBatchLoraEditInfoMode) {
+                             const editInfoBtn = zmlCreateEl("button", {
+                                className: "zml-lora-entry-edit-info",
+                                style: `width: ${s.inputHeight}; height: ${s.inputHeight}; flex-shrink: 0; margin-right: 4px; background: #444; color: #ccc; border: 1px solid #666; border-radius: 2px; cursor: pointer; display: flex; align-items: center; justify-content: center; ${this.isLocked ? 'pointer-events: none; opacity: 0.5;' : ''}`
+                             }, "✏️");
+                             editInfoBtn.title = "编辑LoRA信息";
+                             
+                             // 只在非锁定状态下添加点击事件
+                             if (!this.isLocked) {
+                                 editInfoBtn.onclick = (e) => {
+                                     e.stopPropagation(); // 阻止事件冒泡
+                                     showLoraEditInfoModal(entry, this);
+                                 };
+                             } else {
+                                 editInfoBtn.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
+                             }
+                             entryCard.appendChild(editInfoBtn);
+                         }
 
                          const deleteBtn = zmlCreateEl("button", { // <-- 这里会调用到局部定义的 zmlCreateEl
                             className: "zml-lora-entry-delete", // 添加新 class
