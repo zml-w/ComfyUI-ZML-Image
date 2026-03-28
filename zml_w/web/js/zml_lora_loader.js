@@ -5396,19 +5396,35 @@ app.registerExtension({
                          }
                          displayNameInput.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
 
-                         const loraSelectorBtn = zmlCreateEl("button", { 
+                         const loraSelectorBtn = zmlCreateEl("button", {
                              style: `flex-grow: 1; min-width: 100px; padding: ${s.inputPadding}; background: #222; border: 1px solid #555; border-radius: 2px; color: #ccc; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: ${s.inputHeight}; ${this.isLocked ? 'pointer-events: none;' : ''}` // 锁定状态下禁用交互但保持正常亮度
                          }, entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop());// <-- 这里会调用到局部定义的 zmlCreateEl
-                         
+
+                         // 添加鼠标悬停预览图像功能
+                          if (entry.lora_name && entry.lora_name !== "None" && loraImages[entry.lora_name]) {
+                              const ext = app.extensions.find(e => e.name === "zml.LoraLoader.Final.v9");
+                              if (ext) {
+                                  loraSelectorBtn.addEventListener("mouseenter", () => {
+                                      const imagePath = loraImages[entry.lora_name];
+                                      const fullViewPath = `loras/${imagePath}`;
+                                      ext.imageHost.src = `${ZML_API_PREFIX}/view/${encodeRFC3986URIComponent(fullViewPath)}?${+new Date()}`;
+                                      ext.showImage(loraSelectorBtn);
+                                  });
+                                  loraSelectorBtn.addEventListener("mouseleave", () => {
+                                      ext.hideImage();
+                                  });
+                              }
+                          }
+
                          // 只在非锁定状态下添加点击事件
                          if (!this.isLocked) {
                              loraSelectorBtn.onclick = (e) => {
                                  e.stopPropagation(); // 阻止事件冒泡
-                                 if (activeLoraMenu) activeLoraMenu.close(); 
-                                 activeLoraMenu = this.createLoraTreeMenu(loraSelectorBtn, entry, () => { 
-                                     loraSelectorBtn.textContent = entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop(); 
-                                     this.triggerSlotChanged(); 
-                                 }); 
+                                 if (activeLoraMenu) activeLoraMenu.close();
+                                 activeLoraMenu = this.createLoraTreeMenu(loraSelectorBtn, entry, () => {
+                                     loraSelectorBtn.textContent = entry.lora_name === "None" ? "None" : (entry.lora_name || "").split(/[/\\]/).pop();
+                                     this.triggerSlotChanged();
+                                 });
                              };
                          } else {
                              loraSelectorBtn.onclick = (e) => e.stopPropagation(); // 阻止事件冒泡
