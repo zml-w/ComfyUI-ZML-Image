@@ -10,7 +10,8 @@ import uuid
 import json
 import base64
 from io import BytesIO
-
+import psutil
+import sys
 #==========================图像过度动画==========================
 
 class ZML_ImageTransition:
@@ -1232,6 +1233,209 @@ class ZML_MaskFillHoles:
         return (result.squeeze(0) if is_single else result,)
 
 #====================================================
+# 清理内存/显存节点
+#====================================================
+
+class ZML_MemoryCleaner:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "清理显存": ("BOOLEAN", {"default": True, "tooltip": "清理GPU显存"}),
+                "清理内存": ("BOOLEAN", {"default": False, "tooltip": "清理系统内存"}),
+            },
+            "optional": {
+                "任意数据": (ANY, {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = (ANY,)
+    RETURN_NAMES = ("输出",)
+    FUNCTION = "clean_memory"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def clean_memory(self, 清理显存, 清理内存, 任意数据=None):
+        import gc
+        import comfy.model_management
+        
+        if 清理显存:
+            # 全面清理显存：卸载模型 + 垃圾回收 + 清空CUDA缓存
+            comfy.model_management.unload_all_models()
+            gc.collect()
+            comfy.model_management.soft_empty_cache()
+            print("[ZML] 已清理显存 (卸载模型+GC+CUDA缓存)")
+        
+        if 清理内存:
+            try:
+                import ctypes
+                from ctypes import wintypes
+                import platform
+                
+                system = platform.system()
+                if system == "Windows":
+                    # 清理系统文件缓存
+                    try:
+                        ctypes.windll.kernel32.SetSystemFileCacheSize(-1, -1, 0)
+                    except:
+                        pass
+                    
+                    # 清理进程工作集
+                    try:
+                        for process in psutil.process_iter(['pid', 'name']):
+                            try:
+                                handle = ctypes.windll.kernel32.OpenProcess(
+                                    wintypes.DWORD(0x001F0FFF),
+                                    wintypes.BOOL(False),
+                                    wintypes.DWORD(process.info['pid'])
+                                )
+                                ctypes.windll.psapi.EmptyWorkingSet(handle)
+                                ctypes.windll.kernel32.CloseHandle(handle)
+                            except:
+                                continue
+                    except:
+                        pass
+                    
+                    # 清理未使用DLL
+                    try:
+                        ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1, -1)
+                    except:
+                        pass
+                    
+                    print("[ZML] 已清理系统内存")
+                elif system == "Linux":
+                    # Linux内存清理
+                    try:
+                        # 释放glibc内存池
+                        libc = ctypes.CDLL("libc.so.6")
+                        libc.malloc_trim(0)
+                    except:
+                        pass
+                    
+                    # 尝试清理系统缓存（需要root权限）
+                    try:
+                        with open('/proc/sys/vm/drop_caches', 'w') as f:
+                            f.write('3')
+                    except:
+                        pass
+                    
+                    print("[ZML] 已清理系统内存 (Linux)")
+            except Exception as e:
+                print(f"[ZML] 清理内存失败: {str(e)}")
+        
+        return (任意数据,)
+
+# ========================== 小番茄混淆 ==========================
+sys.setrecursionlimit(2000000)
+
+def gilbert2d(width, height):
+    """生成2D长方形的 Gilbert 曲线坐标序列"""
+    coordinates = []
+
+    def generate2d(x, y, ax, ay, bx, by):
+        w = abs(ax + ay)
+        h = abs(bx + by)
+        dax, day = (1 if ax > 0 else -1 if ax < 0 else 0), (1 if ay > 0 else -1 if ay < 0 else 0)
+        dbx, dby = (1 if bx > 0 else -1 if bx < 0 else 0), (1 if by > 0 else -1 if by < 0 else 0)
+
+        if h == 1:
+            for i in range(w):
+                coordinates.append((x, y))
+                x, y = x + dax, y + day
+            return
+        if w == 1:
+            for i in range(h):
+                coordinates.append((x, y))
+                x, y = x + dbx, y + dby
+            return
+
+        ax2, ay2 = ax // 2, ay // 2
+        bx2, by2 = bx // 2, by // 2
+        w2, h2 = abs(ax2 + ay2), abs(bx2 + by2)
+
+        if 2 * w > 3 * h:
+            if (w2 % 2) and (w > 2):
+                ax2, ay2 = ax2 + dax, ay2 + day
+            generate2d(x, y, ax2, ay2, bx, by)
+            generate2d(x + ax2, y + ay2, ax - ax2, ay - ay2, bx, by)
+        else:
+            if (h2 % 2) and (h > 2):
+                bx2, by2 = bx2 + dbx, by2 + dby
+            generate2d(x, y, bx2, by2, ax2, ay2)
+            generate2d(x + bx2, y + by2, ax, ay, bx - bx2, by - by2)
+            generate2d(x + (ax - dax) + (bx2 - dbx), y + (ay - day) + (by2 - dby),
+                       -bx2, -by2, -(ax - ax2), -(ay - ay2))
+
+    if width >= height:
+        generate2d(0, 0, width, 0, 0, height)
+    else:
+        generate2d(0, 0, 0, height, width, 0)
+    return coordinates
+
+class ZML_TomatoObfuscation:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "加密": ("IMAGE", {"label": "要加密的图像"}),
+                "解密": ("IMAGE", {"label": "要解密的图像"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE")
+    RETURN_NAMES = ("加密", "解密")
+    FUNCTION = "process"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def process(self, 加密=None, 解密=None):
+        encrypted_output = None
+        decrypted_output = None
+        
+        if 加密 is not None:
+            batch_size, height, width, channels = 加密.shape
+            out_tensors = []
+            coords = gilbert2d(width, height)
+            total_pixels = width * height
+            offset = int(round((math.sqrt(5) - 1) / 2 * total_pixels))
+            curve_indices = np.array([y * width + x for x, y in coords], dtype=np.int32)
+            
+            for b in range(batch_size):
+                img_np = (加密[b].cpu().numpy() * 255).astype(np.uint8)
+                flat_pixels = img_np.reshape(-1, channels)
+                result_pixels = np.zeros_like(flat_pixels)
+                target_indices = curve_indices[(np.arange(total_pixels) + offset) % total_pixels]
+                result_pixels[target_indices] = flat_pixels[curve_indices]
+                out_img = result_pixels.reshape(height, width, channels).astype(np.float32) / 255.0
+                out_tensors.append(torch.from_numpy(out_img))
+            
+            encrypted_output = torch.stack(out_tensors)
+        
+        if 解密 is not None:
+            batch_size, height, width, channels = 解密.shape
+            out_tensors = []
+            coords = gilbert2d(width, height)
+            total_pixels = width * height
+            offset = int(round((math.sqrt(5) - 1) / 2 * total_pixels))
+            curve_indices = np.array([y * width + x for x, y in coords], dtype=np.int32)
+            
+            for b in range(batch_size):
+                img_np = (解密[b].cpu().numpy() * 255).astype(np.uint8)
+                flat_pixels = img_np.reshape(-1, channels)
+                result_pixels = np.zeros_like(flat_pixels)
+                source_indices = curve_indices[(np.arange(total_pixels) + offset) % total_pixels]
+                result_pixels[curve_indices] = flat_pixels[source_indices]
+                out_img = result_pixels.reshape(height, width, channels).astype(np.float32) / 255.0
+                out_tensors.append(torch.from_numpy(out_img))
+            
+            decrypted_output = torch.stack(out_tensors)
+        
+        if encrypted_output is None:
+            encrypted_output = torch.zeros((1, 1, 1, 3))
+        if decrypted_output is None:
+            decrypted_output = torch.zeros((1, 1, 1, 3))
+            
+        return (encrypted_output, decrypted_output)
+
+#====================================================
 NODE_CLASS_MAPPINGS = {
     "ZML_ImageTransition": ZML_ImageTransition,
     "ZML_ImageEncryption": ZML_ImageEncryption,
@@ -1245,7 +1449,9 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageCrop": ZML_ImageCrop, 
     "ZML_List_To_Batch": ZML_List_To_Batch,
     "ZML_Get_Item_From_List": ZML_Get_Item_From_List,
-    "ZML_ImageBase64Converter": ZML_ImageBase64Converter
+    "ZML_ImageBase64Converter": ZML_ImageBase64Converter,
+    "ZML_MemoryCleaner": ZML_MemoryCleaner,
+    "ZML_TomatoObfuscation": ZML_TomatoObfuscation
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1261,5 +1467,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_ImageCrop": "ZML_图像裁剪",
     "ZML_List_To_Batch": "ZML_列表转批次",
     "ZML_Get_Item_From_List": "ZML_获取列表项",
-    "ZML_ImageBase64Converter": "ZML_图像Base64互转"
+    "ZML_ImageBase64Converter": "ZML_图像Base64互转",
+    "ZML_MemoryCleaner": "ZML_清理内存显存",
+    "ZML_TomatoObfuscation": "ZML_小番茄混淆"
 }

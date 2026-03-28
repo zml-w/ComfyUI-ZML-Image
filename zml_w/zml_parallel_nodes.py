@@ -8,6 +8,9 @@ import os
 import glob
 import torch
 import inspect
+import sys
+import gc
+import comfy.model_management
 
 # ==========================================
 # AnyType HACK - 允许连接任何类型
@@ -28,11 +31,11 @@ class ZML_ParallelJsonContainer:
         return {
             "required": {
                 "JSON工作流": ("STRING", {"multiline": True, "dynamicPrompts": False, "placeholder": "粘贴API JSON，使用{{变量名}}替换"}),
-                "执行次数": ("INT", {"default": 1, "min": 1, "max": 1000}),
+                "执行次数": ("INT", {"default": 1, "min": 1, "max": 3000}),
                 "并行线程数": ("INT", {"default": 1, "min": 1, "max": 64}),
-                "清理缓存间隔": ("INT", {"default": 0, "min": 0, "max": 200}),
+                "执行完成后清理缓存": ("BOOLEAN", {"default": True, "tooltip": "所有任务执行完成后执行全面清理，包括卸载模型、Python垃圾回收、CUDA缓存释放，以减少工作流执行造成的内存显存残留。尽量在关闭返回图像时开启这个功能，不然可能会失效。"}),
                 "返回图像": (["开启", "关闭"], {"default": "开启"}),
-                "控制台日志": (["开启", "关闭"], {"default": "关闭"}),
+                "控制台日志": (["开启", "关闭"], {"default": "开启"}),
             },
             "optional": { "变量包": ("VAR_BUNDLE",), }
         }
@@ -46,7 +49,7 @@ class ZML_ParallelJsonContainer:
     FUNCTION = "run_container"
     CATEGORY = "image/ZML_图像/子工作流"
 
-    def run_container(self, JSON工作流, 执行次数, 并行线程数, 清理缓存间隔, 返回图像, 控制台日志, 变量包=None):
+    def run_container(self, JSON工作流, 执行次数, 并行线程数, 执行完成后清理缓存, 返回图像, 控制台日志, 变量包=None):
         try:
             workflow_template = json.loads(JSON工作流)
         except Exception as e:
@@ -93,10 +96,7 @@ class ZML_ParallelJsonContainer:
                         current_vars_map[k] = resolve_variable(k, v_conf, index)
                 
                 current_flow = smart_replace(copy.deepcopy(workflow_template), current_vars_map)
-                result_cache = {} 
-                
-                if 清理缓存间隔 > 0 and (index + 1) % 清理缓存间隔 == 0:
-                    torch.cuda.empty_cache()
+                result_cache = {}
 
                 def get_node_result(node_id):
                     try:
@@ -162,76 +162,111 @@ class ZML_ParallelJsonContainer:
                             exp_any = res[link[1]] if isinstance(res, tuple) else res
                 
                 if not found: return (None, None, "未找到导出节点")
+                
+                # 任务完成前清空节点缓存，释放内存
+                result_cache.clear()
+                
                 return (exp_img, exp_any, "成功")
 
             except Exception as e:
                 return (None, None, f"任务 {index+1} 执行失败: {str(e)}")
 
-        # --- 并行执行逻辑 ---
-        indexed_results = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=并行线程数) as executor:
-            future_to_idx = {executor.submit(execute_single_workflow, i): i for i in range(执行次数)}
-            for future in concurrent.futures.as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                try:
-                    indexed_results[idx] = future.result()
-                except Exception as e:
-                    indexed_results[idx] = (None, None, f"任务 {idx+1} 崩溃: {str(e)}")
-
-        # --- 结果排序与批次合并逻辑 ---
-        temp_images = []
+        # 如果关闭返回图像，完全不保存图像数据，只计数
+        temp_images = [] if 返回图像 == "开启" else None
         final_anys = []
         status_lines = []
-
-        for i in range(执行次数):
-            img, val, msg = indexed_results.get(i, (None, None, "丢失"))
-            if msg == "成功":
-                status_lines.append(f"任务 {i+1}: ✅")
-                if 控制台日志 == "开启":
-                    print(f"[ZML] 任务 {i+1}: 执行成功")
-                if 返回图像 == "开启":
-                    # 确保是 4D 张量 [1, H, W, C]
-                    if img is not None:
-                        if len(img.shape) == 3: img = img.unsqueeze(0)
-                        temp_images.append(img)
-                else:
-                    temp_images.append(torch.zeros((1, 1, 1, 3)))
+        
+        # 使用队列按顺序处理结果
+        from queue import Queue
+        result_queue = Queue()
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=并行线程数) as executor:
+            # 提交所有任务
+            futures = {executor.submit(execute_single_workflow, i): i for i in range(执行次数)}
+            
+            # 按原始顺序收集结果（等待特定索引完成）
+            completed_futures = {}
+            next_expected = 0
+            
+            for future in concurrent.futures.as_completed(futures):
+                idx = futures[future]
+                try:
+                    img, val, msg = future.result()
+                except Exception as e:
+                    img, val, msg = None, None, f"崩溃: {str(e)}"
                 
-                if val is not None: final_anys.append(str(val))
-            else:
-                status_lines.append(f"任务 {i+1}: ❌ {msg}")
-                if 控制台日志 == "开启":
-                    print(f"[ZML] 任务 {i+1}: 执行失败 - {msg}")
+                completed_futures[idx] = (img, val, msg)
+                
+                # 按顺序处理已完成的任务
+                while next_expected in completed_futures:
+                    r_img, r_val, r_msg = completed_futures.pop(next_expected)
+                    
+                    # 立即处理并释放
+                    if r_msg == "成功":
+                        status_lines.append(f"任务 {next_expected+1}: ✅")
+                        if 控制台日志 == "开启":
+                            print(f"[ZML] 任务 {next_expected+1}: 执行成功", flush=True)
+                            sys.stdout.flush()
+                        
+                        # 只在需要时保存图像
+                        if temp_images is not None and r_img is not None:
+                            if len(r_img.shape) == 3:
+                                r_img = r_img.unsqueeze(0)
+                            temp_images.append(r_img)
+                        
+                        if r_val is not None:
+                            final_anys.append(str(r_val))
+                    else:
+                        status_lines.append(f"任务 {next_expected+1}: ❌ {r_msg}")
+                        if 控制台日志 == "开启":
+                            print(f"[ZML] 任务 {next_expected+1}: 执行失败 - {r_msg}", flush=True)
+                            sys.stdout.flush()
+                    
+                    next_expected += 1
+        
+        # 处理可能遗漏的（理论上不会有）
+        while len(status_lines) < 执行次数:
+            status_lines.append(f"任务 {len(status_lines)+1}: ❌ 丢失")
+        
+        # 执行完成后清理缓存
+        if 执行完成后清理缓存:
+            # 将图像移到CPU释放显存
+            if temp_images is not None:
+                for i in range(len(temp_images)):
+                    if isinstance(temp_images[i], torch.Tensor) and temp_images[i].is_cuda:
+                        temp_images[i] = temp_images[i].cpu()
+            
+            gc.collect()
+            comfy.model_management.soft_empty_cache()
+            
+            if 控制台日志 == "开启":
+                print(f"[ZML] 所有任务执行完成，已执行全面内存清理", flush=True)
+                sys.stdout.flush()
 
-        # --- 核心改进：检查分辨率并决定输出格式 ---
+        # 检查分辨率并决定输出格式 ---
         final_output_images = []
         if temp_images:
-            first_shape = temp_images[0].shape # [B, H, W, C]
+            first_shape = temp_images[0].shape  # [B, H, W, C]
             # 检查所有图像的 H(dim 1) 和 W(dim 2) 是否一致
             is_same_res = all(img.shape[1:3] == first_shape[1:3] for img in temp_images)
             
             if is_same_res and len(temp_images) > 1:
                 # 分辨率一致：合并为 Batch [N, H, W, C]
-                # 输出仍包装在 list 中，因为 OUTPUT_IS_LIST = True
                 final_output_images = [torch.cat(temp_images, dim=0)]
                 if 控制台日志 == "开启":
-                    print(f"[ZML] 检测到一致分辨率，已自动合并为 Batch，大小: {final_output_images[0].shape}")
+                    print(f"[ZML] 检测到一致分辨率，已自动合并为 Batch，大小: {final_output_images[0].shape}", flush=True)
             else:
                 # 分辨率不一致或只有一张：输出 Image List
                 final_output_images = temp_images
                 if len(temp_images) > 1 and 控制台日志 == "开启":
-                    print(f"[ZML] 检测到不同分辨率，将以图像列表(List)形式输出")
+                    print(f"[ZML] 检测到不同分辨率，将以图像列表(List)形式输出", flush=True)
         else:
-            # 没有返回任何图像，输出1*1的占位符
+            # 没有返回任何图像，输出单张1*1占位符
             final_output_images = [torch.zeros((1, 1, 1, 3))]
             if 控制台日志 == "开启":
-                print(f"[ZML] 所有任务执行失败，输出1*1占位符")
+                print(f"[ZML] 未返回图像，输出单张1*1占位符", flush=True)
 
         return (final_output_images, final_anys, "\n".join(status_lines))
-
-# ==========================================
-# 变量节点及其他（保持不变）
-# ==========================================
 
 class ZML_ParallelVariableBase:
     def merge_bundle(self, prev_bundle, key, data):

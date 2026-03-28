@@ -185,16 +185,23 @@ async def view_lora_preview(request):
     if not found_lora_full_path:
         return web.Response(status=404, text=f"相关LoRA文件未找到. (Requested path: {relative_path_within_type})")
 
-    # 根据找到的LoRA文件的绝对路径，构建其对应的zml预览图的绝对路径
+    # 根据找到的LoRA文件的绝对路径，构建预览图的绝对路径
     actual_lora_dir = os.path.dirname(found_lora_full_path)
     # 请求的预览图文件名，包含扩展名 (e.g., "image.png")
-    preview_filename_with_ext = os.path.basename(relative_path_within_type) 
-    target_path = os.path.join(actual_lora_dir, "zml", preview_filename_with_ext) # 构建zml预览图的绝对路径
+    preview_filename_with_ext = os.path.basename(relative_path_within_type)
 
-    if os.path.isfile(target_path):
-        return web.FileResponse(target_path, headers={"Content-Disposition": f"filename=\"{os.path.basename(target_path)}\""})
+    # 查找顺序: 1. zml子文件夹 2. LoRA同级目录
+    # 1. 先在zml子文件夹中查找
+    zml_target_path = os.path.join(actual_lora_dir, "zml", preview_filename_with_ext)
+    if os.path.isfile(zml_target_path):
+        return web.FileResponse(zml_target_path, headers={"Content-Disposition": f"filename=\"{os.path.basename(zml_target_path)}\""})
 
-    return web.Response(status=404, text=f"预览图未找到: {target_path}")
+    # 2. 如果没找到，在LoRA同级目录中查找
+    sibling_target_path = os.path.join(actual_lora_dir, preview_filename_with_ext)
+    if os.path.isfile(sibling_target_path):
+        return web.FileResponse(sibling_target_path, headers={"Content-Disposition": f"filename=\"{os.path.basename(sibling_target_path)}\""})
+
+    return web.Response(status=404, text=f"预览图未找到: {zml_target_path} 或 {sibling_target_path}")
 
 
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/save/{name:.*}")
@@ -241,35 +248,45 @@ async def save_preview(request):
 async def get_images(request):
     """
     获取所有LoRA文件及其对应的预览图的映射。
+    查找顺序: 1. zml子文件夹 2. LoRA同级目录
     """
     file_type_str = request.match_info["type"]
     if file_type_str != "loras":
         return web.json_response({})
-        
+
     lora_files = folder_paths.get_filename_list(file_type_str)
     images = {}
-    
+
     for lora_filename in lora_files: # lora_filename is like "subdir/mylora.safetensors"
         lora_full_path = folder_paths.get_full_path("loras", lora_filename)
         if not lora_full_path:
             continue
 
         lora_dir = os.path.dirname(lora_full_path)
-        zml_dir = os.path.join(lora_dir, "zml")
-        if not os.path.isdir(zml_dir):
-            continue
-            
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_filename))[0]
-        # Look for existing preview images in zml subfolder (e.g., lora_dir/zml/mylora.png)
+        lora_dir_relative = os.path.dirname(lora_filename) # e.g. "subdir"
+
+        # 查找顺序: 1. zml子文件夹 2. LoRA同级目录
+        found = False
         for ext in [".png", ".jpg", ".jpeg", ".webp"]:
-            preview_path_abs = os.path.join(zml_dir, f"{lora_basename_no_ext}{ext}")
-            if os.path.isfile(preview_path_abs):
-                lora_dir_relative = os.path.dirname(lora_filename) # e.g. "subdir"
-                preview_basename = os.path.basename(preview_path_abs) # e.g. "mylora.png"
+            # 先在zml子文件夹中查找
+            zml_preview_path = os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}{ext}")
+            if os.path.isfile(zml_preview_path):
+                preview_basename = os.path.basename(zml_preview_path)
                 relative_path_for_frontend = os.path.join(lora_dir_relative, preview_basename).replace("\\", "/")
                 images[lora_filename] = relative_path_for_frontend
+                found = True
                 break
-        
+
+            # 如果没找到，在LoRA同级目录中查找
+            sibling_preview_path = os.path.join(lora_dir, f"{lora_basename_no_ext}{ext}")
+            if os.path.isfile(sibling_preview_path):
+                preview_basename = os.path.basename(sibling_preview_path)
+                relative_path_for_frontend = os.path.join(lora_dir_relative, preview_basename).replace("\\", "/")
+                images[lora_filename] = relative_path_for_frontend
+                found = True
+                break
+
     return web.json_response(images)
 
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/get_lora_file")
@@ -278,6 +295,7 @@ async def get_lora_file(request):
     获取指定LoRA文件的内容
     期望接收 JSON body: {"lora_filename": "relative/path/to/lora.safetensors", "file_type": "txt|log"}
     返回 JSON body: {"status": "success", "content": "文件内容"} 或 {"status": "error", "message": "错误信息"}
+    查找顺序: 1. zml子文件夹 2. LoRA同级目录
     """
     try:
         body = await request.json()
@@ -293,16 +311,20 @@ async def get_lora_file(request):
 
         lora_dir = os.path.dirname(lora_full_path)
         lora_basename_no_ext = os.path.splitext(os.path.basename(lora_relative_filename))[0]
-        zml_dir = os.path.join(lora_dir, "zml")
         file_ext = ".txt" if file_type == "txt" else ".log"
-        file_path = os.path.join(zml_dir, f"{lora_basename_no_ext}{file_ext}")
 
-        if not os.path.exists(file_path):
-            # 如果文件不存在，返回空内容
-            return web.json_response({"status": "success", "content": ""})
+        # 查找顺序: 1. zml子文件夹 2. LoRA同级目录
+        file_paths_to_check = [
+            os.path.join(lora_dir, "zml", f"{lora_basename_no_ext}{file_ext}"),  # zml子文件夹
+            os.path.join(lora_dir, f"{lora_basename_no_ext}{file_ext}"),  # LoRA同级目录
+        ]
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = ""
+        for file_path in file_paths_to_check:
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                break
 
         return web.json_response({"status": "success", "content": content})
 
