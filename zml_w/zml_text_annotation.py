@@ -211,7 +211,7 @@ class ZML_AddTextWatermark:
                         
                         # 检查当前字符是否是空格，且前一个字符是中文标点符号
                         is_punctuation_space = False
-                        if char.isspace() and i > 0 and manual_line[i-1] in chinese_punctuation:
+                        if char.isspace() and i > 0 and manual_line[i-1] in self.chinese_punctuation:
                             is_punctuation_space = True
                         
                         # 计算添加当前字符后的宽度
@@ -221,7 +221,7 @@ class ZML_AddTextWatermark:
                         if would_exceed and is_punctuation_space:
                             # 如果这是标点后面的空格，并且添加会超出，则将整个标点加空格移到下一行
                             # 首先检查当前行最后一个字符是否是标点
-                            if current_line and current_line[-1] in chinese_punctuation:
+                            if current_line and current_line[-1] in self.chinese_punctuation:
                                 # 将当前行的最后一个字符（标点）和当前空格一起移到下一行
                                 punctuation = current_line[-1]
                                 current_line = current_line[:-1]  # 移除最后一个标点
@@ -372,8 +372,7 @@ class ZML_AddTextWatermark:
                     except:
                         line_w = max(1, font.getsize("A")[0] if font.getsize("A") else 1)
 
-                # 计算字符垂直偏移量，确保字符完全显示
-                y_offset = max(1, line_h // 4)  # 字体通常有基线，偏移约为行高的1/4，使文本垂直居中
+                y_offset = 0
 
                 for char in line:
                     char_fill_color = get_char_color(fill_color_param, opacity)
@@ -427,23 +426,31 @@ class ZML_AddTextWatermark:
             if 位置 == "全屏":
                 lines = 文本.split('\n')
                 try:
-                    current_font_for_sizing = ImageFont.truetype(os.path.join(self.font_dir, 字体), 字体大小) if 字体 != "Default" else ImageFont.load_default(字体大小)
+                    current_font_for_sizing = ImageFont.truetype(os.path.join(self.font_dir, 字体), 字体大小) if 字体 != "Default" else ImageFont.load_default()
                 except Exception:
-                    current_font_for_sizing = ImageFont.load_default(字体大小)
+                    current_font_for_sizing = ImageFont.load_default()
                 
                 tw, th = self._get_text_block_size(lines, current_font_for_sizing, 字符间距, 行间距, 书写方向)
                 
                 if tw == 0 or th == 0:
                     processed_images.append(self.pil_to_tensor(pil_image)); continue
                 
-                tile_w, tile_h = tw + (2 * stroke_width_for_draw), th + (2 * stroke_width_for_draw)
+                # 为字形边缘和旋转抗锯齿预留额外空间，避免字符被截断（如 L 的底边丢失）
+                safe_padding = max(8, int(字体大小 * 0.35), stroke_width_for_draw * 4)
+                tile_w = tw + (2 * stroke_width_for_draw) + (2 * safe_padding)
+                tile_h = th + (2 * stroke_width_for_draw) + (2 * safe_padding)
                 
                 text_img = Image.new('RGBA', (max(1, tile_w), max(1, tile_h))) 
                 text_draw = ImageDraw.Draw(text_img)
                 
-                self._draw_text_manually(text_draw, lines, stroke_width_for_draw, stroke_width_for_draw, font,
+                self._draw_text_manually(text_draw, lines, stroke_width_for_draw + safe_padding, stroke_width_for_draw + safe_padding, font,
                                         fill_color_for_draw, stroke_width_for_draw, stroke_fill_color_for_draw,
                                         不透明度, 字符间距, 行间距, 书写方向)
+
+                # 绘制后按非透明区域裁剪，既避免边缘截断，又减少后续旋转开销
+                content_bbox = text_img.getbbox()
+                if content_bbox is not None:
+                    text_img = text_img.crop(content_bbox)
                 
                 rot_img = text_img.rotate(全屏水印旋转角度, expand=True, resample=Image.Resampling.BICUBIC)
                 r_width, r_height = rot_img.size
@@ -1289,6 +1296,7 @@ class ZML_AddImageWatermark:
             try:
                 # 从输入的图像张量创建水印图像
                 watermark_pil = self.tensor_to_pil(水印图像[0]).convert("RGBA")
+
                 watermark_img = watermark_pil
             except Exception as e:
                 print(f"水印图像处理失败: {e}")
