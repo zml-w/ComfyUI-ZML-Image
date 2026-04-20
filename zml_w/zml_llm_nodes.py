@@ -1,11 +1,11 @@
 import json
-import requests
 import re
 import server
 import torch
 import base64
 import numpy as np
 import os
+import traceback
 from io import BytesIO
 from PIL import Image
 from aiohttp import web
@@ -31,7 +31,6 @@ def pil2base64(image):
         image.save(buffered, format="JPEG", quality=95)
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
     except Exception as e:
-        print(f"[ZML] 图像转 base64 失败: {e}")
         return None
 
 def create_placeholder_image():
@@ -59,7 +58,14 @@ class ZML_LLM_ModelLoader:
     CATEGORY = "image/ZML_图像/LLM"
     
     def load_model(self, api_url, api_key, model_id):
-        return ({"api_url": api_url, "api_key": api_key, "model_id": model_id, "preset_name": "Custom"},)
+        # 清理 URL 中的非法字符
+        url_str = str(api_url)
+        cleaned_chars = []
+        for char in url_str:
+            if char.isalnum() or char in '-._~:/?#[]@!$&\'()*+,;=%':
+                cleaned_chars.append(char)
+        cleaned_url = ''.join(cleaned_chars).rstrip('/')
+        return ({"api_url": cleaned_url, "api_key": api_key, "model_id": model_id, "preset_name": "Custom"},)
 
 # ==========================================
 # 节点 1 模型加载器 (读取本地JSON)
@@ -99,7 +105,6 @@ class ZML_LLM_ModelLoaderV2:
         file_path = os.path.join(config_folder, "zml_model_key.json")
         
         if not os.path.exists(file_path):
-            print(f"[ZML] 错误: 找不到配置文件 {file_path}")
             return ({"api_url": "", "api_key": "", "model_id": "Error: Config file not found"},)
 
         # 2. 读取 JSON
@@ -120,11 +125,9 @@ class ZML_LLM_ModelLoaderV2:
                     else:
                         model_id = target_preset.get("model", "")
                 else:
-                    print(f"[ZML] 错误: 在配置中找不到预设 '{preset_name}'")
                     model_id = f"Error: Preset '{preset_name}' not found"
 
         except Exception as e:
-            print(f"[ZML] 读取配置文件出错: {e}")
             model_id = f"Error: {str(e)}"
 
         # 返回配置 (Key 和 URL 是刚刚从硬盘读取的，没有保存在工作流中)
@@ -218,116 +221,134 @@ class ZML_LLM_Chat:
             },
             "optional": {
                 "json_schema": ("JSON_SCHEMA",),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}), 
+                "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647}), 
                 "input_image": ("IMAGE", {"tooltip": "支持 Batch 批量图像输入"}),
             }
         }
 
-    RETURN_TYPES = ("STRING", "IMAGE")
-    RETURN_NAMES = ("回复内容", "图像")
+    RETURN_TYPES = ("STRING", "IMAGE", "STRING")
+    RETURN_NAMES = ("回复内容", "图像", "请求示例")
     FUNCTION = "chat_completions"
     CATEGORY = "image/ZML_图像/LLM"
 
     def chat_completions(self, user_input, model_config, system_prompt, params, json_strategy, seed=0, json_schema=None, input_image=None):
-        api_url = model_config.get("api_url", "").rstrip('/')
+        from openai import OpenAI
+        
+        # 获取配置
+        api_url = model_config.get("api_url", "")
         api_key = model_config.get("api_key", "")
         model_id = model_config.get("model_id", "")
 
-        if "generate" not in api_url and "chat/completions" not in api_url:
-             api_url = f"{api_url}/v1/chat/completions"
+        # 创建客户端
+        client = OpenAI(
+            base_url=api_url,
+            api_key=api_key,
+        )
 
-        headers = { "Content-Type": "application/json", "Authorization": f"Bearer {api_key}" }
-
-        # --- 1. 准备文本指令 (合并 System Prompt) ---
-        full_text_instruction = ""
+        # --- 1. 准备 System Prompt ---
+        system_content = ""
         if system_prompt and system_prompt.strip():
-            full_text_instruction += f"{system_prompt}\n\n"
+            system_content = system_prompt.strip()
 
-        response_format_payload = None
         if json_schema is not None and "error" not in json_schema:
             schema_str = json.dumps(json_schema, ensure_ascii=False, indent=2)
             if json_strategy == "DeepSeek/通用模式 (json_object)":
-                response_format_payload = { "type": "json_object" }
-                full_text_instruction += f"\n\n【输出格式要求】\n请严格按照以下 JSON 格式输出，不要包含 Markdown 标记：\n{schema_str}"
+                system_content += f"\n\n【输出格式要求】\n请严格按照以下 JSON 格式输出，不要包含 Markdown 标记：\n{schema_str}"
             elif json_strategy == "OpenAI严格模式 (json_schema)":
-                response_format_payload = {
-                    "type": "json_schema",
-                    "json_schema": {"name": "structured_output", "strict": True, "schema": json_schema}
-                }
+                pass  # OpenAI SDK 会处理 response_format
             else:
-                full_text_instruction += f"\n\n请输出以下 JSON 格式：\n{schema_str}"
-
-        full_text_instruction += f"\n\n{user_input}"
+                system_content += f"\n\n请输出以下 JSON 格式：\n{schema_str}"
 
         # --- 2. 构建 User 消息 (支持多批次图像) ---
         user_message_content = []
-        
-        # 添加文本
-        user_message_content.append({"type": "text", "text": full_text_instruction})
-        
+
+        # 添加用户输入文本
+        user_message_content.append({"type": "text", "text": user_input})
+
         # 添加图像 (循环处理 Batch 中的每一张)
-        if input_image is not None:
+        if input_image is not None and hasattr(input_image, 'shape') and len(input_image.shape) >= 4:
             try:
-                # ComfyUI Image Shape: [Batch, Height, Width, Channel]
                 batch_count = input_image.shape[0]
-                
                 for i in range(batch_count):
-                    # 获取单张图片 Tensor [H, W, C]
                     single_image = input_image[i]
                     pil_image = tensor2pil(single_image)
                     base64_str = pil2base64(pil_image)
-                    
                     if base64_str:
                         user_message_content.append({
                             "type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{base64_str}"}
                         })
             except Exception as e:
-                print(f"[ZML] 批量图片处理出错: {e}")
+                pass
 
         # --- 3. 组装 Messages ---
-        messages = [{"role": "user", "content": user_message_content}]
+        messages = []
+        if system_content:
+            messages.append({"role": "system", "content": system_content})
+        messages.append({"role": "user", "content": user_message_content})
 
-        # --- 4. 构建 Payload ---
-        payload = {
+        # --- 4. 构建请求示例 ---
+        request_example = {
+            "base_url": api_url,
             "model": model_id,
-            "messages": messages,
-            "stream": False,
+            "messages": messages
         }
-        
-        req_timeout = params.get("timeout", 120)
-        for key, value in params.items():
-            if (key == "max_tokens" and value == -1) or key == "timeout": continue
-            payload[key] = value
-        
-        if seed > 0: payload["seed"] = seed
-        if response_format_payload: payload["response_format"] = response_format_payload
+        request_example_str = json.dumps(request_example, ensure_ascii=False, indent=2)
 
         # --- 5. 准备输出图像 (直通) ---
         output_image_tensor = input_image if input_image is not None else create_placeholder_image()
 
-        # --- 6. 发送请求 ---
+        # --- 6. 发送请求 (使用 OpenAI SDK) ---
         try:
-            response = requests.post(api_url, json=payload, headers=headers, timeout=req_timeout)
+            # 构建请求参数 (使用流式模式，与官方示例一致)
+            kwargs = {
+                "model": model_id,
+                "messages": messages,
+                "stream": True,
+            }
             
-            if response.status_code != 200:
-                return (f"API 错误 ({response.status_code}): {response.text}", output_image_tensor)
+            # 添加其他参数
+            if params.get("temperature") is not None:
+                kwargs["temperature"] = params["temperature"]
+            if params.get("max_tokens") is not None and params["max_tokens"] > 0:
+                kwargs["max_tokens"] = params["max_tokens"]
+            if params.get("top_p") is not None:
+                kwargs["top_p"] = params["top_p"]
+            if seed > 0:
+                kwargs["seed"] = int(seed)
             
-            try:
-                result = response.json()
-            except json.JSONDecodeError:
-                return (f"API 返回了无效数据 (非 JSON): {response.text[:800]}...", output_image_tensor)
+            # JSON 格式 (流式模式下不使用 response_format)
+            if json_schema is not None and "error" not in json_schema:
+                if json_strategy == "OpenAI严格模式 (json_schema)":
+                    kwargs["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {"name": "structured_output", "strict": True, "schema": json_schema}
+                    }
+                elif json_strategy == "DeepSeek/通用模式 (json_object)":
+                    kwargs["response_format"] = {"type": "json_object"}
+            
+            response = client.chat.completions.create(**kwargs)
+            
+            # 处理流式响应
+            content_parts = []
+            for chunk in response:
+                if chunk.choices:
+                    delta_content = chunk.choices[0].delta.content
+                    if delta_content:
+                        content_parts.append(delta_content)
+            
+            content = ''.join(content_parts)
 
-            if "choices" in result and len(result["choices"]) > 0:
-                content = result["choices"][0]["message"]["content"]
+            if content:
                 if content.strip() == "INVALID_ARGUMENT":
-                    return ("API 拒绝处理：收到 'INVALID_ARGUMENT'。请检查 API Key 权限或图片大小。", output_image_tensor)
-                return (content, output_image_tensor)
+                    return ("API 拒绝处理：收到 'INVALID_ARGUMENT'。请检查 API Key 权限或图片大小。", output_image_tensor, request_example_str)
+                return (content, output_image_tensor, request_example_str)
             else:
-                return (f"API 返回结构异常: {json.dumps(result, ensure_ascii=False)}", output_image_tensor)
+                return (f"API 返回空内容", output_image_tensor, request_example_str)
 
         except Exception as e:
-            return (f"请求发生异常: {str(e)}", output_image_tensor)
+            error_detail = traceback.format_exc()
+            return (f"请求发生异常: {str(e)}\n\n详情: {error_detail[:500]}", output_image_tensor, request_example_str)
 
 
 # ==========================================
@@ -374,7 +395,6 @@ class ZML_JsonExtractor:
         try:
             data = json.loads(clean_json)
         except:
-            print(f"[ZML] JSON 解析失败: {clean_json[:50]}...")
             return tuple([[default_value]] * 7)
 
         key_list = [k.strip() for k in keys.replace("，", ",").split(",") if k.strip()]
@@ -446,7 +466,6 @@ async def load_llm_config(request):
         return web.json_response({"success": True, "presets": presets})
         
     except Exception as e:
-        print(f"[ZML] Load Config Error: {e}")
         return web.json_response({"success": False, "error": str(e)})
 
 @server.PromptServer.instance.routes.post("/zml/llm/save_config")
@@ -478,7 +497,6 @@ async def save_llm_config(request):
         return web.json_response({"success": True})
         
     except Exception as e:
-        print(f"[ZML] Save Config Error: {e}")
         return web.json_response({"success": False, "error": str(e)})
 
 

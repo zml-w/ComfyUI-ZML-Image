@@ -4,11 +4,29 @@ import torch
 import numpy as np
 from PIL import Image, ImageDraw
 import os
+import sys
+import subprocess
 import time
 import uuid
 import json
 from scipy.spatial.distance import cdist
 import comfy.model_management # 新增：用于检测系统中断信号
+import inspect
+import importlib.util
+
+
+# ============================== AnyType HACK ==============================
+# 实现可以匹配任意类型的代理类
+class AlwaysEqualProxy(str):
+    def __eq__(self, _):
+        return True
+
+    def __ne__(self, _):
+        return False
+
+# 创建一个 AlwaysEqualProxy 的实例，其值为通配符"*"
+any_type = AlwaysEqualProxy("*")
+# =====================================================================================
 
 
 # 全局字典，用于存储节点ID和预览图像路径的映射
@@ -990,19 +1008,20 @@ async def get_audio_file(request):
     except Exception as e:
         return web.Response(status=500, text=f"Error reading file: {e}")
 
-# ============================== AnyType HACK ==============================
-# 实现可以匹配任意类型的代理类
-class AlwaysEqualProxy(str):
-    def __eq__(self, _):
-        return True
-
-    def __ne__(self, _):
-        return False
-
-# 创建一个 AlwaysEqualProxy 的实例，其值为通配符"*"
-any_type = AlwaysEqualProxy("*")
-# =====================================================================================
-
+@server.PromptServer.instance.routes.get("/zml/get_notice_icon")
+async def get_notice_icon(request):
+    """提供通知图标文件"""
+    icon_path = os.path.join(os.path.dirname(__file__), "web", "images", "Notice.ico")
+    
+    if not os.path.exists(icon_path):
+        return web.Response(status=404, text="Notice.ico not found")
+    
+    try:
+        with open(icon_path, 'rb') as f:
+            icon_data = f.read()
+        return web.Response(body=icon_data, content_type='image/x-icon')
+    except Exception as e:
+        return web.Response(status=500, text=f"Error reading file: {e}")
 
 # ============================== 音频播放器节点 ==============================
 class ZML_AudioPlayerNode:
@@ -1025,24 +1044,64 @@ class ZML_AudioPlayerNode:
         return {
             "required": {
                 "音频文件": (audio_files,),
+                "播放音量": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "display": "slider"}),
+                "启用弹窗": ("BOOLEAN", {"default": True}),
+                "主标题": ("STRING", {"default": "任务完成", "multiline": False}),
+                "副标题": ("STRING", {"default": "", "multiline": False}),
+                "风格": (["卡通", "简约", "自定义"],),
+                "弹窗位置": (["左上", "右上", "左下", "右下"], {"default": "右下"}),
+                "通知类型": (["页面通知", "系统通知"], {"default": "页面通知"}),
             },
             "optional": {
-                # 使用 any_type 对象实例作为类型
                 "任意输入": (any_type, {}),
             }
         }
 
-    # 返回任意类型，以便可以连接到任何其他节点
     RETURN_TYPES = (any_type,)
     RETURN_NAMES = ("任意输出",)
     FUNCTION = "play_audio"
     CATEGORY = "image/ZML_图像/工具"
 
-    def play_audio(self, 音频文件, 任意输入=None):
-        # 后端什么也不做，只是传递输入的任意类型数据
-        # 如果没有输入，则返回一个空元组作为占位符
+    def play_audio(self, 音频文件, 播放音量, 启用弹窗, 主标题, 副标题, 风格, 弹窗位置, 通知类型, 任意输入=None):
         output = 任意输入 if 任意输入 is not None else tuple()
-        # 返回结果，可以连接到其他任何节点
+        return (output,)
+
+
+# ============================== 音频播放器节点 ==============================
+class ZML_PureAudioPlayerNode:
+    def __init__(self):
+        self.audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio")
+        os.makedirs(self.audio_dir, exist_ok=True)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio")
+        if not os.path.exists(audio_dir):
+            os.makedirs(audio_dir)
+
+        supported_formats = ('.mp3', '.wav', '.ogg')
+        audio_files = [f for f in os.listdir(audio_dir) if f.lower().endswith(supported_formats)]
+
+        if not audio_files:
+            audio_files = ["(空) 请在zml_w/audio文件夹中放入音频"]
+
+        return {
+            "required": {
+                "音频文件": (audio_files,),
+                "播放音量": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "display": "slider"}),
+            },
+            "optional": {
+                "任意输入": (any_type, {}),
+            }
+        }
+
+    RETURN_TYPES = (any_type,)
+    RETURN_NAMES = ("任意输出",)
+    FUNCTION = "play_pure_audio"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def play_pure_audio(self, 音频文件, 播放音量, 任意输入=None):
+        output = 任意输入 if 任意输入 is not None else tuple()
         return (output,)
 
 
@@ -1858,6 +1917,747 @@ class ZML_LimitImageAspect:
 
         return (output_tensor,)
 
+
+# ============================== 分离图层节点 ==============================
+class ZML_SeparateImageLayers:
+    """
+    ZML 分离图层节点
+    将一张图像中不相连的区域分离成多个独立的图像
+    适用于抠图后分离多个人物/物体
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE", {"tooltip": "输入图像，支持RGBA透明背景图像"}),
+                "最小面积比例": ("FLOAT", {
+                    "default": 0.005,
+                    "min": 0.0,
+                    "max": 1.0,
+                    "step": 0.001,
+                    "display": "number",
+                    "tooltip": "过滤小区域的阈值，相对于图像总面积的比例。例如0.01表示过滤掉小于图像面积1%的区域"
+                }),
+                "合并阈值": ("INT", {
+                    "default": 10,
+                    "min": 0,
+                    "max": 500,
+                    "step": 1,
+                    "display": "number",
+                    "tooltip": "控制图层合并的阈值（像素）。如果两个图层之间的间隔像素小于此值，则会合并为一个图层"
+                }),
+                "检测背景": (["透明", "白色", "黑色", "绿色"], {"default": "透明", "tooltip": "用于检测分离的背景颜色。选择'透明'时优先使用Alpha通道"}),
+                "填充背景": (["透明", "白色", "黑色", "绿色"], {"default": "透明", "tooltip": "分离后非区域部分的填充颜色。'透明'需要输出为RGBA格式"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT")
+    RETURN_NAMES = ("分离图像", "图层数量")
+    FUNCTION = "separate_layers"
+    CATEGORY = "image/ZML_图像/图像"
+
+    def _tensor_to_numpy(self, image_tensor: torch.Tensor) -> np.ndarray:
+        """将ComfyUI图像张量转换为numpy数组 (H, W, C) uint8"""
+        # 输入是 (B, H, W, C) 或 (H, W, C)，范围 0-1
+        if image_tensor.dim() == 4:
+            image_tensor = image_tensor.squeeze(0)
+        # 转换为 numpy，范围 0-255
+        image_np = (image_tensor.cpu().numpy() * 255).astype(np.uint8)
+        return image_np
+
+    def _numpy_to_tensor(self, image_np: np.ndarray) -> torch.Tensor:
+        """将numpy数组转换为ComfyUI图像张量 (1, H, W, C) float32"""
+        # 转换为 float32，范围 0-1
+        image_tensor = torch.from_numpy(image_np.astype(np.float32) / 255.0)
+        # 添加批次维度
+        return image_tensor.unsqueeze(0)
+
+    def separate_layers(self, 图像: torch.Tensor, 最小面积比例: float, 合并阈值: int, 检测背景: str, 填充背景: str):
+        # 转换图像为numpy数组
+        image_np = self._tensor_to_numpy(图像)
+        h, w = image_np.shape[:2]
+        
+        # 定义背景颜色映射
+        bg_color_map = {
+            "透明": None,
+            "白色": [255, 255, 255],
+            "黑色": [0, 0, 0],
+            "绿色": [0, 255, 0]
+        }
+        detect_bg_color = bg_color_map.get(检测背景)
+        
+        # 检测前景/背景
+        if 检测背景 == "透明" and len(image_np.shape) == 3 and image_np.shape[2] == 4:
+            # 透明模式且有Alpha通道，使用Alpha通道判断前景
+            alpha = image_np[:, :, 3]
+            _, binary = cv2.threshold(alpha, 10, 255, cv2.THRESH_BINARY)
+        elif detect_bg_color is not None and len(image_np.shape) == 3:
+            # 使用颜色差分检测前景
+            diff = np.abs(image_np[:, :, :3].astype(np.float32) - np.array(detect_bg_color, dtype=np.float32))
+            diff_sum = np.sum(diff, axis=2)
+            binary = (diff_sum > 30).astype(np.uint8) * 255
+        else:
+            # 默认使用灰度图
+            if len(image_np.shape) == 3:
+                gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = image_np
+            _, binary = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+        
+        # 使用连通区域分析
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, 8, cv2.CV_32S)
+        
+        total_pixels = h * w
+        min_area = total_pixels * 最小面积比例
+        
+        # 收集有效的连通区域（跳过背景，标签0）
+        valid_regions = []
+        for i in range(1, num_labels):
+            area = stats[i, cv2.CC_STAT_AREA]
+            if area >= min_area:
+                x = stats[i, cv2.CC_STAT_LEFT]
+                y = stats[i, cv2.CC_STAT_TOP]
+                width = stats[i, cv2.CC_STAT_WIDTH]
+                height = stats[i, cv2.CC_STAT_HEIGHT]
+                valid_regions.append({
+                    'label': i,
+                    'x': x, 'y': y,
+                    'width': width, 'height': height,
+                    'area': area
+                })
+        
+        if not valid_regions:
+            # 没有有效区域，返回原图
+            return (图像, 0)
+        
+        # 根据x坐标排序（从左到右）
+        valid_regions.sort(key=lambda r: r['x'])
+        
+        # 合并间隔小于阈值的区域
+        if 合并阈值 > 0 and len(valid_regions) > 1:
+            merged_regions = [valid_regions[0]]
+            for current in valid_regions[1:]:
+                last = merged_regions[-1]
+                # 计算两个区域之间的水平间隔
+                gap = current['x'] - (last['x'] + last['width'])
+                if gap < 合并阈值:
+                    # 合并两个区域 - 合并边界框并收集所有标签
+                    merged_x = min(last['x'], current['x'])
+                    merged_y = min(last['y'], current['y'])
+                    merged_width = max(last['x'] + last['width'], current['x'] + current['width']) - merged_x
+                    merged_height = max(last['y'] + last['height'], current['y'] + current['height']) - merged_y
+                    merged_area = last['area'] + current['area']
+                    # 合并标签列表
+                    if 'labels' in last:
+                        merged_labels = last['labels'] + [current['label']]
+                    else:
+                        merged_labels = [last['label'], current['label']]
+                    merged_regions[-1] = {
+                        'label': merged_labels[0],  # 使用第一个标签作为主标签
+                        'labels': merged_labels,    # 保存所有标签列表
+                        'x': merged_x, 'y': merged_y,
+                        'width': merged_width, 'height': merged_height,
+                        'area': merged_area
+                    }
+                else:
+                    merged_regions.append(current)
+            valid_regions = merged_regions
+        
+        # 确定图像格式
+        has_alpha = len(image_np.shape) == 3 and image_np.shape[2] == 4
+        use_transparent = 填充背景 == "透明" and has_alpha
+        
+        # 定义填充背景颜色值
+        bg_color_values = {
+            "透明": None,
+            "白色": [255, 255, 255],
+            "黑色": [0, 0, 0],
+            "绿色": [0, 255, 0]
+        }
+        output_bg_color = bg_color_values.get(填充背景)
+        
+        # 提取每个区域的图像
+        separated_images = []
+        for region in valid_regions:
+            # 始终使用原分辨率输出：创建与原图相同尺寸的图层
+            # 获取区域的所有标签（合并后的区域可能有多个标签）
+            if 'labels' in region:
+                # 合并后的区域，使用所有标签
+                region_mask = np.zeros_like(labels, dtype=bool)
+                for label in region['labels']:
+                    region_mask |= (labels == label)
+            else:
+                # 单个区域
+                region_mask = (labels == region['label'])
+            
+            if use_transparent:
+                # 透明背景：保留Alpha通道
+                layer = image_np.copy()
+                layer[~region_mask, 3] = 0
+            elif output_bg_color is not None:
+                # 纯色背景：创建RGB图像
+                if has_alpha:
+                    layer = image_np[:, :, :3].copy()
+                else:
+                    layer = image_np.copy()
+                
+                if len(layer.shape) == 3:
+                    layer[~region_mask] = output_bg_color
+                else:
+                    layer[~region_mask] = output_bg_color[0]
+            else:
+                # 透明但无Alpha通道，使用黑色背景
+                layer = image_np.copy() if not has_alpha else image_np[:, :, :3].copy()
+                if len(layer.shape) == 3:
+                    layer[~region_mask] = [0, 0, 0]
+                else:
+                    layer[~region_mask] = 0
+            
+            separated_images.append(layer)
+        
+        # 处理输出 - 转换为图像批次
+        # 始终使用原分辨率输出：所有图像尺寸相同，直接堆叠
+        tensor_list = [self._numpy_to_tensor(img).squeeze(0) for img in separated_images]
+        output_tensor = torch.stack(tensor_list, dim=0)
+        
+        return (output_tensor, len(separated_images))
+
+
+class ZML_CodeViewerNode:
+    """
+    ZML 代码查看节点
+    接受任意类型的输入，自动查找并显示上游节点的源代码
+    可以穿透任意类型的节点连接，查看原始节点的实现代码
+    """
+    
+    # 缓存已扫描的文件
+    _file_cache = {}
+    _class_location_cache = {}  # 类名到文件路径的缓存
+    _scanned = False  # 是否已完成初始扫描
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "任意输入": (any_type, {"tooltip": "连接任意节点输出，会自动查找上游节点的源代码", "lazy": True}),
+            },
+            "optional": {
+                "显示完整代码": ("BOOLEAN", {"default": True, "tooltip": "True显示完整类代码，False只显示函数/方法代码"}),
+                "包含导入语句": ("BOOLEAN", {"default": False, "tooltip": "是否在代码开头包含import语句"}),
+                "不执行上游": ("BOOLEAN", {"default": False}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像/工具"
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("节点类名", "节点文件名", "节点代码")
+    FUNCTION = "view_code"
+    OUTPUT_NODE = True  # 标记为输出节点，支持懒加载
+
+    def check_lazy_status(self, 不执行上游=False, **kwargs):
+        if 不执行上游:
+            return []
+        return None
+
+    def view_code(self, 任意输入=None, 显示完整代码=True, 包含导入语句=False, 不执行上游=False, **kwargs):
+        """
+        获取上游节点的源代码信息
+        """
+        import traceback
+        
+        node_class_type = "未知"
+        source_code = "无法获取源代码"
+        file_path = "未知"
+        
+        try:
+            # 从调用栈中获取工作流数据
+            frame = inspect.currentframe()
+            try:
+                while frame:
+                    if 'extra_data' in frame.f_locals:
+                        extra_data = frame.f_locals['extra_data']
+                        if 'extra_pnginfo' in extra_data:
+                            workflow = extra_data['extra_pnginfo'].get('workflow', {})
+                            nodes = workflow.get('nodes', [])
+                            links = workflow.get('links', [])
+                            
+                            # 找到当前节点
+                            current_node = None
+                            for node in nodes:
+                                if node.get('type') == 'ZML_CodeViewerNode':
+                                    current_node = node
+                                    break
+                            
+                            if current_node:
+                                # 找到输入连接
+                                inputs = current_node.get('inputs', [])
+                                for input_slot in inputs:
+                                    if input_slot.get('name') == '任意输入':
+                                        link_id = input_slot.get('link')
+                                        if link_id:
+                                            # 找到源节点
+                                            for link in links:
+                                                if link[0] == link_id:
+                                                    origin_node_id = link[1]
+                                                    for node in nodes:
+                                                        if node.get('id') == origin_node_id:
+                                                            node_class_type = node.get('type', '未知')
+                                                            break
+                                                    break
+                                        break
+                            break
+                    frame = frame.f_back
+            finally:
+                del frame
+            
+        except Exception as e:
+            source_code = f"分析工作流时出错: {str(e)}\n{traceback.format_exc()}"
+        
+        # 获取源代码
+        if node_class_type != "未知":
+            try:
+                source_code, file_path = self._get_node_source(
+                    node_class_type, 显示完整代码, 包含导入语句
+                )
+            except Exception as e:
+                source_code = f"获取源代码时出错: {str(e)}\n{traceback.format_exc()}"
+        else:
+            source_code = """未能自动识别上游节点。
+
+可能的原因：
+1. 节点尚未连接或工作流数据不可用
+2. 调用栈深度问题
+
+建议：
+- 确保节点已正确连接到上游节点
+- 尝试重新执行工作流
+"""
+        
+        return (node_class_type, file_path, source_code)
+    
+    def _get_node_source(self, class_name, show_full_class=True, include_imports=False):
+        """
+        根据类名查找源代码 - 支持官方节点和自定义节点
+        """
+        # 方法1: 从已加载的模块中查找
+        node_class = None
+        module_file = None
+        actual_class_name = class_name
+        
+        # 首先尝试从所有 NODE_CLASS_MAPPINGS 中查找
+        for name, module in sys.modules.items():
+            if not module or not hasattr(module, '__dict__'):
+                continue
+            # 查找 NODE_CLASS_MAPPINGS
+            node_mappings = module.__dict__.get('NODE_CLASS_MAPPINGS', {})
+            if class_name in node_mappings:
+                mapped_class = node_mappings[class_name]
+                if isinstance(mapped_class, type):
+                    node_class = mapped_class
+                    actual_class_name = mapped_class.__name__
+                    # 使用类的实际文件路径，而不是模块的文件路径
+                    try:
+                        module_file = inspect.getfile(mapped_class)
+                    except:
+                        try:
+                            module_file = inspect.getfile(module)
+                        except:
+                            pass
+                    break
+        
+        # 如果没找到，尝试直接查找类名
+        if not node_class:
+            for name, module in sys.modules.items():
+                if not module or not hasattr(module, '__dict__'):
+                    continue
+                if class_name in module.__dict__:
+                    obj = module.__dict__[class_name]
+                    if isinstance(obj, type) and hasattr(obj, 'INPUT_TYPES'):
+                        node_class = obj
+                        # 使用类的实际文件路径
+                        try:
+                            module_file = inspect.getfile(obj)
+                        except:
+                            try:
+                                module_file = inspect.getfile(module)
+                            except:
+                                pass
+                        break
+        
+        # 方法2: 如果模块方法失败，扫描文件系统
+        if not node_class:
+            return self._scan_files_for_class(actual_class_name, show_full_class, include_imports)
+        
+        # 获取源代码
+        try:
+            if show_full_class:
+                source = inspect.getsource(node_class)
+            else:
+                func_name = getattr(node_class, 'FUNCTION', None)
+                if func_name and hasattr(node_class, func_name):
+                    method = getattr(node_class, func_name)
+                    source = inspect.getsource(method)
+                else:
+                    source = inspect.getsource(node_class)
+            
+            file_path = module_file or "已加载模块"
+            
+            # 添加导入语句
+            if include_imports and module_file and os.path.exists(module_file):
+                source = self._add_imports(source, module_file)
+            
+            return source, file_path
+            
+        except Exception as e:
+            # 如果inspect.getsource失败，尝试扫描文件系统
+            return self._scan_files_for_class(actual_class_name, show_full_class, include_imports)
+    
+    def _scan_files_for_class(self, class_name, show_full_class, include_imports):
+        """
+        扫描ComfyUI目录查找包含指定类的Python文件
+        支持通过 NODE_CLASS_MAPPINGS 查找映射的类
+        使用缓存优化性能
+        """
+        import ast
+        
+        # 检查完整缓存
+        cache_key = f"{class_name}_{show_full_class}_{include_imports}"
+        if cache_key in ZML_CodeViewerNode._file_cache:
+            return ZML_CodeViewerNode._file_cache[cache_key]
+        
+        # 首先尝试从 NODE_CLASS_MAPPINGS 中查找实际的类名
+        actual_class_name = class_name
+        module_file = None
+        for name, module in sys.modules.items():
+            if not module or not hasattr(module, '__dict__'):
+                continue
+            node_mappings = module.__dict__.get('NODE_CLASS_MAPPINGS', {})
+            if class_name in node_mappings:
+                mapped_class = node_mappings[class_name]
+                if isinstance(mapped_class, type):
+                    actual_class_name = mapped_class.__name__
+                    # 尝试获取模块文件路径
+                    try:
+                        module_file = inspect.getfile(module)
+                    except:
+                        pass
+                    break
+        
+        # 检查类位置缓存
+        if actual_class_name in ZML_CodeViewerNode._class_location_cache:
+            py_file = ZML_CodeViewerNode._class_location_cache[actual_class_name]
+            if os.path.exists(py_file):
+                result = self._extract_class_from_file(py_file, actual_class_name, show_full_class, include_imports)
+                if result:
+                    ZML_CodeViewerNode._file_cache[cache_key] = result
+                    return result
+        
+        # 如果知道模块文件，优先检查
+        if module_file and os.path.exists(module_file):
+            result = self._extract_class_from_file(module_file, actual_class_name, show_full_class, include_imports)
+            if result:
+                ZML_CodeViewerNode._class_location_cache[actual_class_name] = module_file
+                ZML_CodeViewerNode._file_cache[cache_key] = result
+                return result
+        
+        # 获取ComfyUI根目录
+        comfyui_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        custom_nodes_dir = os.path.join(comfyui_root, "custom_nodes")
+        core_nodes_dir = os.path.join(comfyui_root, "comfy_extras")
+        
+        search_dirs = []
+        if os.path.exists(custom_nodes_dir):
+            search_dirs.append(custom_nodes_dir)
+        if os.path.exists(core_nodes_dir):
+            search_dirs.append(core_nodes_dir)
+        
+        # 查找所有Python文件（只扫描一次并缓存）
+        if not ZML_CodeViewerNode._scanned:
+            py_files = []
+            for search_dir in search_dirs:
+                for root, dirs, files in os.walk(search_dir):
+                    # 跳过__pycache__
+                    dirs[:] = [d for d in dirs if d != '__pycache__']
+                    for file in files:
+                        if file.endswith('.py'):
+                            py_files.append(os.path.join(root, file))
+            ZML_CodeViewerNode._py_files = py_files
+            ZML_CodeViewerNode._scanned = True
+        else:
+            py_files = ZML_CodeViewerNode._py_files
+        
+        # 扫描每个文件
+        for py_file in py_files:
+            try:
+                with open(py_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # 快速检查：文件中是否包含类名
+                if f"class {actual_class_name}" not in content:
+                    # 也尝试查找 NODE_CLASS_MAPPINGS 定义
+                    if f'"{class_name}"' not in content and f"'{class_name}'" not in content:
+                        continue
+                
+                # 解析AST
+                tree = ast.parse(content)
+                
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ClassDef) and node.name == actual_class_name:
+                        # 找到类，提取代码
+                        lines = content.split('\n')
+                        
+                        if show_full_class:
+                            # 提取整个类
+                            class_start = node.lineno - 1
+                            # 找到类的结束行
+                            class_end = len(lines)
+                            for i, line in enumerate(lines[class_start+1:], start=class_start+1):
+                                # 简单判断：遇到相同或更少缩进的类定义或函数定义就停止
+                                if i < len(lines):
+                                    stripped = lines[i].lstrip()
+                                    if stripped and not stripped.startswith('#'):
+                                        indent = len(lines[i]) - len(stripped)
+                                        if indent <= 0 and (stripped.startswith('class ') or stripped.startswith('def ')):
+                                            class_end = i
+                                            break
+                            
+                            source = '\n'.join(lines[class_start:class_end])
+                        else:
+                            # 只提取FUNCTION方法
+                            func_name = None
+                            # 尝试从类中找到FUNCTION属性
+                            for item in node.body:
+                                if isinstance(item, ast.Assign):
+                                    for target in item.targets:
+                                        if isinstance(target, ast.Name) and target.id == 'FUNCTION':
+                                            if isinstance(item.value, ast.Constant):
+                                                func_name = item.value.value
+                                            elif isinstance(item.value, ast.Str):
+                                                func_name = item.value.s
+                            
+                            if func_name:
+                                # 找到方法
+                                for item in node.body:
+                                    if isinstance(item, ast.FunctionDef) and item.name == func_name:
+                                        method_start = item.lineno - 1
+                                        method_end = len(lines)
+                                        for i, line in enumerate(lines[method_start+1:], start=method_start+1):
+                                            if i < len(lines):
+                                                stripped = lines[i].lstrip()
+                                                if stripped and not stripped.startswith('#'):
+                                                    indent = len(lines[i]) - len(stripped)
+                                                    if indent <= 4:  # 方法定义的缩进
+                                                        method_end = i
+                                                        break
+                                        source = '\n'.join(lines[method_start:method_end])
+                                        break
+                                else:
+                                    source = f"# 未找到方法 {func_name}，显示完整类:\n"
+                                    source += '\n'.join(lines[node.lineno-1:node.end_lineno])
+                            else:
+                                # 没有找到FUNCTION，显示整个类
+                                source = '\n'.join(lines[node.lineno-1:node.end_lineno])
+                        
+                        # 添加导入语句
+                        if include_imports:
+                            source = self._add_imports(source, py_file)
+                        
+                        result = (source, py_file)
+                        ZML_CodeViewerNode._class_location_cache[actual_class_name] = py_file
+                        ZML_CodeViewerNode._file_cache[cache_key] = result
+                        return result
+                        
+            except Exception as e:
+                continue
+        
+        return f"未找到类 {class_name} 的源代码", "未找到"
+    
+    def _extract_class_from_file(self, py_file, class_name, show_full_class, include_imports):
+        """从指定文件中提取类代码"""
+        import ast
+        try:
+            with open(py_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 快速检查
+            if f"class {class_name}" not in content:
+                return None
+            
+            tree = ast.parse(content)
+            lines = content.split('\n')
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.name == class_name:
+                    if show_full_class:
+                        class_start = node.lineno - 1
+                        class_end = len(lines)
+                        for i, line in enumerate(lines[class_start+1:], start=class_start+1):
+                            if i < len(lines):
+                                stripped = lines[i].lstrip()
+                                if stripped and not stripped.startswith('#'):
+                                    indent = len(lines[i]) - len(stripped)
+                                    if indent <= 0 and (stripped.startswith('class ') or stripped.startswith('def ')):
+                                        class_end = i
+                                        break
+                        source = '\n'.join(lines[class_start:class_end])
+                    else:
+                        # 只提取FUNCTION方法
+                        func_name = None
+                        for item in node.body:
+                            if isinstance(item, ast.Assign):
+                                for target in item.targets:
+                                    if isinstance(target, ast.Name) and target.id == 'FUNCTION':
+                                        if isinstance(item.value, ast.Constant):
+                                            func_name = item.value.value
+                                        elif isinstance(item.value, ast.Str):
+                                            func_name = item.value.s
+                        
+                        if func_name:
+                            for item in node.body:
+                                if isinstance(item, ast.FunctionDef) and item.name == func_name:
+                                    method_start = item.lineno - 1
+                                    method_end = len(lines)
+                                    for i, line in enumerate(lines[method_start+1:], start=method_start+1):
+                                        if i < len(lines):
+                                            stripped = lines[i].lstrip()
+                                            if stripped and not stripped.startswith('#'):
+                                                indent = len(lines[i]) - len(stripped)
+                                                if indent <= 4:
+                                                    method_end = i
+                                                    break
+                                    source = '\n'.join(lines[method_start:method_end])
+                                    break
+                            else:
+                                source = f"# 未找到方法 {func_name}，显示完整类:\n"
+                                source += '\n'.join(lines[node.lineno-1:node.end_lineno])
+                        else:
+                            source = '\n'.join(lines[node.lineno-1:node.end_lineno])
+                    
+                    if include_imports:
+                        source = self._add_imports(source, py_file)
+                    
+                    return (source, py_file)
+            
+            return None
+        except Exception:
+            return None
+    
+    def _add_imports(self, source, file_path):
+        """添加导入语句到源代码"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                file_content = f.read()
+            
+            import_lines = []
+            for line in file_content.split('\n'):
+                stripped = line.strip()
+                if stripped.startswith('import ') or stripped.startswith('from '):
+                    import_lines.append(line)
+            
+            if import_lines:
+                return '\n'.join(import_lines) + '\n\n' + source
+        except:
+            pass
+        
+        return source
+
+
+class ZML_PythonPathNode:
+    """
+    输出当前Python解释器、pip路径和包版本检查结果的节点
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "包名称": ("STRING", {"default": "torch", "tooltip": "要检查的包名称，可用英文逗号分隔多个包名。会自动显示Python版本"}),
+                "全部包列表": ("BOOLEAN", {"default": False, "tooltip": "开启后显示所有已安装的包列表（类似pip list）"})
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("Python路径", "pip路径", "包版本信息")
+    FUNCTION = "get_python_path"
+    CATEGORY = "image/ZML_图像/工具"
+
+    def get_python_path(self, 包名称, 全部包列表):
+        # 获取Python解释器路径
+        python_path = sys.executable
+        # 获取pip路径（通常在Python目录下的Scripts文件夹中）
+        python_dir = os.path.dirname(python_path)
+        pip_path = os.path.join(python_dir, "Scripts", "pip.exe")
+        if not os.path.exists(pip_path):
+            # 尝试其他可能的pip位置
+            pip_path = os.path.join(python_dir, "pip.exe")
+
+        # 获取Python版本
+        version_info = []
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        version_info.append(f"Python: {python_version}")
+
+        if 全部包列表:
+            # 获取所有已安装的包列表
+            try:
+                result = subprocess.run(
+                    [python_path, "-m", "pip", "list"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    # 解析pip list输出，跳过前两行表头
+                    lines = result.stdout.strip().split("\n")
+                    for line in lines[2:]:  # 跳过 "Package" 和 "---" 行
+                        if line.strip():
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                version_info.append(f"{parts[0]}: {parts[1]}")
+                else:
+                    version_info.append(f"获取包列表失败: {result.stderr}")
+            except Exception as e:
+                version_info.append(f"获取包列表失败: {str(e)}")
+        else:
+            # 检查指定包版本
+            package_names = [name.strip() for name in 包名称.split(",") if name.strip()]
+            for pkg in package_names:
+                # 跳过"python"，因为不是pip包
+                if pkg.lower() == "python":
+                    continue
+                try:
+                    # 使用更快的导入方式检查包版本
+                    try:
+                        import importlib.metadata
+                        version = importlib.metadata.version(pkg)
+                        version_info.append(f"{pkg}: {version}")
+                    except importlib.metadata.PackageNotFoundError:
+                        version_info.append(f"{pkg}: 不存在")
+                    except Exception:
+                        # 回退到pip show，但增加超时时间
+                        result = subprocess.run(
+                            [python_path, "-m", "pip", "show", pkg],
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                        if result.returncode == 0:
+                            # 解析版本信息
+                            for line in result.stdout.split("\n"):
+                                if line.startswith("Version:"):
+                                    version = line.split(":", 1)[1].strip()
+                                    version_info.append(f"{pkg}: {version}")
+                                    break
+                        else:
+                            version_info.append(f"{pkg}: 不存在")
+                except subprocess.TimeoutExpired:
+                    version_info.append(f"{pkg}: 检查超时")
+                except Exception as e:
+                    version_info.append(f"{pkg}: 检查失败 ({str(e)})")
+
+        return (python_path, pip_path, "\n".join(version_info))
+
+
 # ============================== MAPPINGS ==============================
 NODE_CLASS_MAPPINGS = {
     "ZML_AutoCensorNode": ZML_AutoCensorNode,
@@ -1868,6 +2668,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageRotate": ZML_ImageRotate,
     "ZML_PauseNode": ZML_PauseNode,
     "ZML_AudioPlayerNode": ZML_AudioPlayerNode,
+    "ZML_PureAudioPlayerNode": ZML_PureAudioPlayerNode,
     "ZML_MaskSeparateDistance": ZML_MaskSeparateDistance,
     "ZML_MaskSeparateThree": ZML_MaskSeparateThree,
     "ZML_UnifyImageResolution": ZML_UnifyImageResolution,
@@ -1876,6 +2677,9 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MaskCropNode": ZML_MaskCropNode,
     "ZML_ImageSelectorNode": ZML_ImageSelectorNode,
     "ZML_BufferNode": ZML_BufferNode,
+    "ZML_SeparateImageLayers": ZML_SeparateImageLayers,
+    "ZML_PythonPathNode": ZML_PythonPathNode,
+    "ZML_CodeViewerNode": ZML_CodeViewerNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1886,13 +2690,17 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MaskSplitNode_Five": "ZML_遮罩分割-五",
     "ZML_ImageRotate": "ZML_图像旋转",
     "ZML_PauseNode": "ZML_图像暂停选择",
-    "ZML_AudioPlayerNode": "ZML_音频播放器",
+    "ZML_AudioPlayerNode": "ZML_通知",
+    "ZML_PureAudioPlayerNode": "ZML_音频播放器",
     "ZML_MaskSeparateDistance": "ZML_遮罩分离-二",
     "ZML_MaskSeparateThree": "ZML_遮罩分离-三",
     "ZML_UnifyImageResolution": "ZML_统一图像分辨率",
+    "ZML_SeparateImageLayers": "ZML_分离图层",
     "ZML_LimitMaskShape": "ZML_限制遮罩形状",
     "ZML_LimitImageAspect": "ZML_限制图像比例",
     "ZML_MaskCropNode": "ZML_遮罩裁剪",
     "ZML_ImageSelectorNode": "ZML_多图选择",
     "ZML_BufferNode": "ZML_缓冲节点",
+    "ZML_PythonPathNode": "ZML_Python路径",
+    "ZML_CodeViewerNode": "ZML_节点代码查看器",
 }

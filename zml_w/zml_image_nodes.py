@@ -1841,11 +1841,11 @@ async def view_thumb_v2(request):
         # 生成并返回缩略图
         with Image.open(image_path) as img:
             img = ImageOps.exif_transpose(img).convert('RGB')
-            img.thumbnail((128, 128)) # 缩略图尺寸
+            img.thumbnail((256, 256)) # 缩略图尺寸 - 提高分辨率以支持更大的显示
             
             from io import BytesIO
             buffer = BytesIO()
-            img.save(buffer, format="JPEG", quality=85)
+            img.save(buffer, format="JPEG", quality=95)
             buffer.seek(0)
             
             return web.Response(body=buffer.getvalue(), content_type="image/jpeg")

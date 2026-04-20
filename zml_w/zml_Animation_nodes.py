@@ -903,69 +903,162 @@ class ZML_ImageCrop:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "图像": ("IMAGE",),
-                "裁剪比例": (["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"], {"default": "1:1"}),
-                "裁剪方向": (["居中", "顶部", "底部", "左侧", "右侧"], {"default": "居中"}),
+                "图像": ("IMAGE", {"tooltip": "输入要裁剪的图像"}),
+                "裁剪比例": (["禁用", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"], {"default": "禁用", "tooltip": "选择裁剪比例，选择'禁用'可使用自定义宽高"}),
+                "裁剪方向": (["居中", "顶部", "底部", "左侧", "右侧"], {"default": "居中", "tooltip": "裁剪比例模式下的裁剪方向"}),
+                "宽度": ("INT", {"default": 512, "min": 1, "max": 16384, "step": 1, "display": "number", "tooltip": "禁用比例模式时的裁剪宽度"}),
+                "高度": ("INT", {"default": 512, "min": 1, "max": 16384, "step": 1, "display": "number", "tooltip": "禁用比例模式时的裁剪高度"}),
+                "X偏移": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1, "display": "number", "tooltip": "禁用比例模式时的水平偏移像素（正数向右，负数向左）"}),
+                "Y偏移": ("INT", {"default": 0, "min": -16384, "max": 16384, "step": 1, "display": "number", "tooltip": "禁用比例模式时的垂直偏移像素（正数向下，负数向上）"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "INT", "INT", "INT", "INT")
+    RETURN_NAMES = ("裁剪后图像", "裁剪掉的图像", "X坐标", "Y坐标", "裁剪宽度", "裁剪高度")
+    FUNCTION = "crop_image"
+    CATEGORY = "image/ZML_图像/图像"
+
+    def crop_image(self, 图像, 裁剪比例, 裁剪方向, 宽度, 高度, X偏移, Y偏移):
+        # 获取输入图像尺寸 (Batch, Height, Width, Channels)
+        batch_size, img_height, img_width, channels = 图像.shape
+
+        # 判断是否使用裁剪比例模式
+        if 裁剪比例 == "禁用":
+            # 禁用模式下，使用用户指定的宽高
+            new_width = min(宽度, img_width)
+            new_height = min(高度, img_height)
+            
+            # 计算基础裁剪坐标（居中）
+            base_x_start = (img_width - new_width) // 2
+            base_y_start = (img_height - new_height) // 2
+            
+            # 应用XY偏移
+            x_start = base_x_start + X偏移
+            y_start = base_y_start + Y偏移
+        else:
+            # 解析比例
+            if 裁剪比例 == "自定义":
+                target_ratio = 1.0
+            else:
+                try:
+                    w_ratio, h_ratio = map(float, 裁剪比例.split(":"))
+                    target_ratio = w_ratio / h_ratio
+                except:
+                    target_ratio = 1.0
+
+            current_ratio = img_width / img_height
+
+            # 计算新的尺寸
+            if current_ratio > target_ratio:
+                # 图像太宽，需要裁剪宽度 (高度保持不变)
+                new_height = img_height
+                new_width = int(img_height * target_ratio)
+            else:
+                # 图像太高，需要裁剪高度 (宽度保持不变)
+                new_width = img_width
+                new_height = int(img_width / target_ratio)
+
+            # 初始化裁剪坐标（默认为居中）
+            x_start = (img_width - new_width) // 2
+            y_start = (img_height - new_height) // 2
+
+            # 根据方向调整坐标
+            if 裁剪方向 == "顶部":
+                y_start = 0
+            elif 裁剪方向 == "底部":
+                y_start = img_height - new_height
+            elif 裁剪方向 == "左侧":
+                x_start = 0
+            elif 裁剪方向 == "右侧":
+                x_start = img_width - new_width
+
+        # 确保坐标不越界
+        x_start = max(0, min(x_start, img_width - new_width))
+        y_start = max(0, min(y_start, img_height - new_height))
+        
+        # 确保宽高不会超出图像边界
+        new_width = min(new_width, img_width - x_start)
+        new_height = min(new_height, img_height - y_start)
+
+        # 执行裁剪 (切片操作: Batch, Y, X, Channels)
+        cropped_image = 图像[:, y_start:y_start + new_height, x_start:x_start + new_width, :]
+        
+        # 创建裁剪掉的图像（将裁剪区域填充为黑色）
+        removed_image = 图像.clone()
+        removed_image[:, y_start:y_start + new_height, x_start:x_start + new_width, :] = 0
+
+        return (cropped_image, removed_image, x_start, y_start, new_width, new_height)
+
+#==========================图像拆分宫格节点==========================
+
+class ZML_ImageGridSplit:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "图像": ("IMAGE", {"tooltip": "输入要拆分的图像"}),
+                "行数": ("INT", {"default": 2, "min": 1, "max": 32, "step": 1, "display": "number", "tooltip": "垂直方向拆分的行数"}),
+                "列数": ("INT", {"default": 2, "min": 1, "max": 32, "step": 1, "display": "number", "tooltip": "水平方向拆分的列数"}),
+                "水平间距": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1, "display": "number", "tooltip": "宫格之间的水平间距（像素）"}),
+                "垂直间距": ("INT", {"default": 0, "min": 0, "max": 1024, "step": 1, "display": "number", "tooltip": "宫格之间的垂直间距（像素）"}),
+                "保持原尺寸": ("BOOLEAN", {"default": False, "tooltip": "是否保持每个宫格为原图尺寸，而非裁剪后的尺寸"}),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("裁剪后图像",)
-    FUNCTION = "crop_image"
+    RETURN_NAMES = ("宫格图像批次",)
+    FUNCTION = "split_grid"
     CATEGORY = "image/ZML_图像/图像"
 
-    def crop_image(self, 图像, 裁剪比例, 裁剪方向):
-        # 解析比例
-        if 裁剪比例 == "自定义":
-            # 如果需要自定义，默认回退到1:1，或者这里可以扩展逻辑
-            target_ratio = 1.0
-        else:
-            try:
-                w_ratio, h_ratio = map(float, 裁剪比例.split(":"))
-                target_ratio = w_ratio / h_ratio
-            except:
-                target_ratio = 1.0
-
+    def split_grid(self, 图像, 行数, 列数, 水平间距, 垂直间距, 保持原尺寸):
         # 获取输入图像尺寸 (Batch, Height, Width, Channels)
-        batch_size, height, width, channels = 图像.shape
-        current_ratio = width / height
-
-        # 计算新的尺寸
-        if current_ratio > target_ratio:
-            # 图像太宽，需要裁剪宽度 (高度保持不变)
-            new_height = height
-            new_width = int(height * target_ratio)
-        else:
-            # 图像太高，需要裁剪高度 (宽度保持不变)
-            new_width = width
-            new_height = int(width / target_ratio)
-
-        # 初始化裁剪坐标（默认为居中）
-        x_start = (width - new_width) // 2
-        y_start = (height - new_height) // 2
-
-        # 根据方向调整坐标
-        # 注意：如果裁剪的是宽度，"顶部/底部"选项不起作用（因为高度没变，y_start已经是0），依然保持垂直居中(0)
-        # 同理，如果裁剪的是高度，"左侧/右侧"选项不起作用，依然保持水平居中(0)
+        batch_size, img_height, img_width, channels = 图像.shape
         
-        if 裁剪方向 == "顶部":
-            y_start = 0
-        elif 裁剪方向 == "底部":
-            y_start = height - new_height
-        elif 裁剪方向 == "左侧":
-            x_start = 0
-        elif 裁剪方向 == "右侧":
-            x_start = width - new_width
-        # "居中" 已经在初始化时计算过了
-
-        # 确保坐标不越界 (虽然计算逻辑上不应该越界，但做个保险)
-        x_start = max(0, min(x_start, width - new_width))
-        y_start = max(0, min(y_start, height - new_height))
-
-        # 执行裁剪 (切片操作: Batch, Y, X, Channels)
-        cropped_image = 图像[:, y_start:y_start + new_height, x_start:x_start + new_width, :]
-
-        return (cropped_image,)
+        # 计算每个宫格的尺寸：总宽度减去所有间距后平分
+        # 水平间距：每张图左右各减去一半间距
+        total_h_spacing = (列数 - 1) * 水平间距
+        total_v_spacing = (行数 - 1) * 垂直间距
+        
+        cell_width = (img_width - total_h_spacing) // 列数
+        cell_height = (img_height - total_v_spacing) // 行数
+        
+        # 存储所有宫格图像
+        grid_images = []
+        
+        # 按行优先顺序遍历所有宫格
+        for row in range(行数):
+            for col in range(列数):
+                # 计算当前宫格的左上角坐标（加上之前所有宫格的间距）
+                x_start = col * cell_width + col * 水平间距
+                y_start = row * cell_height + row * 垂直间距
+                
+                # 计算右下角坐标
+                x_end = x_start + cell_width
+                y_end = y_start + cell_height
+                
+                # 确保不越界
+                x_end = min(x_end, img_width)
+                y_end = min(y_end, img_height)
+                
+                # 裁剪出当前宫格
+                cell_image = 图像[:, y_start:y_end, x_start:x_end, :]
+                
+                if 保持原尺寸:
+                    # 创建与原图相同尺寸的黑底图像
+                    full_size_cell = torch.zeros_like(图像)
+                    # 将裁剪的宫格放到对应位置
+                    full_size_cell[:, y_start:y_end, x_start:x_end, :] = cell_image
+                    grid_images.append(full_size_cell)
+                else:
+                    grid_images.append(cell_image)
+        
+        # 将所有宫格合并为一个批次
+        if grid_images:
+            output_batch = torch.cat(grid_images, dim=0)
+        else:
+            output_batch = torch.zeros((1, img_height, img_width, channels))
+        
+        return (output_batch,)
 
 #==========================图像Base64互转节点==========================
 
@@ -1109,6 +1202,78 @@ class ZML_List_To_Batch:
             final_image = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
 
         return (final_image, final_text)
+
+# 节点 8: ZML_批次转列表
+# ==========================================
+class ZML_Batch_To_List:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "分隔符": ("STRING", {"default": ",\\n", "multiline": False}),
+            },
+            "optional": {
+                "图像批次": ("IMAGE",),
+                "合并文本": ("STRING", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("图像列表", "文本列表")
+    # 对应输出的列表化状态: 图像列表(是), 文本列表(是)
+    OUTPUT_IS_LIST = (True, True)
+    FUNCTION = "process_batch"
+    CATEGORY = "image/ZML_图像/图像"
+
+    def process_batch(self, 分隔符, 图像批次=None, 合并文本=None):
+        # 如果分隔符被传入为列表（这种情况在ComfyUI某些连接方式下会发生），取第一个元素
+        if isinstance(分隔符, list):
+            if len(分隔符) > 0:
+                分隔符 = 分隔符[0]
+            else:
+                分隔符 = ",\\n" # 默认回退值
+        
+        # 确保分隔符是字符串类型，防止其他意外类型报错
+        if not isinstance(分隔符, str):
+            分隔符 = str(分隔符)
+
+        # 1. 处理文本
+        text_list = []
+        # 处理转义符，将字符串的 "\n" 转换为实际换行符
+        sep = 分隔符.replace("\\n", "\n")
+        
+        if 合并文本:
+            # 再次防御：如果合并文本是列表（某些节点输出列表），取其内容
+            if isinstance(合并文本, list):
+                if len(合并文本) > 0:
+                    合并文本 = 合并文本[0]
+                else:
+                    合并文本 = ""
+            
+            # 分割文本
+            text_list = 合并文本.split(sep)
+            # 过滤空字符串
+            text_list = [t.strip() for t in text_list if t.strip()]
+
+        # 2. 处理图像
+        image_list = []
+        if 图像批次 is not None:
+            # 确保图像批次是4维张量 [B, H, W, C]
+            if len(图像批次.shape) == 3:
+                图像批次 = 图像批次.unsqueeze(0)
+            
+            # 将批次中的每个图像分离
+            batch_size = 图像批次.shape[0]
+            for i in range(batch_size):
+                # 取出单个图像并保持4维格式 [1, H, W, C]
+                single_image = 图像批次[i:i+1, :, :, :]
+                image_list.append(single_image)
+        
+        # 如果没有有效图像，生成一个空列表
+        if not image_list:
+            image_list = []
+
+        return (image_list, text_list)
 
 # ==========================================
 # 辅助类: 通用类型 (Any Type)
@@ -1446,8 +1611,10 @@ NODE_CLASS_MAPPINGS = {
     "ZML_ImageMemory": ZML_ImageMemory,
     "ZML_PromptTokenBalancer": ZML_PromptTokenBalancer,
     "ZML_ImageBatchToInt": ZML_ImageBatchToInt,
-    "ZML_ImageCrop": ZML_ImageCrop, 
+    "ZML_ImageCrop": ZML_ImageCrop,
+    "ZML_ImageGridSplit": ZML_ImageGridSplit,
     "ZML_List_To_Batch": ZML_List_To_Batch,
+    "ZML_Batch_To_List": ZML_Batch_To_List,
     "ZML_Get_Item_From_List": ZML_Get_Item_From_List,
     "ZML_ImageBase64Converter": ZML_ImageBase64Converter,
     "ZML_MemoryCleaner": ZML_MemoryCleaner,
@@ -1465,7 +1632,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_PromptTokenBalancer": "ZML_提示词token统一",
     "ZML_ImageBatchToInt": "ZML_批次到整数",
     "ZML_ImageCrop": "ZML_图像裁剪",
+    "ZML_ImageGridSplit": "ZML_图像拆分宫格",
     "ZML_List_To_Batch": "ZML_列表转批次",
+    "ZML_Batch_To_List": "ZML_批次转列表",
     "ZML_Get_Item_From_List": "ZML_获取列表项",
     "ZML_ImageBase64Converter": "ZML_图像Base64互转",
     "ZML_MemoryCleaner": "ZML_清理内存显存",

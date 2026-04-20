@@ -63,7 +63,7 @@ ZML_API_PREFIX = "/zml"
 class ZML_TextInput:
     """
     ZML 文本输入节点
-    允许用户输入多行文本
+    允许用户输入多行文本，并支持接收外部文本输入
     """
     
     @classmethod
@@ -75,6 +75,9 @@ class ZML_TextInput:
                     "default": "",
                     "placeholder": "输入多行文本"
                 }),
+            },
+            "optional": {
+                "文本输入": ("STRING", {"forceInput": True}),
             }
         }
     
@@ -83,9 +86,11 @@ class ZML_TextInput:
     RETURN_NAMES = ("文本",)
     FUNCTION = "process_text"
     
-    def process_text(self, 文本):
-        """处理文本输入"""
-        # 直接返回输入的文本
+    def process_text(self, 文本, 文本输入=None):
+        """处理文本输入，优先使用外部输入的文本"""
+        # 如果有外部文本输入，则使用外部输入；否则使用手动输入的文本
+        if 文本输入 is not None:
+            return (文本输入,)
         return (文本,)
 
 # ============================== 写入文本节点 ==============================
@@ -1214,6 +1219,286 @@ def _save_random_resolution_rules(rules):
 # 初始化时加载规则
 _load_random_resolution_rules()
 
+# ============================== 预设分辨率 V3 节点 ==============================
+# V3 使用 Preset integer 文件夹作为基础，子文件夹作为模型预设
+PRESET_RESOLUTION_V3_BASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "txt", "Preset integer")
+PRESET_RESOLUTION_V3_RULES_FILE = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, "v3_random_rules.json")
+
+# 存储 V3 的随机规则 {模型预设名: {分辨率显示名: bool}}
+ZML_RANDOM_RESOLUTION_V3_RULES = {}
+
+def _load_v3_random_rules():
+    """加载 V3 的随机规则"""
+    global ZML_RANDOM_RESOLUTION_V3_RULES
+    try:
+        if os.path.exists(PRESET_RESOLUTION_V3_RULES_FILE):
+            with open(PRESET_RESOLUTION_V3_RULES_FILE, 'r', encoding='utf-8') as f:
+                ZML_RANDOM_RESOLUTION_V3_RULES = json.load(f)
+    except Exception as e:
+        print(f"加载 V3 随机规则错误: {e}")
+        ZML_RANDOM_RESOLUTION_V3_RULES = {}
+
+def _save_v3_random_rules():
+    """保存 V3 的随机规则"""
+    try:
+        with open(PRESET_RESOLUTION_V3_RULES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(ZML_RANDOM_RESOLUTION_V3_RULES, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"保存 V3 随机规则错误: {e}")
+
+# 初始化加载 V3 规则
+_load_v3_random_rules()
+
+class ZML_PresetResolutionV3:
+    """
+    ZML 预设分辨率V3节点
+    支持模型预设，每个模型预设有独立的分辨率预设和随机规则
+    文件结构：
+    Preset integer/
+    ├── Preset integer.txt          (默认分辨率)
+    ├── v3_random_rules.json        (随机规则)
+    ├── SDXL/
+    │   └── resolutions.txt         (SDXL专属分辨率)
+    ├── SD1.5/
+    │   └── resolutions.txt         (SD1.5专属分辨率)
+    └── ...
+    """
+    
+    # 类变量
+    _model_presets = []  # ["默认", "SDXL", "SD1.5", ...]
+    _model_data = {}     # {模型名: {"resolutions": {}, "display_names": [], "file_path": ""}}
+    
+    @classmethod
+    def _load_all_model_presets(cls):
+        """加载所有模型预设及其分辨率数据"""
+        cls._model_presets.clear()
+        cls._model_data.clear()
+        
+        # 确保基础目录存在
+        if not os.path.exists(PRESET_RESOLUTION_V3_BASE_PATH):
+            os.makedirs(PRESET_RESOLUTION_V3_BASE_PATH, exist_ok=True)
+        
+        # 1. 首先加载默认分辨率（从 Preset integer.txt）
+        default_resolutions, default_display_names = cls._load_default_resolutions()
+        if default_resolutions:
+            cls._model_presets.append("默认")
+            cls._model_data["默认"] = {
+                "resolutions": default_resolutions,
+                "display_names": default_display_names,
+                "file_path": os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, "Preset integer.txt")
+            }
+        
+        # 2. 遍历所有子文件夹（模型预设）
+        for item in os.listdir(PRESET_RESOLUTION_V3_BASE_PATH):
+            item_path = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, item)
+            if os.path.isdir(item_path) and not item.startswith('.'):
+                cls._model_presets.append(item)
+                cls._load_model_resolutions(item, item_path)
+        
+        # 如果没有找到任何模型预设，显示提示
+        if not cls._model_presets:
+            cls._model_presets.append("没有模型预设 (请创建)")
+            cls._model_data["没有模型预设 (请创建)"] = {
+                "resolutions": {"没有预设 (请创建)": (1024, 1024, "1024,1024")},
+                "display_names": ["没有预设 (请创建)"],
+                "file_path": None
+            }
+    
+    @classmethod
+    def _load_default_resolutions(cls):
+        """加载默认分辨率（从 Preset integer.txt）"""
+        default_file = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, "Preset integer.txt")
+        resolutions_map = {}
+        display_names = []
+        
+        if os.path.exists(default_file):
+            try:
+                with open(default_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                for original_line in lines:
+                    line = original_line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    width, height, display_name = cls._parse_resolution_line(line)
+                    if width is not None and display_name not in display_names:
+                        resolutions_map[display_name] = (width, height, line)
+                        display_names.append(display_name)
+            except Exception as e:
+                print(f"加载默认分辨率错误: {e}")
+        
+        return resolutions_map, display_names
+    
+    @classmethod
+    def _load_model_resolutions(cls, model_name, model_path):
+        """加载指定模型的分辨率预设"""
+        res_file = os.path.join(model_path, "resolutions.txt")
+        
+        resolutions_map = {}
+        display_names = []
+        
+        if os.path.exists(res_file):
+            try:
+                with open(res_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                
+                for original_line in lines:
+                    line = original_line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    width, height, display_name = cls._parse_resolution_line(line)
+                    if width is not None and display_name not in display_names:
+                        resolutions_map[display_name] = (width, height, line)
+                        display_names.append(display_name)
+            except Exception as e:
+                print(f"加载模型 {model_name} 的分辨率错误: {e}")
+        
+        # 如果没有找到任何分辨率，添加占位符
+        if not display_names:
+            display_names.append("没有预设 (请添加)")
+            resolutions_map["没有预设 (请添加)"] = (1024, 1024, "1024,1024")
+        
+        cls._model_data[model_name] = {
+            "resolutions": resolutions_map,
+            "display_names": display_names,
+            "file_path": res_file
+        }
+    
+    @classmethod
+    def _parse_resolution_line(cls, line):
+        """解析分辨率行，返回 (width, height, display_name)"""
+        # 尝试匹配 名称_宽,高 格式
+        match_named = re.match(r"(?P<name>[^_]+)_(?P<width>\d+),(?P<height>\d+)", line)
+        if match_named:
+            try:
+                name = match_named.group("name").strip()
+                width = int(match_named.group("width"))
+                height = int(match_named.group("height"))
+                display_name = f"{name}_{width}x{height}"
+                return width, height, display_name
+            except ValueError:
+                pass
+        
+        # 尝试匹配 宽,高 格式
+        parts = line.split(',', 1)
+        if len(parts) == 2:
+            try:
+                width = int(parts[0].strip())
+                height = int(parts[1].strip())
+                display_name = f"{width}x{height}"
+                return width, height, display_name
+            except ValueError:
+                pass
+        
+        return None, None, None
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        cls._load_all_model_presets()
+        
+        # 准备模型预设下拉列表，在"默认"后面添加"自定义"选项
+        base_presets = cls._model_presets if cls._model_presets else ["没有模型预设"]
+        # 找到"默认"的位置，在它后面插入"自定义"
+        if "默认" in base_presets:
+            default_index = base_presets.index("默认")
+            model_presets = base_presets[:default_index+1] + ["自定义"] + base_presets[default_index+1:]
+        else:
+            model_presets = ["自定义"] + base_presets
+        
+        # 获取第一个真实模型的分辨率列表作为默认
+        first_real_model = cls._model_presets[0] if cls._model_presets else "没有模型预设"
+        first_model_resolutions = cls._model_data.get(first_real_model, {}).get("display_names", ["没有预设"])
+        
+        # 收集所有模型的所有分辨率作为有效值（用于验证）
+        all_resolutions = set()
+        for model_name, model_data in cls._model_data.items():
+            for res_name in model_data.get("display_names", []):
+                if not res_name.startswith("没有预设") and not res_name.startswith("错误"):
+                    all_resolutions.add(res_name)
+        
+        # 如果没有分辨率，添加一个默认值
+        if not all_resolutions:
+            all_resolutions.add("没有预设")
+        
+        # 将第一个模型的分辨率放在前面，其他模型的分辨率也包含在内（用于验证通过）
+        combined_resolutions = list(first_model_resolutions) + sorted(all_resolutions - set(first_model_resolutions))
+        
+        return {
+            "required": {
+                "模型预设": (model_presets, {"default": first_real_model}),
+                "分辨率预设": (combined_resolutions, {"default": first_model_resolutions[0] if first_model_resolutions else "没有预设"}),
+            },
+            "optional": {
+                "自定义宽": ("INT", {"default": 1024, "min": 64, "max": 16384, "step": 8}),
+                "自定义高": ("INT", {"default": 1024, "min": 64, "max": 16384, "step": 8}),
+                "互换宽高": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
+                "随机模式": ("BOOLEAN", {"default": False, "label_on": "开启", "label_off": "关闭"}),
+                "批次数量": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1}),
+            }
+        }
+    
+    RETURN_TYPES = ("INT", "INT", "LATENT")
+    RETURN_NAMES = ("宽", "高", "latent")
+    FUNCTION = "get_resolution"
+    CATEGORY = "image/ZML_图像/整数"
+    
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        if kwargs.get("随机模式", False):
+            import time
+            return time.time()
+        return False
+    
+    def get_resolution(self, 模型预设, 分辨率预设, 自定义宽=1024, 自定义高=1024, 互换宽高=False, 随机模式=False, 批次数量=1):
+        import random
+        
+        width, height = 1024, 1024
+        
+        if 模型预设 == "自定义":
+            # 自定义模式：使用自定义宽高
+            width, height = 自定义宽, 自定义高
+        else:
+            # 重新加载以确保数据最新
+            self._load_all_model_presets()
+            
+            # 获取当前模型的数据
+            model_data = self._model_data.get(模型预设, {})
+            resolutions_map = model_data.get("resolutions", {})
+            
+            if 随机模式:
+                # 从当前模型的分辨率中随机选择
+                valid_resolutions = []
+                global ZML_RANDOM_RESOLUTION_V3_RULES
+                
+                model_rules = ZML_RANDOM_RESOLUTION_V3_RULES.get(模型预设, {})
+                
+                for name, (w, h, _) in resolutions_map.items():
+                    if not name.startswith("没有预设") and not name.startswith("错误"):
+                        # 检查随机规则
+                        if name in model_rules and model_rules[name] is False:
+                            continue
+                        valid_resolutions.append((w, h))
+                
+                if valid_resolutions:
+                    width, height = random.choice(valid_resolutions)
+            else:
+                # 使用选中的分辨率预设
+                width, height, _ = resolutions_map.get(分辨率预设, (1024, 1024, "没有预设"))
+        
+        # 互换宽高
+        if 互换宽高:
+            width, height = height, width
+        
+        批次数量 = max(1, 批次数量)
+        
+        # 创建 latent
+        latent = torch.zeros([批次数量, 4, height // 8, width // 8], device="cpu")
+        latent_dict = {"samples": latent}
+        
+        return (width, height, latent_dict)
+
 # ============================== API 路由（用于处理前端的添加预设请求）==============================
 
 @server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/set_random_resolution_rules")
@@ -1479,6 +1764,257 @@ async def clear_resolution_presets_route(request):
     except Exception as e:
         return web.Response(status=500, text=f"处理请求时发生错误: {str(e)}")
 
+
+# ============================== V3 API 路由 ==============================
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_get_model_presets")
+async def v3_get_model_presets_route(request):
+    """获取所有 V3 模型预设列表"""
+    try:
+        ZML_PresetResolutionV3._load_all_model_presets()
+        return web.json_response({"models": ZML_PresetResolutionV3._model_presets}, status=200)
+    except Exception as e:
+        return web.Response(status=500, text=f"获取模型预设错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_get_model_resolutions")
+async def v3_get_model_resolutions_route(request):
+    """获取指定模型预设的分辨率列表"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "")
+        
+        ZML_PresetResolutionV3._load_all_model_presets()
+        model_data = ZML_PresetResolutionV3._model_data.get(model_name, {})
+        resolutions = model_data.get("display_names", [])
+        file_path = model_data.get("file_path", "")
+        
+        return web.json_response({
+            "resolutions": resolutions,
+            "file_path": file_path,
+            "is_default": model_name == "默认"
+        }, status=200)
+    except Exception as e:
+        return web.Response(status=500, text=f"获取分辨率预设错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_add_model_preset")
+async def v3_add_model_preset_route(request):
+    """添加新的模型预设（创建文件夹）"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "").strip()
+        
+        if not model_name:
+            return web.Response(status=400, text="模型预设名称不能为空")
+        
+        if model_name == "默认":
+            return web.Response(status=400, text="'默认' 是保留名称，不能使用")
+        
+        # 检查非法字符
+        invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+        for char in invalid_chars:
+            if char in model_name:
+                return web.Response(status=400, text=f"模型预设名称包含非法字符: {char}")
+        
+        model_path = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, model_name)
+        
+        if os.path.exists(model_path):
+            return web.Response(status=409, text=f"模型预设 '{model_name}' 已存在")
+        
+        # 创建文件夹和默认分辨率文件
+        os.makedirs(model_path, exist_ok=True)
+        res_file = os.path.join(model_path, "resolutions.txt")
+        with open(res_file, 'w', encoding='utf-8') as f:
+            f.write(f"# {model_name} 分辨率预设\n")
+            f.write("1024,1024\n")
+        
+        return web.Response(status=200, text=f"模型预设 '{model_name}' 创建成功")
+    except Exception as e:
+        return web.Response(status=500, text=f"创建模型预设错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_delete_model_preset")
+async def v3_delete_model_preset_route(request):
+    """删除模型预设（删除文件夹）"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "").strip()
+        
+        if not model_name:
+            return web.Response(status=400, text="模型预设名称不能为空")
+        
+        if model_name == "默认":
+            return web.Response(status=400, text="不能删除 '默认' 模型预设")
+        
+        model_path = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, model_name)
+        
+        if not os.path.exists(model_path):
+            return web.Response(status=404, text=f"模型预设 '{model_name}' 不存在")
+        
+        # 删除文件夹及其内容
+        import shutil
+        shutil.rmtree(model_path)
+        
+        # 从随机规则中移除
+        global ZML_RANDOM_RESOLUTION_V3_RULES
+        if model_name in ZML_RANDOM_RESOLUTION_V3_RULES:
+            del ZML_RANDOM_RESOLUTION_V3_RULES[model_name]
+            _save_v3_random_rules()
+        
+        return web.Response(status=200, text=f"模型预设 '{model_name}' 已删除")
+    except Exception as e:
+        return web.Response(status=500, text=f"删除模型预设错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_add_resolution")
+async def v3_add_resolution_route(request):
+    """为指定模型预设添加分辨率"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "").strip()
+        res_name = data.get("res_name", "").strip()
+        width = data.get("width", 0)
+        height = data.get("height", 0)
+        
+        if not model_name or not res_name:
+            return web.Response(status=400, text="模型预设名称和分辨率名称不能为空")
+        
+        try:
+            width = int(width)
+            height = int(height)
+        except ValueError:
+            return web.Response(status=400, text="宽度和高度必须是整数")
+        
+        # 确定文件路径
+        if model_name == "默认":
+            res_file = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, "Preset integer.txt")
+        else:
+            model_path = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, model_name)
+            if not os.path.exists(model_path):
+                return web.Response(status=404, text=f"模型预设 '{model_name}' 不存在")
+            res_file = os.path.join(model_path, "resolutions.txt")
+        
+        # 添加新分辨率
+        with open(res_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n{res_name}_{width},{height}")
+        
+        return web.Response(status=200, text="分辨率添加成功")
+    except Exception as e:
+        return web.Response(status=500, text=f"添加分辨率错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_delete_resolution")
+async def v3_delete_resolution_route(request):
+    """删除指定模型预设的分辨率"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "").strip()
+        res_display_name = data.get("res_display_name", "").strip()
+        
+        if not model_name or not res_display_name:
+            return web.Response(status=400, text="模型预设名称和分辨率名称不能为空")
+        
+        # 确定文件路径
+        if model_name == "默认":
+            res_file = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, "Preset integer.txt")
+        else:
+            model_path = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, model_name)
+            res_file = os.path.join(model_path, "resolutions.txt")
+        
+        if not os.path.exists(res_file):
+            return web.Response(status=404, text="分辨率文件不存在")
+        
+        # 读取并过滤
+        with open(res_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # 找到对应的原始行并删除
+        ZML_PresetResolutionV3._load_all_model_presets()
+        model_data = ZML_PresetResolutionV3._model_data.get(model_name, {})
+        resolutions_map = model_data.get("resolutions", {})
+        
+        if res_display_name not in resolutions_map:
+            return web.Response(status=404, text=f"分辨率 '{res_display_name}' 不存在")
+        
+        _, _, raw_string = resolutions_map[res_display_name]
+        
+        # 过滤掉要删除的行
+        new_lines = [line for line in lines if line.strip() != raw_string]
+        
+        with open(res_file, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+        
+        return web.Response(status=200, text="分辨率删除成功")
+    except Exception as e:
+        return web.Response(status=500, text=f"删除分辨率错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_update_resolutions")
+async def v3_update_resolutions_route(request):
+    """更新指定模型预设的所有分辨率（用于排序和批量修改）"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "").strip()
+        resolutions = data.get("resolutions", [])  # [{"name": "", "width": 1024, "height": 1024}, ...]
+        
+        if not model_name:
+            return web.Response(status=400, text="模型预设名称不能为空")
+        
+        if not resolutions:
+            return web.Response(status=400, text="分辨率列表不能为空")
+        
+        # 确定文件路径
+        if model_name == "默认":
+            res_file = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, "Preset integer.txt")
+        else:
+            model_path = os.path.join(PRESET_RESOLUTION_V3_BASE_PATH, model_name)
+            if not os.path.exists(model_path):
+                return web.Response(status=404, text=f"模型预设 '{model_name}' 不存在")
+            res_file = os.path.join(model_path, "resolutions.txt")
+        
+        # 构建新的文件内容
+        lines = ["# 分辨率预设\n"]
+        for res in resolutions:
+            name = res.get("name", "").strip()
+            width = res.get("width", 0)
+            height = res.get("height", 0)
+            
+            if name:
+                lines.append(f"{name}_{width},{height}\n")
+            else:
+                lines.append(f"{width},{height}\n")
+        
+        with open(res_file, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+        
+        return web.Response(status=200, text="分辨率更新成功")
+    except Exception as e:
+        return web.Response(status=500, text=f"更新分辨率错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_set_random_rules")
+async def v3_set_random_rules_route(request):
+    """设置 V3 随机规则"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "").strip()
+        rules = data.get("rules", {})
+        
+        global ZML_RANDOM_RESOLUTION_V3_RULES
+        ZML_RANDOM_RESOLUTION_V3_RULES[model_name] = rules
+        _save_v3_random_rules()
+        
+        return web.Response(status=200, text="随机规则已更新")
+    except Exception as e:
+        return web.Response(status=500, text=f"设置随机规则错误: {str(e)}")
+
+@server.PromptServer.instance.routes.post(ZML_API_PREFIX + "/v3_get_random_rules")
+async def v3_get_random_rules_route(request):
+    """获取 V3 随机规则"""
+    try:
+        data = await request.json()
+        model_name = data.get("model_name", "").strip()
+        
+        global ZML_RANDOM_RESOLUTION_V3_RULES
+        rules = ZML_RANDOM_RESOLUTION_V3_RULES.get(model_name, {})
+        
+        return web.json_response({"rules": rules}, status=200)
+    except Exception as e:
+        return web.Response(status=500, text=f"获取随机规则错误: {str(e)}")
 
 # ============================== 整数浮点互转节点 ==============================
 class ZML_IntegerFloatConverter:
@@ -1746,6 +2282,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_DualIntegerV3": ZML_DualIntegerV3,
     "ZML_PresetResolution": ZML_PresetResolution,
     "ZML_PresetResolutionV2": ZML_PresetResolutionV2,
+    "ZML_PresetResolutionV3": ZML_PresetResolutionV3,
     "ZML_SequentialIntegerLoader": ZML_SequentialIntegerLoader, 
     "ZML_IntegerStringConverter": ZML_IntegerStringConverter,
     "ZML_IntegerFloatConverter": ZML_IntegerFloatConverter,
@@ -1765,6 +2302,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_DualIntegerV3": "ZML_双整数V3（判断）",
     "ZML_PresetResolution": "ZML_预设分辨率",
     "ZML_PresetResolutionV2": "ZML_预设分辨率V2",
+    "ZML_PresetResolutionV3": "ZML_预设分辨率V3",
     "ZML_SequentialIntegerLoader": "ZML_顺序加载整数", 
     "ZML_IntegerStringConverter": "ZML_整数字符串互转",
     "ZML_IntegerFloatConverter": "ZML_整数浮点互转",
