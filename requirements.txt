@@ -5,3 +5,9 @@ Pillow
 ultralytics
 opencv-python
 scipy
+aiohttp
+requests
+urllib3
+psutil
+pyyaml
+openai
