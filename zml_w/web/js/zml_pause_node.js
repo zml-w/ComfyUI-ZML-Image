@@ -14,12 +14,282 @@ const ZML_PAUSE_NODE_MIN_HEIGHT = 350;
 // =================================================================
 
 let zmlCurrentAudio = null; // Global reference to the currently playing audio
+let zmlNotificationContainer = null; // Global notification container
 
 /**
- * Plays the audio file selected in a ZML_AudioPlayerNode.
- * @param {object} node The ZML_AudioPlayerNode instance from the graph.
+ * Shows a system notification using the Notification API.
+ * @param {string} title The main title of the notification.
+ * @param {string} subtitle The subtitle/body of the notification.
  */
-function playAudioForNode(node) {
+async function showSystemNotification(title, subtitle) {
+    // Check if Notification API is supported
+    if (!("Notification" in window)) {
+        console.log("[ZML] This browser does not support system notifications.");
+        return false;
+    }
+
+    // Request permission if not granted
+    if (Notification.permission === "default") {
+        await Notification.requestPermission();
+    }
+
+    if (Notification.permission === "granted") {
+        const notification = new Notification(title, {
+            body: subtitle || "",
+            icon: "/favicon.ico",
+            badge: "/favicon.ico",
+            tag: "zml-notification",
+            requireInteraction: false,
+        });
+
+        // Auto close after 5 seconds
+        setTimeout(() => notification.close(), 5000);
+        return true;
+    } else {
+        console.log("[ZML] Notification permission denied.");
+        return false;
+    }
+}
+
+/**
+ * Shows a notification popup with the specified style, content and position.
+ * @param {string} title The main title of the notification.
+ * @param {string} subtitle The subtitle of the notification.
+ * @param {string} style The style of the notification: "卡通" or "简约".
+ * @param {string} position The position of the notification: "左上", "右上", "左下", "右下".
+ */
+function showNotification(title, subtitle, style, position) {
+    // Remove existing container if position changed
+    if (zmlNotificationContainer) {
+        zmlNotificationContainer.remove();
+        zmlNotificationContainer = null;
+    }
+
+    // Create notification container
+    zmlNotificationContainer = document.createElement("div");
+    zmlNotificationContainer.id = "zml-notification-container";
+
+    // Set position styles based on position parameter
+    const positionStyles = {
+        "左上": { top: "20px", left: "20px", right: "auto", bottom: "auto" },
+        "右上": { top: "20px", right: "20px", left: "auto", bottom: "auto" },
+        "左下": { bottom: "20px", left: "20px", right: "auto", top: "auto" },
+        "右下": { bottom: "20px", right: "20px", left: "auto", top: "auto" },
+    };
+
+    const posStyle = positionStyles[position] || positionStyles["右下"];
+
+    Object.assign(zmlNotificationContainer.style, {
+        position: "fixed",
+        zIndex: "99999",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        pointerEvents: "none",
+        ...posStyle,
+    });
+    document.body.appendChild(zmlNotificationContainer);
+
+    // Create notification element
+    const notification = document.createElement("div");
+    const isCartoon = style === "卡通";
+
+    // Adjust animation based on position
+    const enterAnimation = position.startsWith("左")
+        ? "zml-notification-slide-left 0.4s ease-out"
+        : "zml-notification-slide-right 0.4s ease-out";
+
+    if (isCartoon) {
+        // Enhanced Cartoon style with bell icon
+        Object.assign(notification.style, {
+            background: "linear-gradient(135deg, #FF6B6B 0%, #FFE66D 50%, #4ECDC4 100%)",
+            borderRadius: "24px",
+            padding: "0",
+            boxShadow: "0 15px 35px rgba(255, 107, 107, 0.4), 0 5px 15px rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.3)",
+            color: "#333",
+            minWidth: "300px",
+            maxWidth: "380px",
+            animation: enterAnimation,
+            pointerEvents: "auto",
+            position: "relative",
+            overflow: "hidden",
+            border: "4px solid #fff",
+        });
+
+        // Add decorative elements for cartoon style with bell icon
+        notification.innerHTML = `
+            <div style="position: absolute; top: -30px; right: -30px; width: 100px; height: 100px; background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 70%); border-radius: 50%;"></div>
+            <div style="position: absolute; bottom: -40px; left: -40px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%); border-radius: 50%;"></div>
+            <div style="position: absolute; top: 10px; left: 15px; font-size: 40px; animation: zml-bell-ring 2s ease-in-out infinite; transform-origin: top center;">🔔</div>
+            <div style="position: relative; z-index: 1; padding: 25px 25px 25px 70px;">
+                <div style="font-size: 20px; font-weight: bold; margin-bottom: 6px; color: #2c3e50; text-shadow: 1px 1px 0 rgba(255,255,255,0.5);">${title}</div>
+                ${subtitle ? `<div style="font-size: 14px; color: #555; line-height: 1.5;">${subtitle}</div>` : ""}
+            </div>
+            <div style="position: absolute; top: 5px; right: 5px; width: 15px; height: 15px; background: #FF6B6B; border-radius: 50%; animation: zml-blink 1.5s ease-in-out infinite;"></div>
+            <div style="position: absolute; bottom: 10px; left: 10px; width: 8px; height: 8px; background: #4ECDC4; border-radius: 50%;"></div>
+            <div style="position: absolute; bottom: 20px; right: 20px; width: 6px; height: 6px; background: #FFE66D; border-radius: 50%;"></div>
+        `;
+    } else if (style === "自定义") {
+        // Custom style with Notice.ico - pink-green color scheme
+        Object.assign(notification.style, {
+            background: "linear-gradient(145deg, #fff0f5 0%, #ffe4ec 30%, #f0fff4 70%, #e8f5e9 100%)",
+            borderRadius: "20px",
+            padding: "0",
+            boxShadow: "0 15px 35px rgba(255, 182, 193, 0.3), 0 0 0 1px rgba(255,255,255,0.5), inset 0 1px 0 rgba(255,255,255,0.8)",
+            color: "#333",
+            minWidth: "340px",
+            maxWidth: "420px",
+            animation: enterAnimation,
+            pointerEvents: "auto",
+            position: "relative",
+            overflow: "hidden",
+            border: "2px solid rgba(255, 182, 193, 0.3)",
+        });
+
+        // Pink-green color scheme with Notice.ico
+        notification.innerHTML = `
+            <!-- 顶部装饰线 -->
+            <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #ff69b4 0%, #ffb6c1 30%, #98fb98 70%, #90ee90 100%);"></div>
+
+            <!-- 左侧图标区域 -->
+            <div style="position: absolute; top: 0; left: 0; bottom: 0; width: 130px; background: linear-gradient(180deg, rgba(255, 182, 193, 0.25) 0%, rgba(144, 238, 144, 0.15) 100%); display: flex; align-items: center; justify-content: center;">
+                <img src="/zml/get_notice_icon" style="width: 90px; height: 90px; object-fit: contain; border-radius: 16px;" />
+            </div>
+
+            <!-- 内容区域 -->
+            <div style="position: relative; z-index: 1; padding: 28px 28px 28px 150px;">
+                <div style="font-size: 18px; font-weight: 600; margin-bottom: 6px; color: #d63384; letter-spacing: 0.5px;">${title}</div>
+                ${subtitle ? `<div style="font-size: 14px; color: #6b8e6b; line-height: 1.5; font-weight: 400;">${subtitle}</div>` : ""}
+            </div>
+
+            <!-- 右下角装饰 -->
+            <div style="position: absolute; bottom: 12px; right: 12px; display: flex; gap: 6px; align-items: center;">
+                <div style="width: 6px; height: 6px; background: #ff69b4; border-radius: 50%;"></div>
+                <div style="width: 4px; height: 4px; background: #98fb98; border-radius: 50%;"></div>
+                <div style="width: 4px; height: 4px; background: #ffb6c1; border-radius: 50%;"></div>
+            </div>
+
+            <!-- 背景装饰图案 -->
+            <div style="position: absolute; top: -40px; right: -40px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(255, 182, 193, 0.15) 0%, transparent 70%); border-radius: 50%; pointer-events: none;"></div>
+            <div style="position: absolute; bottom: -20px; left: 60px; width: 80px; height: 80px; background: radial-gradient(circle, rgba(144, 238, 144, 0.12) 0%, transparent 70%); border-radius: 50%; pointer-events: none;"></div>
+        `;
+    } else {
+        // Minimalist style
+        Object.assign(notification.style, {
+            background: "rgba(30, 30, 30, 0.95)",
+            borderRadius: "8px",
+            padding: "16px 20px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+            color: "white",
+            minWidth: "260px",
+            maxWidth: "320px",
+            animation: enterAnimation,
+            pointerEvents: "auto",
+            border: "1px solid rgba(255,255,255,0.1)",
+            backdropFilter: "blur(10px)",
+        });
+
+        notification.innerHTML = `
+            <div style="font-size: 16px; font-weight: 600; margin-bottom: ${subtitle ? "4px" : "0"}; letter-spacing: 0.3px;">${title}</div>
+            ${subtitle ? `<div style="font-size: 13px; color: rgba(255,255,255,0.7); line-height: 1.4;">${subtitle}</div>` : ""}
+        `;
+    }
+
+    // Add close button
+    const closeBtn = document.createElement("button");
+    closeBtn.innerHTML = "&times;";
+    const isCustom = style === "自定义";
+    Object.assign(closeBtn.style, {
+        position: "absolute",
+        top: isCartoon ? "12px" : (isCustom ? "15px" : "8px"),
+        right: isCartoon ? "15px" : (isCustom ? "20px" : "10px"),
+        background: isCartoon ? "rgba(255,255,255,0.3)" : (isCustom ? "rgba(255,255,255,0.2)" : "none"),
+        border: "none",
+        color: isCartoon ? "#333" : (isCustom ? "#fff" : "rgba(255,255,255,0.7)"),
+        fontSize: "20px",
+        cursor: "pointer",
+        padding: "0",
+        width: "28px",
+        height: "28px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "50%",
+        transition: "all 0.2s",
+        zIndex: "10",
+    });
+    closeBtn.onmouseover = () => {
+        closeBtn.style.color = isCartoon ? "#000" : "white";
+        closeBtn.style.background = isCartoon ? "rgba(255,255,255,0.5)" : (isCustom ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.1)");
+        closeBtn.style.transform = "scale(1.1)";
+    };
+    closeBtn.onmouseout = () => {
+        closeBtn.style.color = isCartoon ? "#333" : (isCustom ? "#fff" : "rgba(255,255,255,0.7)");
+        closeBtn.style.background = isCartoon ? "rgba(255,255,255,0.3)" : (isCustom ? "rgba(255,255,255,0.2)" : "none");
+        closeBtn.style.transform = "scale(1)";
+    };
+    closeBtn.onclick = () => {
+        const exitAnimation = position.startsWith("左")
+            ? "zml-notification-fade-out-left 0.3s ease-out forwards"
+            : "zml-notification-fade-out-right 0.3s ease-out forwards";
+        notification.style.animation = exitAnimation;
+        setTimeout(() => notification.remove(), 300);
+    };
+    notification.appendChild(closeBtn);
+
+    zmlNotificationContainer.appendChild(notification);
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            const exitAnimation = position.startsWith("左")
+                ? "zml-notification-fade-out-left 0.3s ease-out forwards"
+                : "zml-notification-fade-out-right 0.3s ease-out forwards";
+            notification.style.animation = exitAnimation;
+            setTimeout(() => notification.remove(), 300);
+        }
+    }, 5000);
+}
+
+// Add CSS animations
+if (!document.getElementById("zml-notification-styles")) {
+    const styleSheet = document.createElement("style");
+    styleSheet.id = "zml-notification-styles";
+    styleSheet.textContent = `
+        @keyframes zml-notification-slide-right {
+            0% { transform: translateX(100%); opacity: 0; }
+            100% { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes zml-notification-slide-left {
+            0% { transform: translateX(-100%); opacity: 0; }
+            100% { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes zml-notification-fade-out-right {
+            0% { transform: translateX(0); opacity: 1; }
+            100% { transform: translateX(100%); opacity: 0; }
+        }
+        @keyframes zml-notification-fade-out-left {
+            0% { transform: translateX(0); opacity: 1; }
+            100% { transform: translateX(-100%); opacity: 0; }
+        }
+        @keyframes zml-bell-ring {
+            0%, 100% { transform: rotate(0deg); }
+            10%, 30%, 50%, 70%, 90% { transform: rotate(15deg); }
+            20%, 40%, 60%, 80% { transform: rotate(-15deg); }
+        }
+        @keyframes zml-blink {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+    `;
+    document.head.appendChild(styleSheet);
+}
+
+/**
+ * Plays the audio file selected in a ZML_AudioPlayerNode or ZML_PureAudioPlayerNode.
+ * @param {object} node The audio player node instance from the graph.
+ */
+async function playAudioForNode(node) {
     // Stop any previously playing audio
     if (zmlCurrentAudio) {
         zmlCurrentAudio.pause();
@@ -27,19 +297,66 @@ function playAudioForNode(node) {
     }
 
     const audioFileWidget = node.widgets.find(w => w.name === "音频文件");
-    if (!audioFileWidget || !audioFileWidget.value || audioFileWidget.value.startsWith("(")) {
-        console.log("[ZML_AudioPlayer] No valid audio file selected.");
-        return;
-    }
-    const filename = audioFileWidget.value;
-    const audioUrl = `/zml/get_audio?filename=${encodeURIComponent(filename)}`;
+    const volumeWidget = node.widgets.find(w => w.name === "播放音量");
 
-    zmlCurrentAudio = new Audio(audioUrl);
-    zmlCurrentAudio.play().catch(e => {
-        console.error(`[ZML_AudioPlayer] Failed to play audio: ${filename}`, e);
-        // We avoid alert() here for workflow-triggered plays to prevent spam.
-        // The button click can have its own alert if needed.
-    });
+    // Play audio
+    if (audioFileWidget && audioFileWidget.value && !audioFileWidget.value.startsWith("(")) {
+        const filename = audioFileWidget.value;
+        const audioUrl = `/zml/get_audio?filename=${encodeURIComponent(filename)}`;
+
+        zmlCurrentAudio = new Audio(audioUrl);
+        // Set volume (0-1 range)
+        const volume = volumeWidget ? volumeWidget.value : 1.0;
+        zmlCurrentAudio.volume = Math.max(0, Math.min(1, volume));
+        
+        zmlCurrentAudio.play().catch(e => {
+            console.error(`[ZML_AudioPlayer] Failed to play audio: ${filename}`, e);
+        });
+    }
+}
+
+/**
+ * Handles both audio player and notification nodes.
+ * @param {object} node The node instance from the graph.
+ */
+async function handleAudioPlayerNode(node) {
+    // Check if it's a notification node (has enablePopup widget)
+    const enablePopupWidget = node.widgets.find(w => w.name === "启用弹窗");
+    
+    if (enablePopupWidget) {
+        // It's a notification node - play audio and show notification
+        await playAudioForNode(node);
+        
+        const titleWidget = node.widgets.find(w => w.name === "主标题");
+        const subtitleWidget = node.widgets.find(w => w.name === "副标题");
+        const styleWidget = node.widgets.find(w => w.name === "风格");
+        const positionWidget = node.widgets.find(w => w.name === "弹窗位置");
+        const notificationTypeWidget = node.widgets.find(w => w.name === "通知类型");
+
+        const enablePopup = enablePopupWidget.value;
+        if (enablePopup) {
+            const title = titleWidget ? titleWidget.value : "任务完成";
+            const subtitle = subtitleWidget ? subtitleWidget.value : "";
+            const style = styleWidget ? styleWidget.value : "卡通";
+            const position = positionWidget ? positionWidget.value : "右下";
+            const notificationType = notificationTypeWidget ? notificationTypeWidget.value : "页面通知";
+
+            if (notificationType === "系统通知") {
+                // Try system notification first
+                const systemNotificationSuccess = await showSystemNotification(title, subtitle);
+                // Fall back to page notification if system notification fails
+                if (!systemNotificationSuccess) {
+                    showNotification(title, subtitle, style, position);
+                }
+            } else {
+                // Page notification
+                showNotification(title, subtitle, style, position);
+            }
+        }
+    } else {
+        // It's a pure audio player node - just play audio
+        await playAudioForNode(node);
+    }
 }
 
 // =================================================================
@@ -285,8 +602,8 @@ app.registerExtension({
     name: "ZML.PauseAndAudioPlayer",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        // --- Add "Play" button to ZML_AudioPlayerNode ---
-        if (nodeData.name === "ZML_AudioPlayerNode") {
+        // --- Add "Play" button to ZML_AudioPlayerNode and ZML_PureAudioPlayerNode ---
+        if (nodeData.name === "ZML_AudioPlayerNode" || nodeData.name === "ZML_PureAudioPlayerNode") {
             const onNodeCreated = nodeType.prototype.onNodeCreated;
             
             nodeType.prototype.onNodeCreated = function () {
@@ -294,7 +611,7 @@ app.registerExtension({
 
                 // Add the manual play button
                 this.addWidget("button", "播放", null, () => {
-                   playAudioForNode(this); 
+                   handleAudioPlayerNode(this); 
                 });
             };
         }

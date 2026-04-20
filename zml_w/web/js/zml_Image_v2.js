@@ -88,8 +88,8 @@ app.registerExtension({
                         }
 
                         .zml-v2-image-grid {
-                            display: grid; 
-                            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                            display: grid;
+                            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
                             gap: 8px;
                             max-height: 2000px;
                             overflow-y: auto;
@@ -100,7 +100,10 @@ app.registerExtension({
                             transition: grid-template-columns 0.3s ease;
                         }
                         .zml-v2-image-grid.medium {
-                            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                        }
+                        .zml-v2-image-grid.large {
+                            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
                         }
                         .zml-v2-image-item {
                             position: relative;
@@ -213,7 +216,7 @@ app.registerExtension({
                 let state = {
                     path: "",
                     files: [],
-                    viewStyle: localStorage.getItem(styleStorageKey) || 'thumbnail', // 'thumbnail' 或 'medium'
+                    viewStyle: localStorage.getItem(styleStorageKey) || 'thumbnail', // 'thumbnail', 'medium' 或 'large'
                 };
                 
                 const counterEl = $el("span.zml-v2-selection-counter", { textContent: "已选: 0 张" });
@@ -252,23 +255,36 @@ app.registerExtension({
                 imageGrid.appendChild(statusEl);
 
                 const refreshBtn = $el("button.zml-v2-refresh-btn", { textContent: "刷新" });
-                const styleBtn = $el("button.zml-v2-style-btn", { textContent: state.viewStyle === 'thumbnail' ? "缩略图" : "中图标" });
+                const getStyleBtnText = (style) => {
+                    if (style === 'thumbnail') return "缩略图";
+                    if (style === 'medium') return "中图标";
+                    return "大图标";
+                };
+                const styleBtn = $el("button.zml-v2-style-btn", { textContent: getStyleBtnText(state.viewStyle) });
                 const upBtn = $el("button.zml-v2-up-btn", { textContent: "返回上级" });
                 const currentPathDisplay = $el("div.zml-v2-current-path");
 
                 const clearBtn = $el("button.zml-v2-clear-btn", { textContent: "清空" });
                 
-                // 样式切换按钮点击事件
+                // 样式切换按钮点击事件 - 三种模式循环切换
                 styleBtn.addEventListener("click", () => {
-                    state.viewStyle = state.viewStyle === 'thumbnail' ? 'medium' : 'thumbnail';
+                    // 循环切换: thumbnail -> medium -> large -> thumbnail
+                    if (state.viewStyle === 'thumbnail') {
+                        state.viewStyle = 'medium';
+                    } else if (state.viewStyle === 'medium') {
+                        state.viewStyle = 'large';
+                    } else {
+                        state.viewStyle = 'thumbnail';
+                    }
                     localStorage.setItem(styleStorageKey, state.viewStyle);
-                    styleBtn.textContent = state.viewStyle === 'thumbnail' ? "缩略图" : "中图标";
+                    styleBtn.textContent = getStyleBtnText(state.viewStyle);
                     
                     // 应用样式到图像网格
+                    imageGrid.classList.remove('medium', 'large');
                     if (state.viewStyle === 'medium') {
                         imageGrid.classList.add('medium');
-                    } else {
-                        imageGrid.classList.remove('medium');
+                    } else if (state.viewStyle === 'large') {
+                        imageGrid.classList.add('large');
                     }
                 });
                 
@@ -670,12 +686,13 @@ app.registerExtension({
                     }
                     
                     // 应用当前视图样式
+                    imageGrid.classList.remove('medium', 'large');
                     if (state.viewStyle === 'medium') {
                         imageGrid.classList.add('medium');
-                    } else {
-                        imageGrid.classList.remove('medium');
+                    } else if (state.viewStyle === 'large') {
+                        imageGrid.classList.add('large');
                     }
-                    
+
                     if (folders.length > 0 && imageFiles.length === 0) {
                         imageGrid.style.display = 'flex';
                         imageGrid.style.flexWrap = 'wrap';
@@ -710,12 +727,13 @@ app.registerExtension({
                     imageGrid.appendChild($el("div.zml-v2-loader-status", { textContent: "正在加载..." }));
                     imageGrid.style.display = 'grid';
                     imageGrid.style.minHeight = '110px';
-                    
+
                     // 应用当前视图样式
+                    imageGrid.classList.remove('medium', 'large');
                     if (state.viewStyle === 'medium') {
                         imageGrid.classList.add('medium');
-                    } else {
-                        imageGrid.classList.remove('medium');
+                    } else if (state.viewStyle === 'large') {
+                        imageGrid.classList.add('large');
                     }
 
                     try {
@@ -751,10 +769,11 @@ app.registerExtension({
                 });
                 
                 // 初始应用视图样式
+                imageGrid.classList.remove('medium', 'large');
                 if (state.viewStyle === 'medium') {
                     imageGrid.classList.add('medium');
-                } else {
-                    imageGrid.classList.remove('medium');
+                } else if (state.viewStyle === 'large') {
+                    imageGrid.classList.add('large');
                 }
 
                 upBtn.addEventListener("click", () => {
