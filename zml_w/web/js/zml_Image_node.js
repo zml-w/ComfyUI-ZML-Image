@@ -674,6 +674,7 @@ app.registerExtension({
                     const undoBtn = $el("button.zml-action-btn.zml-undo-btn", { textContent: "撤回" });
                     const clearBtn = $el("button.zml-action-btn.zml-clear-btn", { textContent: "清空" });
                     const randomBtn = $el("button.zml-action-btn.zml-random-btn.confirm", { textContent: "随机选择" });
+                    const selectAllBtn = $el("button.zml-action-btn.zml-select-all-btn.confirm", { textContent: "全选" });
                     // 在随机选择按钮左侧添加随机个数选择器
                     const randomCountSelect = $el("select.zml-random-count-select", { style: { minWidth: "80px", padding: "4px 8px", fontSize: "14px" } });
                     // 创建选项并添加到选择器
@@ -1070,7 +1071,7 @@ app.registerExtension({
                             $el("div.zml-footer-group", [ displayModeSelector, rememberPathBtn ]),
                             // --- 🔴 MODIFICATION END ---
                             $el("div.zml-footer-group.center", [ confirmBtn ]),
-                            $el("div.zml-footer-group", [ randomCountSelect, randomBtn, undoBtn, clearBtn ])
+                            $el("div.zml-footer-group", [ randomCountSelect, randomBtn, selectAllBtn, undoBtn, clearBtn ])
                         ])
                     ]);
 
@@ -1769,6 +1770,30 @@ app.registerExtension({
                                     selectedFiles.push(shuffledFiles[i]);
                                 }
                             }
+                            renderCurrentLevel();
+                            updateUiState();
+                        } else {
+                            alert("当前目录中没有可选择的图像文件");
+                        }
+                    };
+
+                    // 全选当前目录的图像
+                    selectAllBtn.onclick = () => {
+                        let currentLevel = fileTree;
+                        const tempCurrentPath = [...currentPath];
+
+                        for (const part of tempCurrentPath) {
+                            if (currentLevel && currentLevel[part]) {
+                                currentLevel = currentLevel[part];
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if (currentLevel && currentLevel.files && currentLevel.files.length > 0) {
+                            pushHistory();
+                            selectedFiles.length = 0;
+                            selectedFiles.push(...currentLevel.files.map(fileInfo => ({ ...fileInfo })));
                             renderCurrentLevel();
                             updateUiState();
                         } else {
