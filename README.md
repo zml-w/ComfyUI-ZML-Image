@@ -771,6 +771,12 @@
 
 ## 有问题可以提交，有想法也可以提交，有时间和能力的话会尽量实现的
 
+### 🤗感谢以下贡献者！
+
+[![Contributors](https://contrib.rocks/image?repo=zml-w/ComfyUI-ZML-Image)](https://github.com/zml-w/ComfyUI-ZML-Image/graphs/contributors)
+
+---
+
 `妹妹好可爱，放个妹妹`
 
 <img width="1024" height="540" alt="妹相随_6" src="https://github.com/user-attachments/assets/bc18deae-6c3c-4e70-a642-1b4210accdc3" />
