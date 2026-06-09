@@ -560,7 +560,7 @@ function createPresetModal() {
                 type: 'text',
                 new_name: name,
                 new_content: content,
-                parent_id: parent_id
+                new_parent_id: parent_id
             });
             if (result.success) {
                 zmlPresetModalNameInput.value = "";

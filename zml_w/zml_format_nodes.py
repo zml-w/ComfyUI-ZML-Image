@@ -80,7 +80,10 @@ async def zml_select_text_v3_presets(request):
         item_id = input_data.get("id")
         new_name = input_data.get("new_name")
         new_content = input_data.get("new_content")
-        new_parent_id = input_data.get("new_parent_id") # For moving items
+        # For moving items. Older frontend code sent this as parent_id, while
+        # move operations use new_parent_id.
+        has_parent_update = "new_parent_id" in input_data or "parent_id" in input_data
+        new_parent_id = input_data.get("new_parent_id") if "new_parent_id" in input_data else input_data.get("parent_id")
         
         found_item = None
         for p in presets:
@@ -89,9 +92,11 @@ async def zml_select_text_v3_presets(request):
                 break
         
         if found_item:
+            target_parent_id = new_parent_id if has_parent_update else found_item.get("parent_id")
+
             # Check for duplicate name if name is changed and new name already exists (case-insensitive)
             if new_name and new_name.lower() != found_item['name'].lower():
-                if any(p['name'].lower() == new_name.lower() and p['id'] != item_id and p.get('parent_id') == found_item.get('parent_id') for p in presets):
+                if any(p['name'].lower() == new_name.lower() and p['id'] != item_id and p.get('parent_id') == target_parent_id for p in presets):
                     response_data = {"success": False, "message": f"A {found_item['type']} with new name '{new_name}' already exists in this location."}
                     return web.json_response(response_data)
             
@@ -99,8 +104,8 @@ async def zml_select_text_v3_presets(request):
                 found_item["name"] = new_name
             if found_item["type"] == "text" and new_content is not None:
                 found_item["content"] = new_content
-            # Always update parent_id regardless of its value (including None for root directory)
-            found_item["parent_id"] = new_parent_id
+            if has_parent_update:
+                found_item["parent_id"] = new_parent_id
             
             _write_presets(presets)
             response_data = {"success": True, "message": f"{found_item['type'].capitalize()} updated successfully."}
