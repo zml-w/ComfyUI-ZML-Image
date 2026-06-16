@@ -21,6 +21,16 @@
 > ### 最新更新日期： **2026.04.20**
 >
 
+> - #### 合并了 https://github.com/zml-w/ComfyUI-ZML-Image/pull/19 和 https://github.com/zml-w/ComfyUI-ZML-Image/pull/20 提交的bug修改，感谢贡献。
+>
+> - #### 修复了已知问题。
+
+<details>
+<summary>点击查看往期更多更新内容</summary>
+
+> ### 更新日期： **2026.06.17**
+>
+
 > - #### 合并了 https://github.com/zml-w/ComfyUI-ZML-Image/pull/18 提交的bug修改，感谢贡献。
 >
 > - #### 添加了[Hanzhihu](https://github.com/Hanzhihu)制作的NovelAI相关节点，待完善。
@@ -36,9 +46,6 @@
 > - #### 添加了通知节点，可以comfyui内部通知和系统通知，也带音频。
 >
 > - #### 文本输入节点添加了可选的输入接口、添加了批次转列表节点、裁剪图像节点更新了、LLM节点改成了openai库、添加了拆分宫格节点。
-
-<details>
-<summary>点击查看往期更多更新内容</summary>
 
 > ### 更新日期： **2026.03.29**
 >
