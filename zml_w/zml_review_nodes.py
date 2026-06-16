@@ -766,6 +766,36 @@ class ZML_MaskSplitNode_Five:
 
         return tuple(final_outputs)
 
+class ZML_MaskAddSubNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "遮罩1": ("MASK",),
+                "遮罩2": ("MASK",),
+                "操作": (["相加", "相减"],)
+            }
+        }
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("输出遮罩",)
+    FUNCTION = "process"
+    CATEGORY = "image/ZML_图像/遮罩"
+
+    def process(self, 遮罩1, 遮罩2, 操作):
+        # 确保两个遮罩尺寸相同
+        if 遮罩1.shape != 遮罩2.shape:
+            # 调整尺寸以匹配第一个遮罩
+            遮罩2 = torch.nn.functional.interpolate(遮罩2, size=遮罩1.shape[2:], mode='bilinear', align_corners=False)
+        
+        if 操作 == "相加":
+            # 遮罩相加，结果限制在0-1范围内
+            result = torch.clamp(遮罩1 + 遮罩2, 0.0, 1.0)
+        else: # 相减
+            # 遮罩相减，结果限制在0-1范围内
+            result = torch.clamp(遮罩1 - 遮罩2, 0.0, 1.0)
+        
+        return (result,)
+
 # ============================== 图像旋转节点==============================
 class ZML_ImageRotate:
     @classmethod
@@ -1947,8 +1977,12 @@ class ZML_SeparateImageLayers:
                     "display": "number",
                     "tooltip": "控制图层合并的阈值（像素）。如果两个图层之间的间隔像素小于此值，则会合并为一个图层"
                 }),
-                "检测背景": (["透明", "白色", "黑色", "绿色"], {"default": "透明", "tooltip": "用于检测分离的背景颜色。选择'透明'时优先使用Alpha通道"}),
-                "填充背景": (["透明", "白色", "黑色", "绿色"], {"default": "透明", "tooltip": "分离后非区域部分的填充颜色。'透明'需要输出为RGBA格式"}),
+                "检测背景": (["透明", "白色", "黑色", "绿色", "自定义"], {"default": "透明", "tooltip": "用于检测分离的背景颜色。选择'透明'时优先使用Alpha通道"}),
+                "填充背景": (["透明", "白色", "黑色", "绿色", "自定义"], {"default": "透明", "tooltip": "分离后非区域部分的填充颜色。'透明'需要输出为RGBA格式"}),
+            },
+            "optional": {
+                "自定义检测背景颜色": ("STRING", {"default": "#FFFFFF", "tooltip": "自定义检测背景颜色，格式为#RRGGBB或RGB值"}),
+                "自定义填充背景颜色": ("STRING", {"default": "#000000", "tooltip": "自定义填充背景颜色，格式为#RRGGBB或RGB值"}),
             }
         }
 
@@ -1973,7 +2007,7 @@ class ZML_SeparateImageLayers:
         # 添加批次维度
         return image_tensor.unsqueeze(0)
 
-    def separate_layers(self, 图像: torch.Tensor, 最小面积比例: float, 合并阈值: int, 检测背景: str, 填充背景: str):
+    def separate_layers(self, 图像: torch.Tensor, 最小面积比例: float, 合并阈值: int, 检测背景: str, 填充背景: str, 自定义检测背景颜色: str="#FFFFFF", 自定义填充背景颜色: str="#000000"):
         # 转换图像为numpy数组
         image_np = self._tensor_to_numpy(图像)
         h, w = image_np.shape[:2]
@@ -1985,7 +2019,28 @@ class ZML_SeparateImageLayers:
             "黑色": [0, 0, 0],
             "绿色": [0, 255, 0]
         }
-        detect_bg_color = bg_color_map.get(检测背景)
+        
+        # 处理自定义颜色
+        if 检测背景 == "自定义":
+            # 解析自定义颜色
+            color_str = 自定义检测背景颜色.strip()
+            if color_str.startswith('#'):
+                # 十六进制颜色
+                color_str = color_str[1:]
+                r = int(color_str[0:2], 16)
+                g = int(color_str[2:4], 16)
+                b = int(color_str[4:6], 16)
+                detect_bg_color = [r, g, b]
+            else:
+                # RGB值
+                try:
+                    r, g, b = map(int, color_str.split(','))
+                    detect_bg_color = [r, g, b]
+                except:
+                    # 默认白色
+                    detect_bg_color = [255, 255, 255]
+        else:
+            detect_bg_color = bg_color_map.get(检测背景)
         
         # 检测前景/背景
         if 检测背景 == "透明" and len(image_np.shape) == 3 and image_np.shape[2] == 4:
@@ -2075,7 +2130,28 @@ class ZML_SeparateImageLayers:
             "黑色": [0, 0, 0],
             "绿色": [0, 255, 0]
         }
-        output_bg_color = bg_color_values.get(填充背景)
+        
+        # 处理自定义填充颜色
+        if 填充背景 == "自定义":
+            # 解析自定义颜色
+            color_str = 自定义填充背景颜色.strip()
+            if color_str.startswith('#'):
+                # 十六进制颜色
+                color_str = color_str[1:]
+                r = int(color_str[0:2], 16)
+                g = int(color_str[2:4], 16)
+                b = int(color_str[4:6], 16)
+                output_bg_color = [r, g, b]
+            else:
+                # RGB值
+                try:
+                    r, g, b = map(int, color_str.split(','))
+                    output_bg_color = [r, g, b]
+                except:
+                    # 默认黑色
+                    output_bg_color = [0, 0, 0]
+        else:
+            output_bg_color = bg_color_values.get(填充背景)
         
         # 提取每个区域的图像
         separated_images = []
@@ -2680,6 +2756,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_SeparateImageLayers": ZML_SeparateImageLayers,
     "ZML_PythonPathNode": ZML_PythonPathNode,
     "ZML_CodeViewerNode": ZML_CodeViewerNode,
+    "ZML_MaskAddSubNode": ZML_MaskAddSubNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -2703,4 +2780,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_BufferNode": "ZML_缓冲节点",
     "ZML_PythonPathNode": "ZML_Python路径",
     "ZML_CodeViewerNode": "ZML_节点代码查看器",
+    "ZML_MaskAddSubNode": "ZML_遮罩相加减",
 }

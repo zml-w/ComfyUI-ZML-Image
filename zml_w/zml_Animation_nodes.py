@@ -623,7 +623,7 @@ except ImportError:
         def __init__(self, value):
             self.value = value
 
-# ============================== 桥接预览图象 ==============================
+# ============================== 桥接预览图像 ==============================
 class ZML_ImageMemory:
     # 启用OUTPUT_NODE，使其能在UI中预览图像。
     OUTPUT_NODE = True
@@ -631,7 +631,7 @@ class ZML_ImageMemory:
     # 类变量，用于在节点实例之间共享缓存
     _image_cache = {}    # UI预览用的路径缓存
     _counter_cache = {}  # 计数器
-    _tensor_buffer = {}  # 【新增】核心数据缓存：用于存储真实的图像数据张量
+    _tensor_buffer = {}  # 核心数据缓存：用于存储真实的图像数据张量
 
     def __init__(self):
         self.stored_image = None
@@ -650,8 +650,8 @@ class ZML_ImageMemory:
             "required": {
                 "关闭输入": ("BOOLEAN", {"default": False, "tooltip": "开启后不执行上游节点，锁定当前状态"}),
                 "关闭输出": ("BOOLEAN", {"default": False, "tooltip": "开启后不执行下游节点"}),
-                "选择输出索引": ("INT", {"default": 0, "min": 0, "max": 50, "step": 1, "label": "选择输出索引(0=全部)", "tooltip": "0=输出缓存中的所有图像拼接结果，1-50=选择输出缓存队列中特定位置的单张图像"}),
-                "暂存次数": ("INT", {"default": 1, "min": 1, "max": 64, "step": 1, "display": "number", "tooltip": "设置缓存队列的大小。例如设为3，节点会保留最近3次运行的图像（或3个批次），并将其合并输出。"}),
+                "选择输出索引": ("INT", {"default": 0, "min": 0, "max": 50, "step": 1, "label": "选择输出索引(0=全部)", "tooltip": "0=输出缓存中的所有图像（同分辨率拼成batch，不同分辨率输出列表）；1-50=按【单张图像】索引取出缓存中的第N张图。注意：索引按展开后的单图算——一次输入5张的批次会被展开成5张单图分别按索引取。超出范围时自动返回最后一张。"}),
+                "暂存次数": ("INT", {"default": 1, "min": 1, "max": 10, "step": 1, "display": "number", "tooltip": "设置缓存队列的大小。例如设为3，节点会保留最近3次运行的图像（或3个批次），并将其合并输出。上限10次。"}),
             },
             "optional": {
                 "输入图像": ("IMAGE", lazy_options),
@@ -668,7 +668,7 @@ class ZML_ImageMemory:
     FUNCTION = "store_and_retrieve_image"
     CATEGORY = "image/ZML_图像/工具"
     OUTPUT_IS_LIST = (True,)
-    
+
     def check_lazy_status(self, 关闭输入, **kwargs):
         """告诉系统是否需要输入图像"""
         if 关闭输入:
@@ -680,7 +680,7 @@ class ZML_ImageMemory:
     def store_and_retrieve_image(self, 关闭输入, 关闭输出, 选择输出索引, 暂存次数=1, 输入图像=None, prompt=None, extra_pnginfo=None, unique_id=None):
         self.prompt = prompt
         self.extra_pnginfo = extra_pnginfo
-        
+
         # 1. 确保唯一ID对应的缓存列表存在
         if unique_id:
             if unique_id not in self._tensor_buffer:
@@ -695,16 +695,16 @@ class ZML_ImageMemory:
         if not 关闭输入 and 输入图像 is not None:
             current_input_image = 输入图像
             new_image_received = True
-            
-            # --- 【核心修改】数据累积逻辑 ---
+
+            # --- 数据累积逻辑 ---
             if unique_id:
                 # 不再清空缓存，支持暂存不同分辨率的图像
                 # 添加新图像到 Tensor 缓存
                 self._tensor_buffer[unique_id].append(current_input_image)
-                
+
                 # 维护队列长度（先进先出）
                 while len(self._tensor_buffer[unique_id]) > 暂存次数:
-                    self._tensor_buffer[unique_id].pop(0) # 移除最旧的
+                    self._tensor_buffer[unique_id].pop(0)  # 移除最旧的
 
         # 3. 准备生成 UI 预览图 (这一步主要是为了生成缩略图文件)
         # 我们只为"新进来的"图片生成预览文件，旧的已经在以前运行生成过了
@@ -712,7 +712,7 @@ class ZML_ImageMemory:
         if new_image_received and current_input_image is not None:
             subfolder_path = os.path.join(self.temp_output_dir, self.temp_subfolder)
             os.makedirs(subfolder_path, exist_ok=True)
-            
+
             batch_size = current_input_image.shape[0]
             for i in range(batch_size):
                 img_t = current_input_image[i:i+1]
@@ -722,13 +722,13 @@ class ZML_ImageMemory:
                     pil_img = Image.fromarray((preview_tensor.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
                 else:
                     pil_img = Image.fromarray((img_t.squeeze(0).cpu().numpy() * 255).astype(np.uint8))
-                
+
                 filename = f"zml_mem_{unique_id}_{uuid.uuid4().hex[:8]}.png"
                 file_path = os.path.join(subfolder_path, filename)
-                
+
                 metadata = PngImagePlugin.PngInfo()
                 if self.prompt: metadata.add_text("prompt", json.dumps(self.prompt))
-                
+
                 pil_img.save(file_path, pnginfo=metadata, compress_level=4)
                 current_image_paths.append({"filename": filename, "subfolder": self.temp_subfolder, "type": "temp"})
 
@@ -739,56 +739,71 @@ class ZML_ImageMemory:
                 # 维护 UI 缓存长度
                 while len(self._image_cache[unique_id]) > 暂存次数:
                     self._image_cache[unique_id].pop(0)
-            
+
             # 扁平化 UI 列表 (因为 self._image_cache 是 [[paths_run1], [paths_run2]] 结构)
-            # 我们需要把它变成一个长列表给前端
             flat_ui_paths = []
             for batch_paths in self._image_cache[unique_id]:
                 flat_ui_paths.extend(batch_paths)
         else:
             flat_ui_paths = current_image_paths
 
-        # 5. --- 【核心修改】构建输出数据 ---
-        # 默认输出空
+        # 5. --- 把缓存里的所有张量按 batch 维度展开成"单图列表" ---
+        # 这样无论一次输入是 1 张还是 N 张，都会被拆成 N 张单独可索引的图像。
+        # 索引规则：先按缓存的先后顺序，再按每次缓存内部的 batch 顺序。
+        all_single_images = []  # 每个元素 shape: [1, H, W, C]
+        if unique_id and len(self._tensor_buffer[unique_id]) > 0:
+            for tensor in self._tensor_buffer[unique_id]:
+                # tensor shape: [B, H, W, C]，按 batch 拆开
+                for b in range(tensor.shape[0]):
+                    all_single_images.append(tensor[b:b+1])
+        elif current_input_image is not None:
+            # 极端情况：没有 unique_id 时，把当前输入也按 batch 拆开
+            for b in range(current_input_image.shape[0]):
+                all_single_images.append(current_input_image[b:b+1])
+
+        # 6. --- 构建输出数据 ---
         final_output_list = []
 
-        if unique_id and len(self._tensor_buffer[unique_id]) > 0:
-            # 检查所有图像的分辨率是否一致
-            resolutions = set()
-            for tensor in self._tensor_buffer[unique_id]:
-                h, w, c = tensor.shape[1:]
-                resolutions.add((h, w, c))
-            
-            if len(resolutions) == 1:
-                # 分辨率一致，拼接成一个大的 Batch
-                final_output_batch = torch.cat(self._tensor_buffer[unique_id], dim=0)
-                final_output_list = [final_output_batch]
+        if 选择输出索引 > 0:
+            # —— 单图模式：从展开后的单图列表里按索引取 1 张 ——
+            if len(all_single_images) > 0:
+                idx = 选择输出索引 - 1  # 用户输入1代表第1张(idx 0)
+                if 0 <= idx < len(all_single_images):
+                    final_output_list = [all_single_images[idx]]
+                else:
+                    # 索引越界时，返回最后一张并打印提示
+                    print(f"ZML_ImageMemory: 索引 {选择输出索引} 超出范围 (当前展开后共有 {len(all_single_images)} 张单图), 返回最后一张。")
+                    final_output_list = [all_single_images[-1]]
             else:
-                # 分辨率不同，输出图像列表
-                final_output_list = self._tensor_buffer[unique_id].copy()
-        elif current_input_image is not None:
-            # 如果没有 unique_id (极端情况)，直接透传当前输入
-            final_output_list = [current_input_image]
+                # 没有任何缓存图，输出空
+                final_output_list = []
         else:
-            # 没有图像，输出空列表
-            final_output_list = []
+            # —— 全部输出模式（索引=0）：维持原行为 ——
+            if unique_id and len(self._tensor_buffer[unique_id]) > 0:
+                # 检查所有图像的分辨率是否一致
+                resolutions = set()
+                for tensor in self._tensor_buffer[unique_id]:
+                    h, w, c = tensor.shape[1:]
+                    resolutions.add((h, w, c))
 
-        # 6. 处理索引选择
-        if 选择输出索引 > 0 and len(final_output_list) > 0:
-            # 输出指定索引的那一张
-            # 索引转换：用户输入1代表第1张(idx 0)
-            idx = 选择输出索引 - 1
-            if 0 <= idx < len(final_output_list):
-                final_output_list = [final_output_list[idx]]
+                if len(resolutions) == 1:
+                    # 分辨率一致，拼接成一个大的 Batch
+                    final_output_batch = torch.cat(self._tensor_buffer[unique_id], dim=0)
+                    final_output_list = [final_output_batch]
+                else:
+                    # 分辨率不同，输出图像列表
+                    final_output_list = self._tensor_buffer[unique_id].copy()
+            elif current_input_image is not None:
+                # 没有 unique_id 的极端情况，直接透传当前输入
+                final_output_list = [current_input_image]
             else:
-                # 索引越界时，返回最后一张
-                print(f"ZML_ImageMemory: 索引 {选择输出索引} 超出范围 (当前共有 {len(final_output_list)} 张), 返回最后一张。")
-                final_output_list = [final_output_list[-1]]
+                # 没有图像，输出空列表
+                final_output_list = []
 
         # 7. 处理关闭输出
         if 关闭输出 and ExecutionBlocker is not None:
             return {"ui": {"images": flat_ui_paths}, "result": (ExecutionBlocker(None),)}
-            
+
         return {"ui": {"images": flat_ui_paths}, "result": (final_output_list,)}
 
     def _save_to_local(self, image_tensor):
@@ -798,6 +813,7 @@ class ZML_ImageMemory:
     def _load_from_local(self):
         # 此方法保留
         return None
+
 
 # ============================== 提示词token统一 ==============================
 class ZML_PromptTokenBalancer:

@@ -48,14 +48,19 @@ class ZML_CropPureColorBackground:
                 "处理模式": (["矩形", "不规则形状"],), 
                 "背景颜色": (["白色", "黑色", "绿色", "透明", "自定义"],), 
                 "阈值": ("INT", {"default": 10, "min": 0, "max": 255}), 
-                "不规则形状保留像素": ("INT", {"default": 50, "min": 0, "max": 256}), 
+                "矩形保留像素": ("INT", {"default": 0, "min": 0, "max": 512}), 
+                "不规则形状保留像素": ("INT", {"default": 50, "min": 0, "max": 512}), 
                 "透明图像添加背景": (["无", "白色", "绿色"],), 
             },
             "optional": {
                 "自定义背景颜色": ("STRING", {"default": "#000000"}),
             }
         }
-    RETURN_TYPES = ("IMAGE",); RETURN_NAMES = ("图像",); FUNCTION = "crop_background"; CATEGORY = "image/ZML_图像/图像"
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("图像",)
+    OUTPUT_IS_LIST = (True,)
+    FUNCTION = "crop_background"
+    CATEGORY = "image/ZML_图像/图像"
     
     def tensor_to_pil(self, tensor):
         img_np = np.clip(255. * tensor.cpu().numpy().squeeze(), 0, 255).astype(np.uint8)
@@ -64,7 +69,7 @@ class ZML_CropPureColorBackground:
     def pil_to_tensor(self, pil_image): 
         return torch.from_numpy(np.array(pil_image).astype(np.float32) / 255.0).unsqueeze(0)
 
-    def crop_background(self, 图像, 处理模式, 背景颜色, 阈值, 不规则形状保留像素, 透明图像添加背景, 自定义背景颜色="#000000"):
+    def crop_background(self, 图像, 处理模式, 背景颜色, 阈值, 矩形保留像素, 不规则形状保留像素, 透明图像添加背景, 自定义背景颜色="#000000"):
         cropped_images = []
         for img_tensor in 图像:
             pil_image = self.tensor_to_pil(img_tensor).convert("RGBA"); np_image = np.array(pil_image); h, w = np_image.shape[:2]
@@ -107,6 +112,13 @@ class ZML_CropPureColorBackground:
                 coords = np.argwhere(mask)
                 if coords.size > 0: 
                     y1, x1 = coords.min(axis=0); y2, x2 = coords.max(axis=0)
+                    
+                    # 应用矩形保留像素
+                    y1 = max(0, y1 - 矩形保留像素)
+                    x1 = max(0, x1 - 矩形保留像素)
+                    y2 = min(h-1, y2 + 矩形保留像素)
+                    x2 = min(w-1, x2 + 矩形保留像素)
+                    
                     final_pil = Image.fromarray(np_image[y1:y2+1, x1:x2+1], 'RGBA')
             else: # 不规则形状
                 if binary_dilation is None:
@@ -168,7 +180,8 @@ class ZML_CropPureColorBackground:
             
             cropped_images.append(self.pil_to_tensor(final_pil))
         
-        return (torch.cat(cropped_images, dim=0),)
+        # 直接返回图像列表，由ComfyUI的OUTPUT_IS_LIST处理
+        return (cropped_images,)
 
 # ============================== 添加纯色背景节点==============================
 class ZML_AddSolidColorBackground:

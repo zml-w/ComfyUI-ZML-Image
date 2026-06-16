@@ -1783,6 +1783,39 @@ class ZML_MergeToList:
         return (collected_list,)
 
 
+# ============================== 替换提示词节点 ==============================
+class ZML_ReplaceText:
+    """ZML 替换提示词节点：将模板文本中的关键词替换为指定内容。
+    功能：输入模板文本（包含替换标记），用替换内容替换标记后输出。
+    例如：模板"我是{{提示词}}"，替换内容"神"，输出"我是神"
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "模板文本": ("STRING", {"multiline": True, "default": "", "tooltip": "输入包含替换标记的模板文本，如：我是{{提示词}}"}),
+                "替换内容": ("STRING", {"multiline": True, "default": "", "tooltip": "输入要替换到模板中的内容"}),
+                "替换关键词": ("STRING", {"multiline": False, "default": "{{提示词}}", "tooltip": "设置要替换的关键词标记，默认值为 {{提示词}}"}),
+            }
+        }
+
+    CATEGORY = "image/ZML_图像/文本"
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("结果文本",)
+
+    FUNCTION = "replace_text"
+
+    def replace_text(self, 模板文本, 替换内容, 替换关键词):
+        # 执行替换操作
+        if 替换关键词:
+            result = 模板文本.replace(替换关键词, 替换内容)
+        else:
+            result = 模板文本
+        return (result,)
+
+
 # ============================== 复制到列表节点 ==============================
 class ZML_CopyToList:
     """
@@ -1837,6 +1870,7 @@ NODE_CLASS_MAPPINGS = {
     "ZML_MergeText": ZML_MergeText,
     "ZML_MergeToList": ZML_MergeToList,
     "ZML_CopyToList": ZML_CopyToList,
+    "ZML_ReplaceText": ZML_ReplaceText,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1858,4 +1892,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZML_MergeText": "ZML_合并文本（动态）",
     "ZML_MergeToList": "ZML_合并到列表",
     "ZML_CopyToList": "ZML_复制到列表",
+    "ZML_ReplaceText": "ZML_替换提示词",
 }
