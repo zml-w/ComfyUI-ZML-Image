@@ -677,60 +677,11 @@ app.registerExtension({
                     }
                 }
                 
-                // 重新计算节点大小
-                node.setSize(node.computeSize());
-                
                 // 触发节点更新以重绘
                 node.setDirtyCanvas(true, true);
             };
             
             if (modelWidget && resolutionWidget) {
-                // 标记是否正在更新，防止循环
-                let isUpdating = false;
-                
-                // 定义更新分辨率预设的函数
-                const updateResolutions = async (modelName) => {
-                    if (isUpdating) return;
-                    isUpdating = true;
-                    
-                    try {
-                        const response = await api.fetchApi(ZML_API_PREFIX + "/v3_get_model_resolutions", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ model_name: modelName }),
-                        });
-                        
-                        if (response.status === 200) {
-                            const data = await response.json();
-                            const newResolutions = data.resolutions || [];
-                            
-                            // 过滤掉无效选项
-                            const validResolutions = newResolutions.filter(name => 
-                                !name.includes("没有预设") && !name.includes("错误")
-                            );
-                            
-                            if (validResolutions.length === 0) {
-                                validResolutions.push("没有预设");
-                            }
-                            
-                            // 更新分辨率预设 widget 的选项
-                            resolutionWidget.options.values = validResolutions;
-                            
-                            // 如果当前值不在新列表中，重置为第一个选项
-                            if (!validResolutions.includes(resolutionWidget.value)) {
-                                resolutionWidget.value = validResolutions[0];
-                            }
-                            
-                            // 触发节点更新
-                            node.setDirtyCanvas(true, true);
-                        }
-                    } catch (error) {
-                        console.error("Failed to update resolutions:", error);
-                    } finally {
-                        isUpdating = false;
-                    }
-                };
-                
                 // 保存原始的 callback
                 const originalCallback = modelWidget.callback;
                 
@@ -743,22 +694,12 @@ app.registerExtension({
                     
                     // 更新UI可见性（根据是否为自定义模式）
                     updateUIVisibility();
-                    
-                    // 如果不是自定义模式，更新分辨率预设
-                    if (value !== "自定义") {
-                        updateResolutions(value);
-                    }
                 };
                 
                 // 节点创建时，根据当前模型预设初始化
                 setTimeout(() => {
                     // 初始化UI可见性
                     updateUIVisibility();
-                    
-                    // 如果不是自定义模式，加载分辨率列表
-                    if (modelWidget.value !== "自定义") {
-                        updateResolutions(modelWidget.value);
-                    }
                 }, 0);
             }
             
@@ -776,4 +717,4 @@ app.registerExtension({
     }
 });
 
-console.log("ZML Resolution V3 Manager loaded");
+console.log("ZML Resolution V3 Manager loaded - no auto resolution update on model switch");
