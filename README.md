@@ -18,7 +18,7 @@
 
 ## ✨版本更新文字介绍
 
-> ### 最新更新日期： **2026.04.20**
+> ### 最新更新日期： **2026.06.17**
 >
 
 > - #### 合并了 https://github.com/zml-w/ComfyUI-ZML-Image/pull/19 和 https://github.com/zml-w/ComfyUI-ZML-Image/pull/20 提交的bug修改，感谢贡献。
@@ -28,7 +28,7 @@
 <details>
 <summary>点击查看往期更多更新内容</summary>
 
-> ### 更新日期： **2026.06.17**
+> ### 更新日期： **2026.04.20**
 >
 
 > - #### 合并了 https://github.com/zml-w/ComfyUI-ZML-Image/pull/18 提交的bug修改，感谢贡献。
